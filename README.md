@@ -106,3 +106,107 @@ Notes
 - Git LFS must be installed before committing assets
 - All contributors must use the same Unity version
 - Large binary files should never be committed without LFS
+
+
+TEAM UNITY PROJECT SETUP INSTRUCTIONS
+====================================
+
+These instructions explain how to import and work on the Unity project
+from GitHub on your own computer.
+
+
+1. Install Required Software
+----------------------------
+Before starting, make sure you have:
+
+- Unity Hub installed
+- The SAME Unity Editor version as the team (check README)
+- Git installed
+- Git LFS installed (required for assets)
+
+
+2. Install Git LFS
+------------------
+Git LFS is required to download large Unity assets correctly.
+
+macOS (Homebrew recommended):
+brew install git-lfs
+git lfs install
+
+Windows:
+- Install Git for Windows
+- Install Git LFS (often included)
+Then run:
+git lfs install
+
+Verify installation:
+git lfs version
+
+
+3. Clone the GitHub Repository
+------------------------------
+Open Terminal (macOS) or Git Bash / PowerShell (Windows).
+
+Navigate to a folder where you keep projects, then run:
+
+git clone <REPOSITORY_URL>
+cd <REPOSITORY_FOLDER_NAME>
+
+
+4. Pull Git LFS Files (IMPORTANT)
+---------------------------------
+After cloning, run:
+
+git lfs pull
+
+This ensures large assets (textures, audio, models) are downloaded.
+
+
+5. Open the Project in Unity Hub
+--------------------------------
+1. Open Unity Hub
+2. Click "Open" or "Add"
+3. Select the repository folder
+   (the folder containing Assets/, Packages/, ProjectSettings/)
+4. If prompted, install the correct Unity version
+5. Click the project to open it
+
+
+6. First-Time Project Check
+---------------------------
+When the project opens for the first time:
+
+- Wait for Unity to finish importing
+- Make sure there are no errors in the Console
+- Open the main scene (e.g. Assets/Scenes/MainScene.unity)
+- Press Play once to confirm it runs
+
+
+7. Working on the Project (Git Workflow)
+----------------------------------------
+Do NOT work directly on the main branch.
+
+Create a feature branch:
+git checkout -b feature/your-task-name
+
+After making changes:
+git add -A
+git commit -m "Describe what you changed"
+git push -u origin feature/your-task-name
+
+Then open a Pull Request on GitHub to merge into main.
+
+
+8. Important Unity + Git Rules
+------------------------------
+- Always commit .meta files
+- Never commit Library/, Temp/, Obj/, or Build/ folders
+- Avoid multiple people editing the same scene at the same time
+- Prefer prefabs over large single scenes
+- Commit small, focused changes frequently
+
+
+If you run into issues:
+- Check that your Unity version matches the team version
+- Make sure Git LFS is installed and git lfs pull was run
+- Ask the team before fixing merge conflicts
