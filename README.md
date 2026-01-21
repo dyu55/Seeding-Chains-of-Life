@@ -24,7 +24,7 @@ This README covers EVERYTHING from zero to working Unity project:
 ------------------------------------------------------------
 1) Unity Version (Fill This In)
 ------------------------------------------------------------
-Unity Editor Version: <FILL, e.g. 2022.3.17f1 LTS>
+Unity Editor Version: 6000.3.5f1
 Render Pipeline: <URP / Built-in>
 Target Platform: <PC / WebGL / Mobile>
 
@@ -332,6 +332,7 @@ END
 ------------------------------------------------------------
 
 Replace placeholders:
-- <REPOSITORY_URL>
-- <REPOSITORY_FOLDER_NAME>
+- [<REPOSITORY_URL>](https://github.com/dyu55/Seeding-Chains-of-Life.git)
+- [<REPOSITORY_FOLDER_NAME> ]Seeding-Chains-of-Life
+
 - Unity version in section 1
