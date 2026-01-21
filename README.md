@@ -332,7 +332,7 @@ END
 ------------------------------------------------------------
 
 Replace placeholders:
-- [<REPOSITORY_URL>](https://github.com/dyu55/Seeding-Chains-of-Life.git)
+- [<REPOSITORY_URL>] https://github.com/dyu55/Seeding-Chains-of-Life.git
 - [<REPOSITORY_FOLDER_NAME> ]Seeding-Chains-of-Life
 
 - Unity version in section 1
