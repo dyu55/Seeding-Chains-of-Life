@@ -37,6 +37,18 @@ namespace SCoL
 
         private System.Random _rng;
 
+        private void EnsureOnGUIHUD()
+        {
+            // If HUD already exists in scene, do nothing
+            if (FindFirstObjectByType<SCoL.Visualization.SCoLOnGUIHUD>() != null)
+                return;
+
+            var go = new GameObject("SCoL_OnGUI_HUD");
+            // Keep it alive even if runtime object is recreated
+            DontDestroyOnLoad(go);
+            go.AddComponent<SCoL.Visualization.SCoLOnGUIHUD>();
+        }
+
         public void Init(SCoLConfig config, Vector3 origin)
         {
             Config = config;
@@ -57,6 +69,8 @@ namespace SCoL
 
             _renderer = new EcosystemRenderer(Grid, _renderRoot);
             _renderer.Render(Grid);
+
+            EnsureOnGUIHUD();
         }
 
         private void Update()
