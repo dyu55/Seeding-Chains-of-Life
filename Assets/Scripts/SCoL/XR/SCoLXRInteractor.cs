@@ -394,9 +394,14 @@ namespace SCoL.XR
         private void SpawnClickMarker(Vector3 worldPoint, Tool tool)
         {
             // Visible in Scene/Game views (Editor). Harmless in builds.
+            // NOTE: Ensure marker is not parented under scaled transforms (XR Origin, grid tiles, etc.).
             var marker = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             marker.name = "SCoL_ClickMarker";
+            marker.hideFlags = HideFlags.DontSave;
+
+            marker.transform.SetParent(null, worldPositionStays: true);
             marker.transform.position = worldPoint + Vector3.up * 0.05f;
+            marker.transform.rotation = Quaternion.identity;
             marker.transform.localScale = Vector3.one * 0.08f;
 
             var col = marker.GetComponent<Collider>();
