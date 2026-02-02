@@ -46,6 +46,7 @@ namespace SCoL.Inventory
                 var p = go.AddComponent<SCoLPickup>();
                 p.type = type;
                 p.amount = 1;
+                p.ApplyVisual();
             }
         }
     }

@@ -20,7 +20,12 @@ namespace SCoL.Inventory
             amount = 1;
         }
 
-        private void Awake()
+        private void OnEnable()
+        {
+            ApplyVisual();
+        }
+
+        public void ApplyVisual()
         {
             // Visual
             var r = GetComponent<Renderer>();

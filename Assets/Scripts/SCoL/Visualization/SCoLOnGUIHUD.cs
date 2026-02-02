@@ -97,7 +97,7 @@ namespace SCoL.Visualization
             sb.AppendLine("- View: V cycle | F toggle fire overlay | 0/4/5/6/7/8 set mode");
             sb.AppendLine("- Tool (Editor): 1/2/3 select | LMB apply");
 
-            // Semi-transparent background
+            // Top-left debug panel
             var bg = new Color(0f, 0f, 0f, 0.55f);
             var old = GUI.color;
             GUI.color = bg;
@@ -105,6 +105,26 @@ namespace SCoL.Visualization
             GUI.color = old;
 
             GUI.Label(new Rect(10, 10, 900, 600), sb.ToString(), _style);
+
+            // Bottom HUD (inventory quick view)
+            var inv = FindFirstObjectByType<SCoL.Inventory.SCoLInventory>();
+            if (inv != null)
+            {
+                string invText = $"Seeds: {inv.seeds}   Water: {inv.water}   Fire: {inv.fire}";
+                var style2 = new GUIStyle(_style) { fontSize = 20 };
+
+                // centered bottom
+                float w = 520;
+                float h = 34;
+                float x = (Screen.width - w) * 0.5f;
+                float y = Screen.height - h - 14;
+
+                GUI.color = new Color(0f, 0f, 0f, 0.55f);
+                GUI.Box(new Rect(x - 8, y - 6, w + 16, h + 12), GUIContent.none);
+                GUI.color = Color.white;
+                GUI.Label(new Rect(x, y, w, h), invText, style2);
+                GUI.color = old;
+            }
         }
 
         private bool TryGetAimRay(out Ray ray)
