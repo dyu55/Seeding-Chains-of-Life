@@ -68,8 +68,31 @@ namespace SCoL.XR
 
         private void Update()
         {
-            // Input System XR (XR Device Simulator)
 #if ENABLE_INPUT_SYSTEM
+            // Always allow keyboard tool switching (works even if simulator input isn't configured)
+            if (Keyboard.current != null)
+            {
+                if (Keyboard.current.digit1Key.wasPressedThisFrame) currentTool = Tool.Seed;
+                if (Keyboard.current.digit2Key.wasPressedThisFrame) currentTool = Tool.Water;
+                if (Keyboard.current.digit3Key.wasPressedThisFrame) currentTool = Tool.Fire;
+            }
+
+            // Mouse fallback: Left click = same as Right Trigger
+            if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
+            {
+                if (fallbackCamera == null) fallbackCamera = Camera.main;
+                if (fallbackCamera != null)
+                {
+                    Ray ray = fallbackCamera.ScreenPointToRay(Mouse.current.position.ReadValue());
+                    if (Physics.Raycast(ray, out var hit, rayLength, hitLayers, QueryTriggerInteraction.Ignore))
+                    {
+                        HandleHit(hit);
+                    }
+                }
+                return;
+            }
+
+            // Input System XR (XR Device Simulator): controller buttons
             var left = FindXRControllerWithUsage("LeftHand");
             var right = FindXRControllerWithUsage("RightHand");
 
@@ -92,23 +115,27 @@ namespace SCoL.XR
                 {
                     if (TryGetAimRay(right, out var ray) && Physics.Raycast(ray, out var hit, rayLength, hitLayers, QueryTriggerInteraction.Ignore))
                     {
-                        // Pickup first
-                        var pickup = hit.collider.GetComponentInParent<SCoL.Inventory.SCoLPickup>();
-                        if (pickup != null)
-                        {
-                            inventory.Add(pickup.type, pickup.amount);
-                            Destroy(pickup.gameObject);
-                        }
-                        else
-                        {
-                            UseToolAt(hit.point);
-                        }
+                        HandleHit(hit);
                     }
                 }
                 _prevRightTrigger = rt;
             }
 #endif
         }
++
++        private void HandleHit(RaycastHit hit)
++        {
++            // Pickup first
++            var pickup = hit.collider.GetComponentInParent<SCoL.Inventory.SCoLPickup>();
++            if (pickup != null)
++            {
++                inventory.Add(pickup.type, pickup.amount);
++                Destroy(pickup.gameObject);
++                return;
++            }
++
++            UseToolAt(hit.point);
++        }
 
         private void UseToolAt(Vector3 worldPoint)
         {
