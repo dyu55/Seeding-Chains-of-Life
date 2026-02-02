@@ -416,6 +416,10 @@ namespace SCoL
             c.PlantStage = PlantStage.SmallPlant;
             c.Durability = 1.0f;
 
+            // Ensure readable view
+            ViewMode = GridViewMode.Stage;
+            OverlayFire = true;
+
             _renderer?.Render(Grid);
         }
 
@@ -429,12 +433,20 @@ namespace SCoL
             // Stronger, more readable visual
             cell.WaterVisual = Mathf.Clamp01(cell.WaterVisual + amount);
 
+            // Ensure readable view
+            ViewMode = GridViewMode.Stage;
+            OverlayFire = true;
+
             _renderer?.Render(Grid);
         }
 
         public void IgniteAt(Vector3 world, float fuel = 0.8f)
         {
             if (!TryWorldToCell(world, out int x, out int y)) return;
+
+            // Ensure readable view
+            ViewMode = GridViewMode.Stage;
+            OverlayFire = true;
 
             // Stop any previous spread
             StopAllCoroutines();
