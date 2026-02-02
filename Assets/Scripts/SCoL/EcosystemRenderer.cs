@@ -58,6 +58,13 @@ namespace SCoL
                 float h = StageHeight(c);
                 Color col = ColorForCell(c);
 
+                // Hover highlight (aim feedback)
+                var hover = Object.FindFirstObjectByType<SCoL.Visualization.SCoLHoverHighlighter>();
+                if (hover != null && hover.IsHoveredCell(x, y))
+                {
+                    col = col * hover.HoverBrightness;
+                }
+
                 if (OverlayFire && c.IsOnFire)
                 {
                     col = Color.Lerp(col, new Color(0.95f, 0.25f, 0.05f), 0.85f);
