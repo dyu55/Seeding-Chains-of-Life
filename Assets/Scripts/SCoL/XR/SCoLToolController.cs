@@ -139,23 +139,34 @@ namespace SCoL.XR
 
         private void UseToolAt(Vector3 worldPoint)
         {
-            if (runtime == null) return;
+            if (runtime == null || runtime.Grid == null) return;
+            if (!runtime.TryWorldToCell(worldPoint, out int x, out int y)) return;
+
+            var cell = runtime.Grid.Get(x, y);
 
             switch (currentTool)
             {
                 case Tool.Seed:
+                    // Allow planting on empty OR burnt/scorched tiles.
+                    if (cell.PlantStage != SCoL.PlantStage.Empty && cell.PlantStage != SCoL.PlantStage.Burnt)
+                        return;
                     if (!inventory.TryConsume(SCoL.Inventory.SCoLItemType.Seed, 1)) return;
                     runtime.PlaceSeedAt(worldPoint);
                     break;
+
                 case Tool.Water:
+                    // Water always provides visible darkening feedback.
                     if (!inventory.TryConsume(SCoL.Inventory.SCoLItemType.Water, 1)) return;
                     runtime.AddWaterAt(worldPoint, waterAmount);
                     break;
+
                 case Tool.Fire:
                     if (!inventory.TryConsume(SCoL.Inventory.SCoLItemType.Fire, 1)) return;
                     runtime.IgniteAt(worldPoint, 1.0f);
                     break;
             }
+
+            runtime.ForceRender();
         }
 
         private void CycleTool(int dir)

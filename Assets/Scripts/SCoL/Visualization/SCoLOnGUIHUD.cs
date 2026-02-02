@@ -77,7 +77,7 @@ namespace SCoL.Visualization
                 {
                     var c = runtime.Grid.Get(cx, cy);
                     sb.AppendLine($"Cell: ({cx},{cy})  Stage: {c.PlantStage}  OnFire: {(c.IsOnFire ? "YES" : "NO")}");
-                    sb.AppendLine($"Water: {c.Water:0.00}  Sun: {c.Sunlight:0.00}  Heat: {c.Heat:0.00}");
+                    sb.AppendLine($"Water: {c.Water:0.00}  WaterVisual: {c.WaterVisual:0.00}  Sun: {c.Sunlight:0.00}  Heat: {c.Heat:0.00}");
                     sb.AppendLine($"Durability: {c.Durability:0.00}  Success: {c.Success:0.00}");
                 }
                 else

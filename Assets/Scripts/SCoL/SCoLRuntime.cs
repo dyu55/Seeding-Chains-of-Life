@@ -413,11 +413,14 @@ namespace SCoL
             if (!TryWorldToCell(world, out int x, out int y)) return;
 
             var c = Grid.Get(x, y);
-            if (c.PlantStage != PlantStage.Empty) return;
+
+            // Allow planting on empty OR burnt/scorched tiles.
+            if (c.PlantStage != PlantStage.Empty && c.PlantStage != PlantStage.Burnt) return;
 
             // Simple: seed always succeeds (visual green immediately)
             c.PlantStage = PlantStage.SmallPlant;
             c.Durability = 1.0f;
+            c.WaterVisual = 0f;
 
             // Ensure readable view
             ViewMode = GridViewMode.Stage;
