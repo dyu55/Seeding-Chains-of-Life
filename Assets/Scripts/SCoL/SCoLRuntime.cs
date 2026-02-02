@@ -423,18 +423,25 @@ namespace SCoL
             {
                 c.Success = Mathf.Clamp01(c.Success - 0.02f);
             }
+
+            _renderer?.Render(Grid);
         }
 
         public void AddWaterAt(Vector3 world, float amount = 0.25f)
         {
             if (!TryWorldToCell(world, out int x, out int y)) return;
-            Grid.Get(x, y).Water = Mathf.Clamp01(Grid.Get(x, y).Water + amount);
+            var cell = Grid.Get(x, y);
+            cell.Water = Mathf.Clamp01(cell.Water + amount);
+
+            // Immediate feedback (otherwise you only see changes on the next simulation tick)
+            _renderer?.Render(Grid);
         }
 
         public void IgniteAt(Vector3 world, float fuel = 0.8f)
         {
             if (!TryWorldToCell(world, out int x, out int y)) return;
             IgniteCell(x, y, fuel);
+            _renderer?.Render(Grid);
         }
 
         public void StompAt(Vector3 world, float damage = -1f)
