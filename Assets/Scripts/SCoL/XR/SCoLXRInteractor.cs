@@ -153,14 +153,19 @@ namespace SCoL.XR
                 if (fallbackCamera == null) fallbackCamera = Camera.main;
                 if (fallbackCamera == null) return;
 
-                Ray ray = fallbackCamera.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
+                Ray ray = fallbackCamera.ScreenPointToRay(Input.mousePosition);
+                if (drawDebugRay)
+                    Debug.DrawRay(ray.origin, ray.direction * 5f, Color.magenta);
+
                 if (Physics.Raycast(ray, out var hit, rayLength, hitLayers, QueryTriggerInteraction.Ignore))
                 {
+                    if (logMisses)
+                        Debug.Log($"SCoLXRInteractor: Hit '{hit.collider.gameObject.name}' at {hit.point} (Editor)");
                     ApplyTool(hit.point);
                 }
                 else if (logMisses)
                 {
-                    Debug.LogWarning("SCoLXRInteractor: Raycast hit nothing (Editor)");
+                    Debug.LogWarning("SCoLXRInteractor: Raycast hit nothing (Editor). Tip: click on a collider (SCoL_Ground) and ensure it isn't disabled.");
                 }
             }
             _prevMouse = mouse;
