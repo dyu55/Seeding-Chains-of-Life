@@ -2,6 +2,8 @@ using UnityEngine;
 using UnityEngine.XR;
 #if ENABLE_INPUT_SYSTEM
 using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.Controls;
+using UnityEngine.InputSystem.XR;
 #endif
 
 // Avoid name collision between UnityEngine.XR.InputDevice and UnityEngine.InputSystem.InputDevice
@@ -89,14 +91,22 @@ namespace SCoL.XR
                 if (runtime == null) return;
             }
 
-            // ---- Editor fallback controls (no XR device) ----
-            if (!IsAnyXRDeviceValid())
+            // Prefer real XR devices (UnityEngine.XR). If not available (e.g., XR Device Simulator),
+            // fall back to Input System XRController devices.
+            bool hasXR = IsAnyXRDeviceValid();
+
+            if (!hasXR)
             {
+                // XR Device Simulator path (Input System)
+                if (TryUpdateFromInputSystemXR())
+                    return;
+
+                // Last resort: mouse/keyboard fallback
                 HandleEditorFallback();
                 return;
             }
 
-            // ---- VR controls ----
+            // ---- VR controls (UnityEngine.XR) ----
             var left = XRInputDevices.GetDeviceAtXRNode(XRNode.LeftHand);
             bool leftPrimary = GetBool(left, XRCommonUsages.primaryButton);
             bool leftSecondary = GetBool(left, XRCommonUsages.secondaryButton);
@@ -220,6 +230,96 @@ namespace SCoL.XR
             var r = XRInputDevices.GetDeviceAtXRNode(XRNode.RightHand);
             return l.isValid || r.isValid;
         }
+
+#if ENABLE_INPUT_SYSTEM
+        private bool TryUpdateFromInputSystemXR()
+        {
+            var left = FindXRControllerWithUsage("LeftHand");
+            var right = FindXRControllerWithUsage("RightHand");
+            if (left == null || right == null)
+                return false;
+
+            bool leftPrimary = ReadBool(left, left.primaryButton);
+            bool leftSecondary = ReadBool(left, left.secondaryButton);
+
+            if (leftPrimary && !_prevLeftPrimary)
+                CycleTool(+1);
+            if (leftSecondary && !_prevLeftSecondary)
+                CycleTool(-1);
+
+            _prevLeftPrimary = leftPrimary;
+            _prevLeftSecondary = leftSecondary;
+
+            // Aim from right controller pose
+            Pose aimPose;
+            bool hasAim = ReadPose(right, out aimPose);
+
+            Ray ray;
+            if (hasAim)
+            {
+                ray = new Ray(aimPose.position, aimPose.rotation * Vector3.forward);
+            }
+            else if (fallbackCamera != null)
+            {
+                ray = new Ray(fallbackCamera.transform.position, fallbackCamera.transform.forward);
+            }
+            else
+            {
+                return true;
+            }
+
+            if (drawDebugRay)
+                Debug.DrawRay(ray.origin, ray.direction * 5f, Color.green);
+
+            bool rightTrigger = ReadBool(right, right.triggerButton);
+            if (rightTrigger && !_prevRightTrigger)
+            {
+                if (Physics.Raycast(ray, out var hit, rayLength, hitLayers, QueryTriggerInteraction.Ignore))
+                {
+                    ApplyTool(hit.point);
+                }
+                else if (logMisses)
+                {
+                    Debug.LogWarning("SCoLXRInteractor: Raycast hit nothing (XR Device Simulator)");
+                }
+            }
+            _prevRightTrigger = rightTrigger;
+
+            return true;
+        }
+
+        private static UnityEngine.InputSystem.XR.XRController FindXRControllerWithUsage(string usage)
+        {
+            foreach (var d in InputSystem.devices)
+            {
+                if (d is UnityEngine.InputSystem.XR.XRController c && c.usages.Contains(new InternedString(usage)))
+                    return c;
+            }
+            return null;
+        }
+
+        private bool ReadPose(UnityEngine.InputSystem.XR.XRController c, out Pose pose)
+        {
+            pose = default;
+            if (c == null) return false;
+
+            Vector3 pos = c.devicePosition.ReadValue();
+            Quaternion rot = c.deviceRotation.ReadValue();
+
+            if (trackingOrigin != null)
+                pose = new Pose(trackingOrigin.TransformPoint(pos), trackingOrigin.rotation * rot);
+            else
+                pose = new Pose(pos, rot);
+
+            return true;
+        }
+
+        private static bool ReadBool(UnityEngine.InputSystem.XR.XRController c, ButtonControl b)
+        {
+            if (c == null || b == null) return false;
+            return b.isPressed;
+        }
+#endif
 
         private void ApplyTool(Vector3 worldPoint)
         {

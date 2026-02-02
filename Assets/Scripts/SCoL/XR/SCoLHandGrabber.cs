@@ -1,6 +1,11 @@
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.XR;
+
+#if ENABLE_INPUT_SYSTEM
+using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.Controls;
+using UnityEngine.InputSystem.XR;
+#endif
 
 using XRInputDevice = UnityEngine.XR.InputDevice;
 using XRInputDevices = UnityEngine.XR.InputDevices;
@@ -40,24 +45,42 @@ namespace SCoL.XR
 
         private void Update()
         {
-            UpdatePose();
-
+            // Prefer UnityEngine.XR devices. If not valid (XR Device Simulator), use Input System XRController.
             _device = XRInputDevices.GetDeviceAtXRNode(hand);
-            bool grip = GetBool(_device, XRCommonUsages.gripButton);
 
+            bool hasXR = _device.isValid;
+
+            if (hasXR)
+            {
+                UpdatePoseXR(_device);
+                bool grip = GetBool(_device, XRCommonUsages.gripButton);
+                HandleGrip(grip);
+                return;
+            }
+
+#if ENABLE_INPUT_SYSTEM
+            var ctrl = FindXRControllerWithUsage(hand == XRNode.LeftHand ? "LeftHand" : "RightHand");
+            if (ctrl != null)
+            {
+                UpdatePoseInputSystem(ctrl);
+                bool grip = ReadBool(ctrl, ctrl.gripButton);
+                HandleGrip(grip);
+                return;
+            }
+#endif
+        }
+
+        private void HandleGrip(bool grip)
+        {
             if (grip && !_prevGrip)
                 TryGrab();
             if (!grip && _prevGrip)
                 Release();
-
             _prevGrip = grip;
         }
 
-        private void UpdatePose()
+        private void UpdatePoseXR(XRInputDevice dev)
         {
-            var dev = XRInputDevices.GetDeviceAtXRNode(hand);
-            if (!dev.isValid) return;
-
             if (!dev.TryGetFeatureValue(XRCommonUsages.devicePosition, out var localPos)) return;
             if (!dev.TryGetFeatureValue(XRCommonUsages.deviceRotation, out var localRot)) return;
 
@@ -72,6 +95,41 @@ namespace SCoL.XR
                 transform.rotation = localRot;
             }
         }
+
+#if ENABLE_INPUT_SYSTEM
+        private static UnityEngine.InputSystem.XR.XRController FindXRControllerWithUsage(string usage)
+        {
+            foreach (var d in InputSystem.devices)
+            {
+                if (d is UnityEngine.InputSystem.XR.XRController c && c.usages.Contains(new InternedString(usage)))
+                    return c;
+            }
+            return null;
+        }
+
+        private void UpdatePoseInputSystem(UnityEngine.InputSystem.XR.XRController c)
+        {
+            Vector3 pos = c.devicePosition.ReadValue();
+            Quaternion rot = c.deviceRotation.ReadValue();
+
+            if (trackingOrigin != null)
+            {
+                transform.position = trackingOrigin.TransformPoint(pos);
+                transform.rotation = trackingOrigin.rotation * rot;
+            }
+            else
+            {
+                transform.position = pos;
+                transform.rotation = rot;
+            }
+        }
+
+        private static bool ReadBool(UnityEngine.InputSystem.XR.XRController c, ButtonControl b)
+        {
+            if (c == null || b == null) return false;
+            return b.isPressed;
+        }
+#endif
 
         private void TryGrab()
         {
