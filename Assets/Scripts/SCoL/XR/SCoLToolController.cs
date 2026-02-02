@@ -178,6 +178,40 @@ namespace SCoL.XR
             currentTool = (Tool)t;
         }
 
+        /// <summary>
+        /// Returns an aim ray that matches what the tool controller uses.
+        /// </summary>
+        public bool TryGetToolAimRay(out Ray ray)
+        {
+#if ENABLE_INPUT_SYSTEM
+            // Prefer mouse in editor
+            if (Mouse.current != null)
+            {
+                var cam = fallbackCamera != null ? fallbackCamera : Camera.main;
+                if (cam != null)
+                {
+                    ray = cam.ScreenPointToRay(Mouse.current.position.ReadValue());
+                    return true;
+                }
+            }
+
+            // Try right simulated controller pose
+            var right = FindXRControllerWithUsage("RightHand");
+            if (right != null && TryGetAimRay(right, out ray))
+                return true;
+#endif
+
+            var c = fallbackCamera != null ? fallbackCamera : Camera.main;
+            if (c != null)
+            {
+                ray = new Ray(c.transform.position, c.transform.forward);
+                return true;
+            }
+
+            ray = default;
+            return false;
+        }
+
 #if ENABLE_INPUT_SYSTEM
         private bool TryGetAimRay(UnityEngine.InputSystem.XR.XRController right, out Ray ray)
         {

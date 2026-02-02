@@ -35,6 +35,28 @@ namespace SCoL.Visualization
         {
             if (runtime == null || runtime.Grid == null) return;
 
+            // Use the same aim ray as the tool controller (matches what will be affected)
+            var tool = FindFirstObjectByType<SCoL.XR.SCoLToolController>();
+            if (tool != null)
+            {
+                if (!tool.TryGetToolAimRay(out var ray))
+                    return;
+
+                if (Physics.Raycast(ray, out var hit, rayLength, hitLayers, QueryTriggerInteraction.Ignore))
+                {
+                    if (runtime.TryWorldToCell(hit.point, out int x, out int y))
+                    {
+                        if (x != _lastX || y != _lastY)
+                        {
+                            _lastX = x;
+                            _lastY = y;
+                        }
+                    }
+                }
+
+                return;
+            }
+
             if (!TryGetAimRay(out var ray))
                 return;
 
