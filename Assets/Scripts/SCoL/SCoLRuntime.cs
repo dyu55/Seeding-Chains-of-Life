@@ -49,10 +49,15 @@ namespace SCoL
             go.AddComponent<SCoL.Visualization.SCoLOnGUIHUD>();
         }
 
-        public void Init(SCoLConfig config, Vector3 origin)
+        public void Init(SCoLConfig config, Vector3 worldCenter)
         {
             Config = config;
-            Grid = new EcosystemGrid(config.width, config.height, config.cellSize, origin);
+
+            // Treat the provided origin as the *center* of the world/grid.
+            // EcosystemGrid expects Origin to be the bottom-left corner in world space.
+            Vector3 gridOrigin = worldCenter - new Vector3(config.width * config.cellSize * 0.5f, 0f, config.height * config.cellSize * 0.5f);
+
+            Grid = new EcosystemGrid(config.width, config.height, config.cellSize, gridOrigin);
             _rng = new System.Random(Environment.TickCount);
 
             _renderRoot = new GameObject("SCoL_Render").transform;
@@ -62,7 +67,7 @@ namespace SCoL
             {
                 var ground = GameObject.CreatePrimitive(PrimitiveType.Plane);
                 ground.name = "SCoL_Ground";
-                ground.transform.position = origin + new Vector3(config.width * config.cellSize * 0.5f, 0f, config.height * config.cellSize * 0.5f);
+                ground.transform.position = worldCenter;
                 ground.transform.localScale = new Vector3(config.width * config.cellSize / 10f, 1f, config.height * config.cellSize / 10f);
                 ground.GetComponent<Renderer>().material.color = new Color(0.12f, 0.12f, 0.12f);
             }
