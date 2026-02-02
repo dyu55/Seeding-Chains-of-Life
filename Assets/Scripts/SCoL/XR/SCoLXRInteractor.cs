@@ -6,9 +6,14 @@ namespace SCoL.XR
     /// <summary>
     /// Minimal, dependency-light VR interaction for Quest/OpenXR.
     ///
-    /// - Ray comes from RightHand controller pose (fallback: camera forward)
-    /// - Tool mode cycles with Left primary/secondary buttons
+    /// VR:
+    /// - Aim ray from RightHand controller pose (fallback: camera forward)
     /// - Apply tool with Right trigger button
+    /// - Cycle tools with Left primary/secondary buttons
+    ///
+    /// Editor fallback (no headset):
+    /// - 1/2/3 select tool (Seed/Water/Fire)
+    /// - Left mouse click to apply at screen center ray
     ///
     /// Tools:
     /// - Seed: PlaceSeedAt(hit)
@@ -44,10 +49,14 @@ namespace SCoL.XR
         [Range(0.01f, 1f)] public float waterAmount = 0.25f;
         [Range(0.01f, 1f)] public float fireFuel = 0.8f;
 
+        [Header("Debug")]
+        public bool logMisses = false;
+
         // edge detection
         private bool _prevLeftPrimary;
         private bool _prevLeftSecondary;
         private bool _prevRightTrigger;
+        private bool _prevMouse;
 
         private void Awake()
         {
@@ -72,7 +81,14 @@ namespace SCoL.XR
                 if (runtime == null) return;
             }
 
-            // Left hand: cycle tool
+            // ---- Editor fallback controls (no XR device) ----
+            if (!IsAnyXRDeviceValid())
+            {
+                HandleEditorFallback();
+                return;
+            }
+
+            // ---- VR controls ----
             var left = InputDevices.GetDeviceAtXRNode(XRNode.LeftHand);
             bool leftPrimary = GetBool(left, CommonUsages.primaryButton);
             bool leftSecondary = GetBool(left, CommonUsages.secondaryButton);
@@ -85,7 +101,7 @@ namespace SCoL.XR
             _prevLeftPrimary = leftPrimary;
             _prevLeftSecondary = leftSecondary;
 
-            // Right hand: aim + apply
+            // Aim
             Pose aimPose;
             bool hasAim = TryGetAimPose(XRNode.RightHand, out aimPose);
 
@@ -114,13 +130,48 @@ namespace SCoL.XR
                 if (Physics.Raycast(ray, out var hit, rayLength, hitLayers, QueryTriggerInteraction.Ignore))
                 {
                     ApplyTool(hit.point);
-
-                    // light haptic on right controller
                     TryHaptic(right, 0.25f, 0.05f);
+                }
+                else if (logMisses)
+                {
+                    Debug.LogWarning("SCoLXRInteractor: Raycast hit nothing (VR)");
                 }
             }
 
             _prevRightTrigger = rightTrigger;
+        }
+
+        private void HandleEditorFallback()
+        {
+            if (Input.GetKeyDown(KeyCode.Alpha1)) currentTool = Tool.Seed;
+            if (Input.GetKeyDown(KeyCode.Alpha2)) currentTool = Tool.Water;
+            if (Input.GetKeyDown(KeyCode.Alpha3)) currentTool = Tool.Fire;
+
+            bool mouse = Input.GetMouseButton(0);
+            if (mouse && !_prevMouse)
+            {
+                if (fallbackCamera == null) fallbackCamera = Camera.main;
+                if (fallbackCamera == null) return;
+
+                Ray ray = fallbackCamera.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
+                if (Physics.Raycast(ray, out var hit, rayLength, hitLayers, QueryTriggerInteraction.Ignore))
+                {
+                    ApplyTool(hit.point);
+                }
+                else if (logMisses)
+                {
+                    Debug.LogWarning("SCoLXRInteractor: Raycast hit nothing (Editor)");
+                }
+            }
+            _prevMouse = mouse;
+        }
+
+        private bool IsAnyXRDeviceValid()
+        {
+            // If either controller is valid, assume we are in XR runtime.
+            var l = InputDevices.GetDeviceAtXRNode(XRNode.LeftHand);
+            var r = InputDevices.GetDeviceAtXRNode(XRNode.RightHand);
+            return l.isValid || r.isValid;
         }
 
         private void ApplyTool(Vector3 worldPoint)
