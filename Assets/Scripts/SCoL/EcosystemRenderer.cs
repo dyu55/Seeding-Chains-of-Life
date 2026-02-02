@@ -126,16 +126,23 @@ namespace SCoL
         private static Color StageColor(CellState c)
         {
             Color soil = new Color(0.25f, 0.2f, 0.15f);
-            return c.PlantStage switch
+
+            Color baseCol = c.PlantStage switch
             {
                 PlantStage.Empty => soil,
-                PlantStage.SmallPlant => new Color(0.25f, 0.75f, 0.25f),
-                PlantStage.SmallTree => new Color(0.18f, 0.62f, 0.22f),
-                PlantStage.MediumTree => new Color(0.12f, 0.50f, 0.20f),
-                PlantStage.LargeTree => new Color(0.08f, 0.38f, 0.18f),
-                PlantStage.Burnt => new Color(0.08f, 0.08f, 0.08f),
+                PlantStage.SmallPlant => new Color(0.25f, 0.85f, 0.25f),
+                PlantStage.SmallTree => new Color(0.18f, 0.70f, 0.22f),
+                PlantStage.MediumTree => new Color(0.12f, 0.55f, 0.20f),
+                PlantStage.LargeTree => new Color(0.08f, 0.42f, 0.18f),
+                PlantStage.Burnt => new Color(0.18f, 0.08f, 0.08f),
                 _ => soil
             };
+
+            // Simple prototype: watering darkens the current color.
+            float w = Mathf.Clamp01(c.WaterVisual);
+            baseCol = Color.Lerp(baseCol, baseCol * 0.55f, w);
+
+            return baseCol;
         }
 
         /// <summary>

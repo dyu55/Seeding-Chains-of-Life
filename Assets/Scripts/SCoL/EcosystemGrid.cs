@@ -83,7 +83,8 @@ namespace SCoL
                 Durability = c.Durability,
                 Success = c.Success,
                 IsOnFire = c.IsOnFire,
-                FireFuel = c.FireFuel
+                FireFuel = c.FireFuel,
+                WaterVisual = c.WaterVisual
             };
         }
 
@@ -98,6 +99,7 @@ namespace SCoL
             dst.Success = src.Success;
             dst.IsOnFire = src.IsOnFire;
             dst.FireFuel = src.FireFuel;
+            dst.WaterVisual = src.WaterVisual;
         }
     }
 }

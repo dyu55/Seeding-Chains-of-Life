@@ -35,6 +35,11 @@ namespace SCoL
             }
         }
 
+        public void ForceRender()
+        {
+            _renderer?.Render(Grid);
+        }
+
         private System.Random _rng;
 
         private void EnsureOnGUIHUD()
@@ -82,6 +87,7 @@ namespace SCoL
         {
             if (Grid == null || Config == null) return;
 
+            // For now, keep simulation ticking, but tools give immediate visual feedback.
             _tickTimer += Time.deltaTime;
             _seasonTimer += Time.deltaTime;
 
@@ -413,16 +419,9 @@ namespace SCoL
             var c = Grid.Get(x, y);
             if (c.PlantStage != PlantStage.Empty) return;
 
-            float p = Mathf.Clamp01(Config.seedSuccessBase * Mathf.Lerp(0.5f, 1.2f, c.Success));
-            if (_rng.NextDouble() < p)
-            {
-                c.PlantStage = PlantStage.SmallPlant;
-                c.Durability = 1.0f;
-            }
-            else
-            {
-                c.Success = Mathf.Clamp01(c.Success - 0.02f);
-            }
+            // Simple: seed always succeeds (visual green immediately)
+            c.PlantStage = PlantStage.SmallPlant;
+            c.Durability = 1.0f;
 
             _renderer?.Render(Grid);
         }
@@ -431,16 +430,23 @@ namespace SCoL
         {
             if (!TryWorldToCell(world, out int x, out int y)) return;
             var cell = Grid.Get(x, y);
-            cell.Water = Mathf.Clamp01(cell.Water + amount);
 
-            // Immediate feedback (otherwise you only see changes on the next simulation tick)
+            // Keep sim var
+            cell.Water = Mathf.Clamp01(cell.Water + amount);
+            // Stronger, more readable visual
+            cell.WaterVisual = Mathf.Clamp01(cell.WaterVisual + amount);
+
             _renderer?.Render(Grid);
         }
 
         public void IgniteAt(Vector3 world, float fuel = 0.8f)
         {
             if (!TryWorldToCell(world, out int x, out int y)) return;
-            IgniteCell(x, y, fuel);
+
+            // Stop any previous spread
+            StopAllCoroutines();
+            StartCoroutine(FireSpreadSimple.Spread(this, x, y, maxDistance: 3, secondsPerStep: 1f));
+
             _renderer?.Render(Grid);
         }
 

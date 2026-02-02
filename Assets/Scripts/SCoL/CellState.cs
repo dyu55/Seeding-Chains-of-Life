@@ -18,6 +18,9 @@ namespace SCoL
         public bool IsOnFire;
         public float FireFuel = 0f; // 0..1
 
+        // Simple prototype: allows water to darken the cell color without relying on view modes
+        public float WaterVisual = 0f; // 0..1
+
         public bool HasPlant => PlantStage != PlantStage.Empty && PlantStage != PlantStage.Burnt;
     }
 }
