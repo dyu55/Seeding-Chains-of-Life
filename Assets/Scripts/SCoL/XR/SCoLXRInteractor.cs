@@ -91,6 +91,16 @@ namespace SCoL.XR
                 if (runtime == null) return;
             }
 
+#if ENABLE_INPUT_SYSTEM
+            // Always allow keyboard tool selection in editor/simulator.
+            if (Keyboard.current != null)
+            {
+                if (Keyboard.current.digit1Key.wasPressedThisFrame) currentTool = Tool.Seed;
+                if (Keyboard.current.digit2Key.wasPressedThisFrame) currentTool = Tool.Water;
+                if (Keyboard.current.digit3Key.wasPressedThisFrame) currentTool = Tool.Fire;
+            }
+#endif
+
             // Prefer real XR devices (UnityEngine.XR). If not available (e.g., XR Device Simulator),
             // fall back to Input System XRController devices.
             bool hasXR = IsAnyXRDeviceValid();
