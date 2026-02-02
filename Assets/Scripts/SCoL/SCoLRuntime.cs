@@ -17,6 +17,24 @@ namespace SCoL
         private EcosystemRenderer _renderer;
         private Transform _renderRoot;
 
+        public GridViewMode ViewMode
+        {
+            get => _renderer != null ? _renderer.ViewMode : GridViewMode.Stage;
+            set
+            {
+                if (_renderer != null) _renderer.ViewMode = value;
+            }
+        }
+
+        public bool OverlayFire
+        {
+            get => _renderer != null && _renderer.OverlayFire;
+            set
+            {
+                if (_renderer != null) _renderer.OverlayFire = value;
+            }
+        }
+
         private System.Random _rng;
 
         public void Init(SCoLConfig config, Vector3 origin)
