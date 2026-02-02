@@ -45,6 +45,8 @@ namespace SCoL
             if (runtime?.Grid == null) return;
             if (!runtime.Grid.InBounds(x, y)) return;
             var c = runtime.Grid.Get(x, y);
+
+            // Fire affects planted tiles; still allow center ignite to show red feedback.
             c.IsOnFire = true;
             c.FireFuel = 1.0f;
         }
@@ -55,12 +57,17 @@ namespace SCoL
             {
                 for (int x = cx - r; x <= cx + r; x++)
                 {
-                    if (runtime.Grid.InBounds(x, y))
+                    if (!runtime.Grid.InBounds(x, y)) continue;
+
+                    var c = runtime.Grid.Get(x, y);
+                    c.IsOnFire = false;
+                    c.FireFuel = 0f;
+
+                    // Only burn away actual plants. Empty ground stays empty.
+                    if (c.PlantStage != PlantStage.Empty)
                     {
-                        var c = runtime.Grid.Get(x, y);
-                        c.IsOnFire = false;
-                        c.FireFuel = 0f;
-                        c.PlantStage = PlantStage.Burnt;
+                        c.PlantStage = PlantStage.Burnt; // scorched earth / remains
+                        c.WaterVisual = 0f;
                     }
                 }
             }
