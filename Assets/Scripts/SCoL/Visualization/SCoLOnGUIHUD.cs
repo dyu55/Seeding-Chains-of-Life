@@ -58,9 +58,13 @@ namespace SCoL.Visualization
 
             var sb = new StringBuilder(256);
 
-            var tool = FindFirstObjectByType<SCoL.XR.SCoLXRInteractor>();
+            var tool = FindFirstObjectByType<SCoL.XR.SCoLToolController>();
             if (tool != null)
-                sb.AppendLine($"Tool: {tool.currentTool}");
+                sb.AppendLine($"Tool: {tool.currentTool} (L primary/secondary to cycle)");
+
+            var inv = FindFirstObjectByType<SCoL.Inventory.SCoLInventory>();
+            if (inv != null)
+                sb.AppendLine($"Inventory: Seed={inv.seeds}  Water={inv.water}  Fire={inv.fire}");
 
             sb.AppendLine($"Season: {runtime.CurrentSeason}   Weather: {runtime.CurrentWeather}");
             sb.AppendLine($"View: {runtime.ViewMode}   FireOverlay: {(runtime.OverlayFire ? "ON" : "OFF")}");

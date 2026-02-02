@@ -146,6 +146,7 @@ GameObject:
   - component: {fileID: 123275005}
   - component: {fileID: 123275006}
   - component: {fileID: 123275007}
+  - component: {fileID: 123275008}
   m_Layer: 0
   m_Name: SCoL
   m_TagString: Untagged
@@ -215,6 +216,28 @@ MonoBehaviour:
   disableLegacyRigName: XR Origin (VR)
   spawnPosition: {x: 0, y: 0, z: -1.5}
   onlyInPlayMode: 1
+--- !u!114 &123275008
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 123275002}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9a0d084c8be1432688391f2a53a6ac9b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  runtime: {fileID: 0}
+  inventory: {fileID: 0}
+  trackingOrigin: {fileID: 0}
+  fallbackCamera: {fileID: 0}
+  rayLength: 50
+  hitLayers:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  currentTool: 0
+  waterAmount: 0.35
 --- !u!4 &123275004
 Transform:
   m_ObjectHideFlags: 0
@@ -1402,10 +1425,76 @@ MonoBehaviour:
   useGravity: 1
   mass: 0.2
   objectName: XRI_Grabbable
+--- !u!1 &920000100
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 920000101}
+  - component: {fileID: 920000102}
+  - component: {fileID: 920000103}
+  m_Layer: 0
+  m_Name: SCoLInventory
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &920000101
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 920000100}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &920000102
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 920000100}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7dc1456e96b64cde8ca18ec152d15549, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  seeds: 2
+  water: 2
+  fire: 1
+--- !u!114 &920000103
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 920000100}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5e97733662d1485a84207dffee5f6f7d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  seedCount: 6
+  waterCount: 6
+  fireCount: 3
+  center: {x: 0, y: 1.1, z: 1.2}
+  radius: 0.8
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
   m_Roots:
+  - {fileID: 920000101}
   - {fileID: 910000101}
   - {fileID: 1140753245}
   - {fileID: 1058677110}
