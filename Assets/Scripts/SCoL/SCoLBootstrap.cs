@@ -9,6 +9,8 @@ namespace SCoL
     public class SCoLBootstrap : MonoBehaviour
     {
         public SCoLConfig config;
+
+        [Tooltip("Offset from this GameObject's transform.position used as the world center of the grid.")]
         public Vector3 origin;
 
         private SCoLRuntime _runtime;
@@ -21,9 +23,11 @@ namespace SCoL
                 return;
             }
 
+            Vector3 worldCenter = transform.position + origin;
+
             _runtime = new GameObject("SCoLRuntime").AddComponent<SCoLRuntime>();
             _runtime.transform.position = Vector3.zero;
-            _runtime.Init(config, origin);
+            _runtime.Init(config, worldCenter);
         }
     }
 }

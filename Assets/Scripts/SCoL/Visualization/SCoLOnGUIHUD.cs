@@ -67,6 +67,8 @@ namespace SCoL.Visualization
 
             if (TryGetAimRay(out var ray) && Physics.Raycast(ray, out var hit, rayLength, hitLayers, QueryTriggerInteraction.Ignore))
             {
+                sb.AppendLine($"Hit: {hit.collider.gameObject.name} @ ({hit.point.x:0.00},{hit.point.y:0.00},{hit.point.z:0.00})");
+
                 if (runtime.TryWorldToCell(hit.point, out int cx, out int cy))
                 {
                     var c = runtime.Grid.Get(cx, cy);
@@ -77,6 +79,8 @@ namespace SCoL.Visualization
                 else
                 {
                     sb.AppendLine("Cell: (out of bounds)");
+                    sb.AppendLine($"Grid origin: ({runtime.Grid.Origin.x:0.00},{runtime.Grid.Origin.y:0.00},{runtime.Grid.Origin.z:0.00})");
+                    sb.AppendLine($"Grid size: {runtime.Grid.Width}x{runtime.Grid.Height}  cellSize: {runtime.Grid.CellSize:0.00}");
                 }
             }
             else
