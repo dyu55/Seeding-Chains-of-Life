@@ -63,7 +63,7 @@ namespace SCoL.XR
             if (ctrl != null)
             {
                 UpdatePoseInputSystem(ctrl);
-                bool grip = ReadBool(ctrl, ctrl.gripButton);
+                bool grip = ReadGrip(ctrl);
                 HandleGrip(grip);
                 return;
             }
@@ -116,8 +116,12 @@ namespace SCoL.XR
 
         private void UpdatePoseInputSystem(UnityEngine.InputSystem.XR.XRController c)
         {
-            Vector3 pos = c.devicePosition.ReadValue();
-            Quaternion rot = c.deviceRotation.ReadValue();
+            var posCtrl = c.TryGetChildControl<Vector3Control>("devicePosition");
+            var rotCtrl = c.TryGetChildControl<QuaternionControl>("deviceRotation");
+            if (posCtrl == null || rotCtrl == null) return;
+
+            Vector3 pos = posCtrl.ReadValue();
+            Quaternion rot = rotCtrl.ReadValue();
 
             if (trackingOrigin != null)
             {
@@ -131,10 +135,15 @@ namespace SCoL.XR
             }
         }
 
-        private static bool ReadBool(UnityEngine.InputSystem.XR.XRController c, ButtonControl b)
+        private static bool ReadGrip(UnityEngine.InputSystem.XR.XRController c)
         {
-            if (c == null || b == null) return false;
-            return b.isPressed;
+            if (c == null) return false;
+
+            var pressed = c.TryGetChildControl<ButtonControl>("gripPressed");
+            if (pressed != null) return pressed.isPressed;
+
+            var axis = c.TryGetChildControl<AxisControl>("grip");
+            return axis != null && axis.ReadValue() > 0.75f;
         }
 #endif
 

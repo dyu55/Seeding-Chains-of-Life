@@ -239,8 +239,8 @@ namespace SCoL.XR
             if (left == null || right == null)
                 return false;
 
-            bool leftPrimary = ReadBool(left, left.primaryButton);
-            bool leftSecondary = ReadBool(left, left.secondaryButton);
+            bool leftPrimary = ReadButton(left, "primaryButton");
+            bool leftSecondary = ReadButton(left, "secondaryButton");
 
             if (leftPrimary && !_prevLeftPrimary)
                 CycleTool(+1);
@@ -271,7 +271,7 @@ namespace SCoL.XR
             if (drawDebugRay)
                 Debug.DrawRay(ray.origin, ray.direction * 5f, Color.green);
 
-            bool rightTrigger = ReadBool(right, right.triggerButton);
+            bool rightTrigger = ReadTrigger(right);
             if (rightTrigger && !_prevRightTrigger)
             {
                 if (Physics.Raycast(ray, out var hit, rayLength, hitLayers, QueryTriggerInteraction.Ignore))
@@ -309,8 +309,13 @@ namespace SCoL.XR
             pose = default;
             if (c == null) return false;
 
-            Vector3 pos = c.devicePosition.ReadValue();
-            Quaternion rot = c.deviceRotation.ReadValue();
+            // XRController may or may not expose these strongly typed controls depending on backend.
+            var posCtrl = c.TryGetChildControl<Vector3Control>("devicePosition");
+            var rotCtrl = c.TryGetChildControl<QuaternionControl>("deviceRotation");
+            if (posCtrl == null || rotCtrl == null) return false;
+
+            Vector3 pos = posCtrl.ReadValue();
+            Quaternion rot = rotCtrl.ReadValue();
 
             if (trackingOrigin != null)
                 pose = new Pose(trackingOrigin.TransformPoint(pos), trackingOrigin.rotation * rot);
@@ -320,10 +325,24 @@ namespace SCoL.XR
             return true;
         }
 
-        private static bool ReadBool(UnityEngine.InputSystem.XR.XRController c, ButtonControl b)
+        private static bool ReadButton(UnityEngine.InputSystem.XR.XRController c, string controlName)
         {
-            if (c == null || b == null) return false;
-            return b.isPressed;
+            if (c == null) return false;
+            var ctrl = c.TryGetChildControl<ButtonControl>(controlName);
+            return ctrl != null && ctrl.isPressed;
+        }
+
+        private static bool ReadTrigger(UnityEngine.InputSystem.XR.XRController c)
+        {
+            if (c == null) return false;
+
+            // Prefer a pressed-style control if present
+            var pressed = c.TryGetChildControl<ButtonControl>("triggerPressed");
+            if (pressed != null) return pressed.isPressed;
+
+            // Fallback: analog trigger axis
+            var axis = c.TryGetChildControl<AxisControl>("trigger");
+            return axis != null && axis.ReadValue() > 0.75f;
         }
 #endif
 
