@@ -47,6 +47,9 @@ namespace SCoL.Inventory
                 p.type = type;
                 p.amount = 1;
                 p.ApplyVisual();
+
+                // Make it interactable with the Starter Assets rig (grab to collect)
+                go.AddComponent<SCoLXRICollectOnGrab>();
             }
         }
     }
