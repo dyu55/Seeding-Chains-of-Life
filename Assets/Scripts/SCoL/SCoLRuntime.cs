@@ -90,12 +90,15 @@ namespace SCoL
                 AdvanceSeason();
             }
 
-            if (_tickTimer >= Config.tickSeconds)
-            {
-                _tickTimer = 0f;
-                Tick();
-                _renderer.Render(Grid);
-            }
+            // Disable background simulation tick for now so interaction feedback is stable and obvious.
+            // (We can re-enable once interactions + visuals are finalized.)
+            //
+            // if (_tickTimer >= Config.tickSeconds)
+            // {
+            //     _tickTimer = 0f;
+            //     Tick();
+            //     _renderer.Render(Grid);
+            // }
         }
 
         private void AdvanceSeason()
