@@ -122,20 +122,20 @@ namespace SCoL.XR
             }
 #endif
         }
-+
-+        private void HandleHit(RaycastHit hit)
-+        {
-+            // Pickup first
-+            var pickup = hit.collider.GetComponentInParent<SCoL.Inventory.SCoLPickup>();
-+            if (pickup != null)
-+            {
-+                inventory.Add(pickup.type, pickup.amount);
-+                Destroy(pickup.gameObject);
-+                return;
-+            }
-+
-+            UseToolAt(hit.point);
-+        }
+
+        private void HandleHit(RaycastHit hit)
+        {
+            // Pickup first
+            var pickup = hit.collider.GetComponentInParent<SCoL.Inventory.SCoLPickup>();
+            if (pickup != null)
+            {
+                inventory.Add(pickup.type, pickup.amount);
+                Destroy(pickup.gameObject);
+                return;
+            }
+
+            UseToolAt(hit.point);
+        }
 
         private void UseToolAt(Vector3 worldPoint)
         {
