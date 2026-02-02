@@ -111,12 +111,22 @@ namespace SCoL.XR
 
                     if (Physics.Raycast(mRay, out var hit, rayLength, hitLayers, QueryTriggerInteraction.Ignore))
                     {
+                        // Click feedback marker
+                        SpawnClickMarker(hit.point, currentTool);
+
+                        if (logMisses)
+                            Debug.Log($"SCoLXRInteractor: Mouse click hit '{hit.collider.gameObject.name}' @ {hit.point} tool={currentTool}");
+
                         ApplyTool(hit.point);
                     }
-                    else if (logMisses)
+                    else
                     {
-                        Debug.LogWarning("SCoLXRInteractor: Mouse raycast hit nothing");
+                        if (logMisses)
+                            Debug.LogWarning("SCoLXRInteractor: Mouse raycast hit nothing");
                     }
+                 }
+             }
+ #endif
                 }
             }
 #endif
@@ -390,6 +400,32 @@ namespace SCoL.XR
                     runtime.IgniteAt(worldPoint, fireFuel);
                     break;
             }
+        }
+
+        private void SpawnClickMarker(Vector3 worldPoint, Tool tool)
+        {
+            // Visible in Scene/Game views (Editor). Harmless in builds.
+            var marker = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            marker.name = "SCoL_ClickMarker";
+            marker.transform.position = worldPoint + Vector3.up * 0.05f;
+            marker.transform.localScale = Vector3.one * 0.08f;
+
+            var col = marker.GetComponent<Collider>();
+            if (col != null) Destroy(col);
+
+            var r = marker.GetComponent<Renderer>();
+            if (r != null)
+            {
+                r.material.color = tool switch
+                {
+                    Tool.Seed => Color.green,
+                    Tool.Water => new Color(0.2f, 0.6f, 1f),
+                    Tool.Fire => Color.red,
+                    _ => Color.white
+                };
+            }
+
+            Destroy(marker, 0.6f);
         }
 
         private void CycleTool(int dir)
