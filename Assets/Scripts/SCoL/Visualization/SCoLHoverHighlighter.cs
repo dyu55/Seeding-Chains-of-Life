@@ -39,10 +39,10 @@ namespace SCoL.Visualization
             var tool = FindFirstObjectByType<SCoL.XR.SCoLToolController>();
             if (tool != null)
             {
-                if (!tool.TryGetToolAimRay(out var ray))
+                if (!tool.TryGetToolAimRay(out var toolRay))
                     return;
 
-                if (Physics.Raycast(ray, out var hit, rayLength, hitLayers, QueryTriggerInteraction.Ignore))
+                if (Physics.Raycast(toolRay, out var hit, rayLength, hitLayers, QueryTriggerInteraction.Ignore))
                 {
                     if (runtime.TryWorldToCell(hit.point, out int x, out int y))
                     {
@@ -57,10 +57,10 @@ namespace SCoL.Visualization
                 return;
             }
 
-            if (!TryGetAimRay(out var ray))
+            if (!TryGetAimRay(out var aimRay))
                 return;
 
-            if (Physics.Raycast(ray, out var hit, rayLength, hitLayers, QueryTriggerInteraction.Ignore))
+            if (Physics.Raycast(aimRay, out var hit, rayLength, hitLayers, QueryTriggerInteraction.Ignore))
             {
                 if (runtime.TryWorldToCell(hit.point, out int x, out int y))
                 {
