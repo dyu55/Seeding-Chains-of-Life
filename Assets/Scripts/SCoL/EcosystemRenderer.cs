@@ -40,14 +40,8 @@ namespace SCoL
                     float size = grid.CellSize;
                     go.transform.localScale = new Vector3(size * 0.95f, 0.05f, size * 0.95f);
 
-                    // Remove collider (we’ll raycast against a separate ground)
-                    var col = go.GetComponent<Collider>();
-                    if (col != null)
-                    {
-                        // Disable immediately so raycasts don't hit tiles in the first frame.
-                        col.enabled = false;
-                        Object.Destroy(col);
-                    }
+                    // Keep collider on tiles so the ground is clearly segmented and easy to click.
+                    // (If this causes issues later, we can switch back to a separate ground collider.)
 
                     _tiles[idx] = go;
                 }

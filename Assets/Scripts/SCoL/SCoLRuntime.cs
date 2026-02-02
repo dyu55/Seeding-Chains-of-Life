@@ -68,14 +68,7 @@ namespace SCoL
             _renderRoot = new GameObject("SCoL_Render").transform;
             _renderRoot.SetParent(transform, worldPositionStays: true);
 
-            if (config.generateGroundPlane)
-            {
-                var ground = GameObject.CreatePrimitive(PrimitiveType.Plane);
-                ground.name = "SCoL_Ground";
-                ground.transform.position = worldCenter;
-                ground.transform.localScale = new Vector3(config.width * config.cellSize / 10f, 1f, config.height * config.cellSize / 10f);
-                ground.GetComponent<Renderer>().material.color = new Color(0.12f, 0.12f, 0.12f);
-            }
+            // Ground plane disabled for now; the tile grid itself is used as the visible ground.
 
             _renderer = new EcosystemRenderer(Grid, _renderRoot);
             _renderer.Render(Grid);

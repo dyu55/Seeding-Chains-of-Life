@@ -107,42 +107,42 @@ namespace SCoL.XR
                 if (fallbackCamera != null)
                 {
                     Ray mRay = fallbackCamera.ScreenPointToRay(Mouse.current.position.ReadValue());
-                    if (drawDebugRay) Debug.DrawRay(mRay.origin, mRay.direction * 5f, Color.magenta, 0.5f);
-
                     if (Physics.Raycast(mRay, out var hit, rayLength, hitLayers, QueryTriggerInteraction.Ignore))
                     {
-                        // Click feedback marker
                         SpawnClickMarker(hit.point, currentTool);
-
-                        if (logMisses)
-                            Debug.Log($"SCoLXRInteractor: Mouse click hit '{hit.collider.gameObject.name}' @ {hit.point} tool={currentTool}");
-
                         ApplyTool(hit.point);
                     }
-                    else
+                    else if (logMisses)
                     {
-                        if (logMisses)
-                            Debug.LogWarning("SCoLXRInteractor: Mouse raycast hit nothing");
+                        Debug.LogWarning("SCoLXRInteractor: Mouse raycast hit nothing. Tip: click inside the Game view first.");
                     }
-                 }
-             }
- #endif
+                }
+            }
+
+            // Keyboard fallback apply at center (ENTER)
+            if (Keyboard.current != null && (Keyboard.current.enterKey.wasPressedThisFrame || Keyboard.current.numpadEnterKey.wasPressedThisFrame))
+            {
+                if (fallbackCamera == null) fallbackCamera = Camera.main;
+                if (fallbackCamera != null)
+                {
+                    Ray cRay = fallbackCamera.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
+                    if (Physics.Raycast(cRay, out var hit, rayLength, hitLayers, QueryTriggerInteraction.Ignore))
+                    {
+                        SpawnClickMarker(hit.point, currentTool);
+                        ApplyTool(hit.point);
+                    }
                 }
             }
 #endif
 
-            // Prefer real XR devices (UnityEngine.XR). If not available (e.g., XR Device Simulator),
-            // fall back to Input System XRController devices.
+            // Prefer real XR devices (UnityEngine.XR). If not available, fall back to Input System XRController.
             bool hasXR = IsAnyXRDeviceValid();
-
             if (!hasXR)
             {
-                // XR Device Simulator path (Input System)
+#if ENABLE_INPUT_SYSTEM
                 if (TryUpdateFromInputSystemXR())
                     return;
-
-                // Last resort: mouse/keyboard fallback
-                HandleEditorFallback();
+#endif
                 return;
             }
 
@@ -151,34 +151,22 @@ namespace SCoL.XR
             bool leftPrimary = GetBool(left, XRCommonUsages.primaryButton);
             bool leftSecondary = GetBool(left, XRCommonUsages.secondaryButton);
 
-            if (leftPrimary && !_prevLeftPrimary)
-                CycleTool(+1);
-            if (leftSecondary && !_prevLeftSecondary)
-                CycleTool(-1);
+            if (leftPrimary && !_prevLeftPrimary) CycleTool(+1);
+            if (leftSecondary && !_prevLeftSecondary) CycleTool(-1);
 
             _prevLeftPrimary = leftPrimary;
             _prevLeftSecondary = leftSecondary;
 
-            // Aim
             Pose aimPose;
             bool hasAim = TryGetAimPose(XRNode.RightHand, out aimPose);
 
             Ray ray;
             if (hasAim)
-            {
                 ray = new Ray(aimPose.position, aimPose.rotation * Vector3.forward);
-            }
             else if (fallbackCamera != null)
-            {
                 ray = new Ray(fallbackCamera.transform.position, fallbackCamera.transform.forward);
-            }
             else
-            {
                 return;
-            }
-
-            if (drawDebugRay)
-                Debug.DrawRay(ray.origin, ray.direction * 5f, Color.cyan);
 
             var right = XRInputDevices.GetDeviceAtXRNode(XRNode.RightHand);
             bool rightTrigger = GetBool(right, XRCommonUsages.triggerButton);
@@ -187,6 +175,7 @@ namespace SCoL.XR
             {
                 if (Physics.Raycast(ray, out var hit, rayLength, hitLayers, QueryTriggerInteraction.Ignore))
                 {
+                    SpawnClickMarker(hit.point, currentTool);
                     ApplyTool(hit.point);
                     TryHaptic(right, 0.25f, 0.05f);
                 }
