@@ -107,10 +107,10 @@ namespace SCoL.Visualization
             GUI.Label(new Rect(10, 10, 900, 600), sb.ToString(), _style);
 
             // Bottom HUD (inventory quick view)
-            var inv = FindFirstObjectByType<SCoL.Inventory.SCoLInventory>();
-            if (inv != null)
+            var inv2 = FindFirstObjectByType<SCoL.Inventory.SCoLInventory>();
+            if (inv2 != null)
             {
-                string invText = $"Seeds: {inv.seeds}   Water: {inv.water}   Fire: {inv.fire}";
+                string invText = $"Seeds: {inv2.seeds}   Water: {inv2.water}   Fire: {inv2.fire}";
                 var style2 = new GUIStyle(_style) { fontSize = 20 };
 
                 // centered bottom
