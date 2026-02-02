@@ -7,6 +7,7 @@ using UnityEngine.InputSystem;
 // Avoid name collision between UnityEngine.XR.InputDevice and UnityEngine.InputSystem.InputDevice
 using XRInputDevice = UnityEngine.XR.InputDevice;
 using XRInputDevices = UnityEngine.XR.InputDevices;
+using XRCommonUsages = UnityEngine.XR.CommonUsages;
 
 namespace SCoL.XR
 {
@@ -97,8 +98,8 @@ namespace SCoL.XR
 
             // ---- VR controls ----
             var left = XRInputDevices.GetDeviceAtXRNode(XRNode.LeftHand);
-            bool leftPrimary = GetBool(left, CommonUsages.primaryButton);
-            bool leftSecondary = GetBool(left, CommonUsages.secondaryButton);
+            bool leftPrimary = GetBool(left, XRCommonUsages.primaryButton);
+            bool leftSecondary = GetBool(left, XRCommonUsages.secondaryButton);
 
             if (leftPrimary && !_prevLeftPrimary)
                 CycleTool(+1);
@@ -130,7 +131,7 @@ namespace SCoL.XR
                 Debug.DrawRay(ray.origin, ray.direction * 5f, Color.cyan);
 
             var right = XRInputDevices.GetDeviceAtXRNode(XRNode.RightHand);
-            bool rightTrigger = GetBool(right, CommonUsages.triggerButton);
+            bool rightTrigger = GetBool(right, XRCommonUsages.triggerButton);
 
             if (rightTrigger && !_prevRightTrigger)
             {
@@ -255,9 +256,9 @@ namespace SCoL.XR
             if (!dev.isValid)
                 return false;
 
-            if (!dev.TryGetFeatureValue(CommonUsages.devicePosition, out var localPos))
+            if (!dev.TryGetFeatureValue(XRCommonUsages.devicePosition, out var localPos))
                 return false;
-            if (!dev.TryGetFeatureValue(CommonUsages.deviceRotation, out var localRot))
+            if (!dev.TryGetFeatureValue(XRCommonUsages.deviceRotation, out var localRot))
                 return false;
 
             if (trackingOrigin != null)
