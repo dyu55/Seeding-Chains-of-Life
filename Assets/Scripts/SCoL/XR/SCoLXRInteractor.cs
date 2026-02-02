@@ -99,6 +99,26 @@ namespace SCoL.XR
                 if (Keyboard.current.digit2Key.wasPressedThisFrame) currentTool = Tool.Water;
                 if (Keyboard.current.digit3Key.wasPressedThisFrame) currentTool = Tool.Fire;
             }
+
+            // Always allow mouse click apply in editor/simulator.
+            if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
+            {
+                if (fallbackCamera == null) fallbackCamera = Camera.main;
+                if (fallbackCamera != null)
+                {
+                    Ray mRay = fallbackCamera.ScreenPointToRay(Mouse.current.position.ReadValue());
+                    if (drawDebugRay) Debug.DrawRay(mRay.origin, mRay.direction * 5f, Color.magenta, 0.5f);
+
+                    if (Physics.Raycast(mRay, out var hit, rayLength, hitLayers, QueryTriggerInteraction.Ignore))
+                    {
+                        ApplyTool(hit.point);
+                    }
+                    else if (logMisses)
+                    {
+                        Debug.LogWarning("SCoLXRInteractor: Mouse raycast hit nothing");
+                    }
+                }
+            }
 #endif
 
             // Prefer real XR devices (UnityEngine.XR). If not available (e.g., XR Device Simulator),
