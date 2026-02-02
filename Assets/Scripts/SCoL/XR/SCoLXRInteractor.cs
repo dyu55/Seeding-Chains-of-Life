@@ -4,6 +4,10 @@ using UnityEngine.XR;
 using UnityEngine.InputSystem;
 #endif
 
+// Avoid name collision between UnityEngine.XR.InputDevice and UnityEngine.InputSystem.InputDevice
+using XRInputDevice = UnityEngine.XR.InputDevice;
+using XRInputDevices = UnityEngine.XR.InputDevices;
+
 namespace SCoL.XR
 {
     /// <summary>
@@ -92,7 +96,7 @@ namespace SCoL.XR
             }
 
             // ---- VR controls ----
-            var left = InputDevices.GetDeviceAtXRNode(XRNode.LeftHand);
+            var left = XRInputDevices.GetDeviceAtXRNode(XRNode.LeftHand);
             bool leftPrimary = GetBool(left, CommonUsages.primaryButton);
             bool leftSecondary = GetBool(left, CommonUsages.secondaryButton);
 
@@ -125,7 +129,7 @@ namespace SCoL.XR
             if (drawDebugRay)
                 Debug.DrawRay(ray.origin, ray.direction * 5f, Color.cyan);
 
-            var right = InputDevices.GetDeviceAtXRNode(XRNode.RightHand);
+            var right = XRInputDevices.GetDeviceAtXRNode(XRNode.RightHand);
             bool rightTrigger = GetBool(right, CommonUsages.triggerButton);
 
             if (rightTrigger && !_prevRightTrigger)
@@ -211,8 +215,8 @@ namespace SCoL.XR
         private bool IsAnyXRDeviceValid()
         {
             // If either controller is valid, assume we are in XR runtime.
-            var l = InputDevices.GetDeviceAtXRNode(XRNode.LeftHand);
-            var r = InputDevices.GetDeviceAtXRNode(XRNode.RightHand);
+            var l = XRInputDevices.GetDeviceAtXRNode(XRNode.LeftHand);
+            var r = XRInputDevices.GetDeviceAtXRNode(XRNode.RightHand);
             return l.isValid || r.isValid;
         }
 
@@ -246,7 +250,7 @@ namespace SCoL.XR
         private bool TryGetAimPose(XRNode node, out Pose pose)
         {
             pose = default;
-            var dev = InputDevices.GetDeviceAtXRNode(node);
+            var dev = XRInputDevices.GetDeviceAtXRNode(node);
 
             if (!dev.isValid)
                 return false;
@@ -268,13 +272,13 @@ namespace SCoL.XR
             return true;
         }
 
-        private static bool GetBool(InputDevice device, InputFeatureUsage<bool> usage)
+        private static bool GetBool(XRInputDevice device, InputFeatureUsage<bool> usage)
         {
             if (!device.isValid) return false;
             return device.TryGetFeatureValue(usage, out bool v) && v;
         }
 
-        private static void TryHaptic(InputDevice device, float amplitude, float duration)
+        private static void TryHaptic(XRInputDevice device, float amplitude, float duration)
         {
             if (!device.isValid) return;
             if (!device.TryGetHapticCapabilities(out var caps)) return;
