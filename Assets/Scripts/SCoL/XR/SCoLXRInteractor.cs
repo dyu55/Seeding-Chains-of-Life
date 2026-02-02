@@ -109,7 +109,6 @@ namespace SCoL.XR
                     Ray mRay = fallbackCamera.ScreenPointToRay(Mouse.current.position.ReadValue());
                     if (Physics.Raycast(mRay, out var hit, rayLength, hitLayers, QueryTriggerInteraction.Ignore))
                     {
-                        SpawnClickMarker(hit.point, currentTool);
                         ApplyTool(hit.point);
                     }
                     else if (logMisses)
@@ -128,7 +127,6 @@ namespace SCoL.XR
                     Ray cRay = fallbackCamera.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
                     if (Physics.Raycast(cRay, out var hit, rayLength, hitLayers, QueryTriggerInteraction.Ignore))
                     {
-                        SpawnClickMarker(hit.point, currentTool);
                         ApplyTool(hit.point);
                     }
                 }
@@ -175,7 +173,6 @@ namespace SCoL.XR
             {
                 if (Physics.Raycast(ray, out var hit, rayLength, hitLayers, QueryTriggerInteraction.Ignore))
                 {
-                    SpawnClickMarker(hit.point, currentTool);
                     ApplyTool(hit.point);
                     TryHaptic(right, 0.25f, 0.05f);
                 }
@@ -391,36 +388,8 @@ namespace SCoL.XR
             }
         }
 
-        private void SpawnClickMarker(Vector3 worldPoint, Tool tool)
-        {
-            // Visible in Scene/Game views (Editor). Harmless in builds.
-            // NOTE: Ensure marker is not parented under scaled transforms (XR Origin, grid tiles, etc.).
-            var marker = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            marker.name = "SCoL_ClickMarker";
-            marker.hideFlags = HideFlags.DontSave;
-
-            marker.transform.SetParent(null, worldPositionStays: true);
-            marker.transform.position = worldPoint + Vector3.up * 0.05f;
-            marker.transform.rotation = Quaternion.identity;
-            marker.transform.localScale = Vector3.one * 0.08f;
-
-            var col = marker.GetComponent<Collider>();
-            if (col != null) Destroy(col);
-
-            var r = marker.GetComponent<Renderer>();
-            if (r != null)
-            {
-                r.material.color = tool switch
-                {
-                    Tool.Seed => Color.green,
-                    Tool.Water => new Color(0.2f, 0.6f, 1f),
-                    Tool.Fire => Color.red,
-                    _ => Color.white
-                };
-            }
-
-            Destroy(marker, 0.6f);
-        }
+        // Click marker feedback removed (too noisy in iteration). If needed later,
+        // we can re-add as an optional debug toggle.
 
         private void CycleTool(int dir)
         {
