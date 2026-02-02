@@ -35,6 +35,9 @@ namespace SCoL.Visualization
 
         private void OnGUI()
         {
+            // Force visible order
+            GUI.depth = -1000;
+
             if (_style == null)
             {
                 _style = new GUIStyle(GUI.skin.label)
@@ -85,6 +88,13 @@ namespace SCoL.Visualization
             sb.AppendLine("Controls:");
             sb.AppendLine("- View: V cycle | F toggle fire overlay | 0/4/5/6/7/8 set mode");
             sb.AppendLine("- Tool (Editor): 1/2/3 select | LMB apply");
+
+            // Semi-transparent background
+            var bg = new Color(0f, 0f, 0f, 0.55f);
+            var old = GUI.color;
+            GUI.color = bg;
+            GUI.Box(new Rect(6, 6, 920, 520), GUIContent.none);
+            GUI.color = old;
 
             GUI.Label(new Rect(10, 10, 900, 600), sb.ToString(), _style);
         }

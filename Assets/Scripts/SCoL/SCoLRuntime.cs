@@ -43,9 +43,9 @@ namespace SCoL
             if (FindFirstObjectByType<SCoL.Visualization.SCoLOnGUIHUD>() != null)
                 return;
 
+            // Create as a child of runtime so it definitely exists in the active scene.
             var go = new GameObject("SCoL_OnGUI_HUD");
-            // Keep it alive even if runtime object is recreated
-            DontDestroyOnLoad(go);
+            go.transform.SetParent(transform, worldPositionStays: false);
             go.AddComponent<SCoL.Visualization.SCoLOnGUIHUD>();
         }
 
