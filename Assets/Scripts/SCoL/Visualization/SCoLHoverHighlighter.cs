@@ -42,9 +42,9 @@ namespace SCoL.Visualization
                 if (!tool.TryGetToolAimRay(out var toolRay))
                     return;
 
-                if (Physics.Raycast(toolRay, out var hit, rayLength, hitLayers, QueryTriggerInteraction.Ignore))
+                if (Physics.Raycast(toolRay, out var hit1, rayLength, hitLayers, QueryTriggerInteraction.Ignore))
                 {
-                    if (runtime.TryWorldToCell(hit.point, out int x, out int y))
+                    if (runtime.TryWorldToCell(hit1.point, out int x, out int y))
                     {
                         if (x != _lastX || y != _lastY)
                         {
@@ -60,9 +60,9 @@ namespace SCoL.Visualization
             if (!TryGetAimRay(out var aimRay))
                 return;
 
-            if (Physics.Raycast(aimRay, out var hit, rayLength, hitLayers, QueryTriggerInteraction.Ignore))
+            if (Physics.Raycast(aimRay, out var hit2, rayLength, hitLayers, QueryTriggerInteraction.Ignore))
             {
-                if (runtime.TryWorldToCell(hit.point, out int x, out int y))
+                if (runtime.TryWorldToCell(hit2.point, out int x, out int y))
                 {
                     if (x != _lastX || y != _lastY)
                     {
