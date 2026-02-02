@@ -1,5 +1,8 @@
 using UnityEngine;
 using UnityEngine.XR;
+#if ENABLE_INPUT_SYSTEM
+using UnityEngine.InputSystem;
+#endif
 
 namespace SCoL.XR
 {
@@ -143,12 +146,46 @@ namespace SCoL.XR
 
         private void HandleEditorFallback()
         {
+#if ENABLE_INPUT_SYSTEM
+            // Keyboard tool select
+            if (Keyboard.current != null)
+            {
+                if (Keyboard.current.digit1Key.wasPressedThisFrame) currentTool = Tool.Seed;
+                if (Keyboard.current.digit2Key.wasPressedThisFrame) currentTool = Tool.Water;
+                if (Keyboard.current.digit3Key.wasPressedThisFrame) currentTool = Tool.Fire;
+            }
+
+            // Mouse click apply
+            bool mousePressed = Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame;
+            if (mousePressed)
+            {
+                if (fallbackCamera == null) fallbackCamera = Camera.main;
+                if (fallbackCamera == null) return;
+
+                Vector2 pos = Mouse.current.position.ReadValue();
+                Ray ray = fallbackCamera.ScreenPointToRay(pos);
+                if (drawDebugRay)
+                    Debug.DrawRay(ray.origin, ray.direction * 5f, Color.magenta);
+
+                if (Physics.Raycast(ray, out var hit, rayLength, hitLayers, QueryTriggerInteraction.Ignore))
+                {
+                    if (logMisses)
+                        Debug.Log($"SCoLXRInteractor: Hit '{hit.collider.gameObject.name}' at {hit.point} (Editor)");
+                    ApplyTool(hit.point);
+                }
+                else if (logMisses)
+                {
+                    Debug.LogWarning("SCoLXRInteractor: Raycast hit nothing (Editor). Tip: click on a collider (SCoL_Ground) and ensure it isn't disabled.");
+                }
+            }
+#else
+            // Legacy Input Manager fallback (only if project uses it)
             if (Input.GetKeyDown(KeyCode.Alpha1)) currentTool = Tool.Seed;
             if (Input.GetKeyDown(KeyCode.Alpha2)) currentTool = Tool.Water;
             if (Input.GetKeyDown(KeyCode.Alpha3)) currentTool = Tool.Fire;
 
-            bool mouse = Input.GetMouseButton(0);
-            if (mouse && !_prevMouse)
+            bool mouse = Input.GetMouseButtonDown(0);
+            if (mouse)
             {
                 if (fallbackCamera == null) fallbackCamera = Camera.main;
                 if (fallbackCamera == null) return;
@@ -168,7 +205,7 @@ namespace SCoL.XR
                     Debug.LogWarning("SCoLXRInteractor: Raycast hit nothing (Editor). Tip: click on a collider (SCoL_Ground) and ensure it isn't disabled.");
                 }
             }
-            _prevMouse = mouse;
+#endif
         }
 
         private bool IsAnyXRDeviceValid()
