@@ -292,8 +292,14 @@ namespace SCoL.XR
         {
             foreach (var d in InputSystem.devices)
             {
-                if (d is UnityEngine.InputSystem.XR.XRController c && c.usages.Contains(new InternedString(usage)))
-                    return c;
+                var c = d as UnityEngine.InputSystem.XR.XRController;
+                if (c == null) continue;
+
+                foreach (var u in c.usages)
+                {
+                    if (string.Equals(u.ToString(), usage, System.StringComparison.OrdinalIgnoreCase))
+                        return c;
+                }
             }
             return null;
         }
