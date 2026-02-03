@@ -14,8 +14,15 @@ namespace SCoL.XR
     /// </summary>
     public class EnsureStarterXRRig : MonoBehaviour
     {
-        [Tooltip("Path to the Starter Assets XR Rig prefab.")]
+        [Header("Rig Source")]
+        [Tooltip("Optional direct reference to the XR Origin (XR Rig) prefab. If set, works in builds too.")]
+        public GameObject rigPrefab;
+
+        [Tooltip("(Editor helper) Path to the Starter Assets XR Rig prefab.")]
         public string rigPrefabPath = "Assets/Samples/XR Interaction Toolkit/3.3.1/Starter Assets/Prefabs/XR Origin (XR Rig).prefab";
+
+        [Tooltip("(Optional) Resources fallback name (without extension). Example: put the prefab under Assets/Resources/XR Origin (XR Rig).prefab")]
+        public string rigPrefabResourcesName = "XR Origin (XR Rig)";
 
         [Tooltip("If present, disable the legacy rig GameObject with this exact name.")]
         public string disableLegacyRigName = "XR Origin (VR)";
@@ -35,16 +42,52 @@ namespace SCoL.XR
             if (onlyInPlayMode && !Application.isPlaying)
                 return;
 
-#if UNITY_EDITOR
             // Disable legacy rig if present
             var legacy = GameObject.Find(disableLegacyRigName);
             if (legacy != null)
                 legacy.SetActive(false);
 
-            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(rigPrefabPath);
+            // Resolve prefab
+            var prefab = rigPrefab;
+
+#if UNITY_EDITOR
             if (prefab == null)
             {
-                Debug.LogError($"EnsureStarterXRRig: Could not load rig prefab at '{rigPrefabPath}'. Check Starter Assets import.");
+                prefab = AssetDatabase.LoadAssetAtPath<GameObject>(rigPrefabPath);
+            }
+
+            if (prefab == null)
+            {
+                // Fallback: search anywhere in the project (covers different XRI sample versions/paths)
+                var guids = AssetDatabase.FindAssets("XR Origin (XR Rig) t:Prefab");
+                foreach (var guid in guids)
+                {
+                    var p = AssetDatabase.GUIDToAssetPath(guid);
+                    if (p.Contains("XR Interaction Toolkit") && p.Contains("Starter Assets") && p.EndsWith("XR Origin (XR Rig).prefab"))
+                    {
+                        prefab = AssetDatabase.LoadAssetAtPath<GameObject>(p);
+                        if (prefab != null)
+                        {
+                            rigPrefabPath = p; // keep for debugging
+                            break;
+                        }
+                    }
+                }
+            }
+#endif
+
+            if (prefab == null && !string.IsNullOrWhiteSpace(rigPrefabResourcesName))
+            {
+                prefab = Resources.Load<GameObject>(rigPrefabResourcesName);
+            }
+
+            if (prefab == null)
+            {
+                Debug.LogError(
+                    "EnsureStarterXRRig: Could not resolve XR rig prefab. " +
+                    "Assign 'rigPrefab' in the inspector, or import XRI Starter Assets, " +
+                    $"or update 'rigPrefabPath' (currently '{rigPrefabPath}'), " +
+                    $"or place the prefab under Resources as '{rigPrefabResourcesName}'.");
                 return;
             }
 
@@ -53,9 +96,6 @@ namespace SCoL.XR
             rig.transform.position = spawnPosition;
 
             s_spawned = true;
-#else
-            // In builds, do nothing.
-#endif
         }
     }
 }
