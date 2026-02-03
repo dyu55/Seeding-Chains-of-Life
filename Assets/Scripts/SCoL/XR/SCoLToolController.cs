@@ -77,7 +77,17 @@ namespace SCoL.XR
                 if (Keyboard.current.digit3Key.wasPressedThisFrame) currentTool = Tool.Fire;
             }
 
-            // Mouse fallback: Left click = same as Right Trigger
+            // --- Auto-pickup: if your pointer is over a pickup, collect immediately (no click).
+            if (TryGetToolAimRay(out var autoRay))
+            {
+                if (Physics.Raycast(autoRay, out var autoHit, rayLength, hitLayers, QueryTriggerInteraction.Ignore))
+                {
+                    if (TryPickup(autoHit))
+                        return; // consumed this frame
+                }
+            }
+
+            // Mouse: Left click = use tool/apply at hit point (if not a pickup)
             if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
             {
                 if (fallbackCamera == null) fallbackCamera = Camera.main;
@@ -123,16 +133,21 @@ namespace SCoL.XR
 #endif
         }
 
+        private bool TryPickup(RaycastHit hit)
+        {
+            var pickup = hit.collider.GetComponentInParent<SCoL.Inventory.SCoLPickup>();
+            if (pickup == null) return false;
+
+            inventory.Add(pickup.type, pickup.amount);
+            Destroy(pickup.gameObject);
+            return true;
+        }
+
         private void HandleHit(RaycastHit hit)
         {
             // Pickup first
-            var pickup = hit.collider.GetComponentInParent<SCoL.Inventory.SCoLPickup>();
-            if (pickup != null)
-            {
-                inventory.Add(pickup.type, pickup.amount);
-                Destroy(pickup.gameObject);
+            if (TryPickup(hit))
                 return;
-            }
 
             UseToolAt(hit.point);
         }
