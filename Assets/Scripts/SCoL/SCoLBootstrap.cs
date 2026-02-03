@@ -25,9 +25,18 @@ namespace SCoL
 
             Vector3 worldCenter = transform.position + origin;
 
-            _runtime = new GameObject("SCoLRuntime").AddComponent<SCoLRuntime>();
-            _runtime.transform.position = Vector3.zero;
-            _runtime.Init(config, worldCenter);
+            // Reuse an existing runtime if one is already present (prevents duplicates when domain reload is off
+            // or when multiple scenes carry a bootstrap).
+            _runtime = FindFirstObjectByType<SCoLRuntime>();
+            if (_runtime == null)
+            {
+                _runtime = new GameObject("SCoLRuntime").AddComponent<SCoLRuntime>();
+                _runtime.transform.position = Vector3.zero;
+            }
+
+            // Init only if not already initialized
+            if (_runtime.Grid == null || _runtime.Config == null)
+                _runtime.Init(config, worldCenter);
         }
     }
 }

@@ -28,6 +28,9 @@ namespace SCoL.Visualization
         public Color textColor = Color.white;
         public int fontSize = 22;
 
+        [Tooltip("Optional font override. If left null, the HUD will use Unity's built-in LegacyRuntime.ttf (Unity 2023+/6000 compatible).")]
+        public Font overrideFont;
+
         [Header("Aim")]
         public float rayLength = 50f;
         public LayerMask hitLayers = ~0;
@@ -125,6 +128,14 @@ namespace SCoL.Visualization
 
         private void CreateCanvasIfMissing()
         {
+            // Avoid duplicates if domain reload is off or this component is toggled.
+            var existing = transform.Find("SCoL_HUD");
+            if (existing != null)
+            {
+                _text = existing.GetComponentInChildren<Text>(includeInactive: true);
+                if (_text != null) return;
+            }
+
             // Make a simple overlay canvas
             var canvasGO = new GameObject("SCoL_HUD");
             canvasGO.transform.SetParent(transform, false);
@@ -140,7 +151,23 @@ namespace SCoL.Visualization
             textGO.transform.SetParent(canvasGO.transform, false);
 
             _text = textGO.AddComponent<Text>();
-            _text.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+
+            // Unity 2023+/6000: Arial.ttf is no longer a valid built-in font.
+            // Use LegacyRuntime.ttf as the built-in fallback.
+            var font = overrideFont;
+            if (font == null)
+            {
+                try
+                {
+                    font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+                }
+                catch
+                {
+                    font = null;
+                }
+            }
+            _text.font = font;
+
             _text.fontSize = fontSize;
             _text.color = textColor;
             _text.alignment = TextAnchor.UpperLeft;
