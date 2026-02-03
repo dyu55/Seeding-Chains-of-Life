@@ -47,6 +47,10 @@ namespace SCoL.Visualization
         [Tooltip("Panel size in meters (world space).")]
         public Vector2 worldSpaceSizeMeters = new Vector2(0.65f, 0.42f);
 
+        [Tooltip("World-space canvas scale (meters per pixel-ish). Smaller = larger on screen.")]
+        [Range(0.0005f, 0.01f)]
+        public float worldSpaceScale = 0.0015f;
+
         [Tooltip("Offset from camera forward center (meters). +x=right, +y=up.")]
         public Vector2 worldSpaceOffsetMeters = new Vector2(0.25f, -0.18f);
 
@@ -76,6 +80,7 @@ namespace SCoL.Visualization
 
         private Text _text;
         private Text _invText;
+        private Canvas _canvas;
         private RectTransform _canvasRect;
         private Camera _cam;
         private float _t;
@@ -113,7 +118,7 @@ namespace SCoL.Visualization
                 return;
 
             // Keep the world-space HUD in front of the camera in XR
-            if (useWorldSpaceInXR && IsXRControllerValid())
+            if (useWorldSpaceInXR && IsXRActive())
             {
                 var hudRoot = transform.Find("SCoL_HUD");
                 if (hudRoot != null)
@@ -206,7 +211,10 @@ namespace SCoL.Visualization
 
         private bool TryGetAimRay(out Ray ray)
         {
-            // XR: camera forward is a decent default.
+            // Prefer the same aim ray the tool controller uses (controller pose in VR).
+            if (_toolController != null && _toolController.TryGetToolAimRay(out ray))
+                return true;
+
             // Editor: mouse ray.
             if (_cam == null)
             {
@@ -223,6 +231,7 @@ namespace SCoL.Visualization
             }
 #endif
 
+            // Fallback: camera forward.
             ray = new Ray(_cam.transform.position, _cam.transform.forward);
             return true;
         }
@@ -234,10 +243,20 @@ namespace SCoL.Visualization
             return l.isValid || r.isValid;
         }
 
+        private bool IsXRActive()
+        {
+            // XRSettings.isDeviceActive is the simplest cross-pipeline signal that the HMD is driving rendering.
+            // Fallback to controller validity.
+            return XRSettings.isDeviceActive || IsXRControllerValid();
+        }
+
         private void PositionWorldSpaceCanvas(Transform hudTransform)
         {
             if (_cam == null) _cam = Camera.main;
             if (_cam == null) return;
+
+            // Scale so typical font sizes are readable.
+            hudTransform.localScale = Vector3.one * worldSpaceScale;
 
             // Position relative to camera
             Vector3 forward = _cam.transform.forward;
@@ -257,6 +276,7 @@ namespace SCoL.Visualization
             var existing = transform.Find("SCoL_HUD");
             if (existing != null)
             {
+                _canvas = existing.GetComponent<Canvas>();
                 _text = existing.GetComponentInChildren<Text>(includeInactive: true);
                 _invText = existing.Find("Inventory")?.GetComponent<Text>();
                 _canvasRect = existing.GetComponent<RectTransform>();
@@ -276,13 +296,12 @@ namespace SCoL.Visualization
 
             // XR: prefer a world-space panel fixed in view.
             // Non-XR: use ScreenSpaceCamera.
-            if (useWorldSpaceInXR && IsXRControllerValid())
+            if (useWorldSpaceInXR && IsXRActive())
             {
                 canvas.renderMode = RenderMode.WorldSpace;
 
-                // Size in meters: RectTransform sizeDelta is in pixels, but in WorldSpace it maps to local units.
-                // We treat 1 unit as 1 meter for simplicity.
-                _canvasRect.sizeDelta = worldSpaceSizeMeters;
+                // Use a pixel-like size and scale the whole canvas to meters for readable text.
+                _canvasRect.sizeDelta = new Vector2(worldSpaceSizeMeters.x * 1000f, worldSpaceSizeMeters.y * 1000f);
 
                 // Place in front of camera
                 PositionWorldSpaceCanvas(canvasGO.transform);
