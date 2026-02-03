@@ -28,6 +28,13 @@ namespace SCoL.Visualization
 
         private void Awake()
         {
+            // If the newer uGUI HUD exists, disable this legacy OnGUI HUD to avoid overlap.
+            if (FindFirstObjectByType<SCoLHUD>() != null)
+            {
+                enabled = false;
+                return;
+            }
+
             if (runtime == null)
                 runtime = FindFirstObjectByType<SCoL.SCoLRuntime>();
             _cam = Camera.main;

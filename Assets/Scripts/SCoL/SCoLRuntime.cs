@@ -44,7 +44,11 @@ namespace SCoL
 
         private void EnsureOnGUIHUD()
         {
-            // If HUD already exists in scene, do nothing
+            // If the newer uGUI HUD exists, don't spawn the legacy OnGUI HUD.
+            if (FindFirstObjectByType<SCoL.Visualization.SCoLHUD>() != null)
+                return;
+
+            // If OnGUI HUD already exists in scene, do nothing.
             if (FindFirstObjectByType<SCoL.Visualization.SCoLOnGUIHUD>() != null)
                 return;
 
