@@ -17,7 +17,8 @@ namespace SCoL.Visualization
     /// - View mode
     /// - Cell under aim (stage + continuous vars)
     ///
-    /// Works in Editor and in XR (screen-space overlay).
+    /// Works in Editor and in XR.
+    /// Note: In XR, ScreenSpaceOverlay may not render in the HMD; this HUD uses ScreenSpaceCamera bound to the main (XR) camera.
     /// </summary>
     [DisallowMultipleComponent]
     public class SCoLHUD : MonoBehaviour
@@ -220,11 +221,24 @@ namespace SCoL.Visualization
             canvasGO.transform.SetParent(transform, false);
 
             var canvas = canvasGO.AddComponent<Canvas>();
-            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+
+            // ScreenSpaceOverlay often won't appear in HMD for XR.
+            // Use ScreenSpaceCamera and bind to the (XR) main camera.
+            canvas.renderMode = RenderMode.ScreenSpaceCamera;
             canvas.sortingOrder = 1000;
 
-            canvasGO.AddComponent<CanvasScaler>();
-            canvasGO.AddComponent<GraphicRaycaster>();
+            if (_cam == null) _cam = Camera.main;
+            canvas.worldCamera = _cam;
+            canvas.planeDistance = 1.0f;
+
+            var scaler = canvasGO.AddComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(1920, 1080);
+            scaler.matchWidthOrHeight = 1.0f;
+
+            var raycaster = canvasGO.AddComponent<GraphicRaycaster>();
+            raycaster.ignoreReversedGraphics = true;
+            raycaster.blockingObjects = GraphicRaycaster.BlockingObjects.None;
 
             var textGO = new GameObject("Text");
             textGO.transform.SetParent(canvasGO.transform, false);
