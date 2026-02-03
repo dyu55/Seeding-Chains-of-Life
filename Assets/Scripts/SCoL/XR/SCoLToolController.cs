@@ -351,7 +351,7 @@ namespace SCoL.XR
             return true;
         }
 
-        private static bool GetBool(InputDevice device, InputFeatureUsage<bool> usage)
+        private static bool GetBool(UnityEngine.XR.InputDevice device, InputFeatureUsage<bool> usage)
         {
             if (!device.isValid) return false;
             return device.TryGetFeatureValue(usage, out bool v) && v;
