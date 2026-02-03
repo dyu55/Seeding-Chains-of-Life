@@ -54,6 +54,11 @@ namespace SCoL.XR
         public Tool currentTool = Tool.Seed;
         public float waterAmount = 0.35f;
 
+        [Header("Debug")]
+        public bool logXRInput = false;
+        [Min(0.1f)] public float logIntervalSeconds = 1.0f;
+        private float _logT;
+
         private bool _prevLeftPrimary;
         private bool _prevLeftSecondary;
         private bool _prevRightTrigger;
@@ -185,12 +190,25 @@ namespace SCoL.XR
             _prevLeftSecondary = prev;
 
             bool rightTriggerXR = GetBool(rightXR, UnityEngine.XR.CommonUsages.triggerButton) || GetTrigger(rightXR);
-            if (rightTriggerXR && !_prevRightTrigger)
+            bool rightGripXR = GetBool(rightXR, UnityEngine.XR.CommonUsages.gripButton) || GetGrip(rightXR);
+            bool applyXR = rightTriggerXR || rightGripXR;
+
+            if (logXRInput)
+            {
+                _logT += Time.unscaledDeltaTime;
+                if (_logT >= logIntervalSeconds)
+                {
+                    _logT = 0f;
+                    Debug.Log($"SCoLToolController XR: triggerBtn={rightTriggerXR} gripBtn={rightGripXR} tool={currentTool} inv(S/W/F)={inventory?.seeds}/{inventory?.water}/{inventory?.fire}");
+                }
+            }
+
+            if (applyXR && !_prevRightTrigger)
             {
                 if (TryGetToolAimRay(out var ray) && Physics.Raycast(ray, out var hit, rayLength, hitLayers, QueryTriggerInteraction.Ignore))
                     HandleHit(hit);
             }
-            _prevRightTrigger = rightTriggerXR;
+            _prevRightTrigger = applyXR;
         }
 
         private bool TryPickup(RaycastHit hit)
@@ -423,6 +441,14 @@ namespace SCoL.XR
             if (!device.isValid) return false;
             // Some runtimes don't expose triggerButton reliably; use analog trigger axis.
             if (device.TryGetFeatureValue(UnityEngine.XR.CommonUsages.trigger, out float v))
+                return v >= threshold;
+            return false;
+        }
+
+        private static bool GetGrip(UnityEngine.XR.InputDevice device, float threshold = 0.75f)
+        {
+            if (!device.isValid) return false;
+            if (device.TryGetFeatureValue(UnityEngine.XR.CommonUsages.grip, out float v))
                 return v >= threshold;
             return false;
         }
