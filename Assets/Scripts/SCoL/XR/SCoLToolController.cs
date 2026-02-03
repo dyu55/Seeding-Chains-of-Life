@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.XR;
+using Unity.XR.CoreUtils;
 
 #if ENABLE_INPUT_SYSTEM
 using UnityEngine.InputSystem;
@@ -62,10 +63,14 @@ namespace SCoL.XR
             if (fallbackCamera == null)
                 fallbackCamera = Camera.main;
 
-            if (trackingOrigin == null && Camera.main != null)
+            if (trackingOrigin == null)
             {
-                // In XRI rigs, the main camera is usually nested; root is the XR Origin.
-                trackingOrigin = Camera.main.transform.root;
+                // Prefer the XROrigin transform (world-space origin for tracked poses)
+                var xrOrigin = FindFirstObjectByType<XROrigin>();
+                if (xrOrigin != null)
+                    trackingOrigin = xrOrigin.transform;
+                else if (Camera.main != null)
+                    trackingOrigin = Camera.main.transform.root;
             }
         }
 
@@ -142,12 +147,21 @@ namespace SCoL.XR
             var leftXR = InputDevices.GetDeviceAtXRNode(XRNode.LeftHand);
             var rightXR = InputDevices.GetDeviceAtXRNode(XRNode.RightHand);
 
+            // Tool cycling: allow either controller face buttons.
+            // Typical mapping: Right A/B = primary/secondary; Left X/Y = primary/secondary.
             bool leftPrimaryXR = GetBool(leftXR, UnityEngine.XR.CommonUsages.primaryButton);
             bool leftSecondaryXR = GetBool(leftXR, UnityEngine.XR.CommonUsages.secondaryButton);
-            if (leftPrimaryXR && !_prevLeftPrimary) CycleTool(+1);
-            if (leftSecondaryXR && !_prevLeftSecondary) CycleTool(-1);
-            _prevLeftPrimary = leftPrimaryXR;
-            _prevLeftSecondary = leftSecondaryXR;
+            bool rightPrimaryXR = GetBool(rightXR, UnityEngine.XR.CommonUsages.primaryButton);
+            bool rightSecondaryXR = GetBool(rightXR, UnityEngine.XR.CommonUsages.secondaryButton);
+
+            bool next = leftPrimaryXR || rightPrimaryXR;
+            bool prev = leftSecondaryXR || rightSecondaryXR;
+
+            if (next && !_prevLeftPrimary) CycleTool(+1);
+            if (prev && !_prevLeftSecondary) CycleTool(-1);
+
+            _prevLeftPrimary = next;
+            _prevLeftSecondary = prev;
 
             bool rightTriggerXR = GetBool(rightXR, UnityEngine.XR.CommonUsages.triggerButton) || GetTrigger(rightXR);
             if (rightTriggerXR && !_prevRightTrigger)
