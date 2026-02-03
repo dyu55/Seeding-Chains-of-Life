@@ -50,10 +50,32 @@ namespace SCoL.Visualization
                         {
                             _lastX = x;
                             _lastY = y;
+                            runtime.ForceRender();
                         }
                     }
                 }
 
+                return;
+            }
+
+            // XR fallback: aim from right-hand controller pose (if available)
+            var right = UnityEngine.XR.InputDevices.GetDeviceAtXRNode(UnityEngine.XR.XRNode.RightHand);
+            if (right.isValid && right.TryGetFeatureValue(UnityEngine.XR.CommonUsages.devicePosition, out var p) &&
+                right.TryGetFeatureValue(UnityEngine.XR.CommonUsages.deviceRotation, out var q))
+            {
+                var rayXR = new Ray(p, q * Vector3.forward);
+                if (Physics.Raycast(rayXR, out var hitXR, rayLength, hitLayers, QueryTriggerInteraction.Ignore))
+                {
+                    if (runtime.TryWorldToCell(hitXR.point, out int x, out int y))
+                    {
+                        if (x != _lastX || y != _lastY)
+                        {
+                            _lastX = x;
+                            _lastY = y;
+                            runtime.ForceRender();
+                        }
+                    }
+                }
                 return;
             }
 

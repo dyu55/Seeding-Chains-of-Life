@@ -113,17 +113,14 @@ namespace SCoL.Visualization
 
             if (_text != null)
                 _text.enabled = visible;
+            if (_invText != null)
+                _invText.enabled = visible && showInventory;
 
             if (!visible)
                 return;
 
-            // Keep the world-space HUD in front of the camera in XR
-            if (useWorldSpaceInXR && IsXRActive())
-            {
-                var hudRoot = transform.Find("SCoL_HUD");
-                if (hudRoot != null)
-                    PositionWorldSpaceCanvas(hudRoot);
-            }
+            // Keep HUD mode + position correct as XR initializes (controllers can come online after Awake)
+            EnsureCanvasMode();
 
             _t += Time.unscaledDeltaTime;
             if (_t < updateInterval)
@@ -207,6 +204,9 @@ namespace SCoL.Visualization
                     _invText.text = $"Seed: {_inventory.seeds}\nWater: {_inventory.water}\nFire: {_inventory.fire}";
                 }
             }
+
+            // Ensure canvas mode after we update camera/tool references
+            EnsureCanvasMode();
         }
 
         private bool TryGetAimRay(out Ray ray)
@@ -246,8 +246,40 @@ namespace SCoL.Visualization
         private bool IsXRActive()
         {
             // XRSettings.isDeviceActive is the simplest cross-pipeline signal that the HMD is driving rendering.
-            // Fallback to controller validity.
+            // Controller validity can lag at startup, so either signal is fine.
             return XRSettings.isDeviceActive || IsXRControllerValid();
+        }
+
+        private void EnsureCanvasMode()
+        {
+            if (_canvas == null) return;
+            if (_cam == null) _cam = Camera.main;
+
+            bool wantWorld = useWorldSpaceInXR && IsXRActive();
+
+            if (wantWorld)
+            {
+                if (_canvas.renderMode != RenderMode.WorldSpace)
+                {
+                    _canvas.renderMode = RenderMode.WorldSpace;
+                    _canvas.worldCamera = _cam;
+                    if (_canvasRect != null)
+                        _canvasRect.sizeDelta = new Vector2(worldSpaceSizeMeters.x * 1000f, worldSpaceSizeMeters.y * 1000f);
+                }
+
+                var hudRoot = transform.Find("SCoL_HUD");
+                if (hudRoot != null)
+                    PositionWorldSpaceCanvas(hudRoot);
+            }
+            else
+            {
+                if (_canvas.renderMode != RenderMode.ScreenSpaceCamera)
+                {
+                    _canvas.renderMode = RenderMode.ScreenSpaceCamera;
+                    _canvas.worldCamera = _cam;
+                    _canvas.planeDistance = 1.0f;
+                }
+            }
         }
 
         private void PositionWorldSpaceCanvas(Transform hudTransform)
@@ -287,35 +319,20 @@ namespace SCoL.Visualization
             var canvasGO = new GameObject("SCoL_HUD");
             canvasGO.transform.SetParent(transform, false);
 
-            var canvas = canvasGO.AddComponent<Canvas>();
-            canvas.sortingOrder = 1000;
+            _canvas = canvasGO.AddComponent<Canvas>();
+            _canvas.sortingOrder = 1000;
 
-            _canvasRect = canvas.GetComponent<RectTransform>();
+            _canvasRect = _canvas.GetComponent<RectTransform>();
 
             if (_cam == null) _cam = Camera.main;
 
-            // XR: prefer a world-space panel fixed in view.
-            // Non-XR: use ScreenSpaceCamera.
-            if (useWorldSpaceInXR && IsXRActive())
-            {
-                canvas.renderMode = RenderMode.WorldSpace;
+            // Start in a safe default; we will switch modes dynamically in Update once XR is active.
+            _canvas.renderMode = RenderMode.ScreenSpaceCamera;
+            _canvas.worldCamera = _cam;
+            _canvas.planeDistance = 1.0f;
 
-                // Use a pixel-like size and scale the whole canvas to meters for readable text.
-                _canvasRect.sizeDelta = new Vector2(worldSpaceSizeMeters.x * 1000f, worldSpaceSizeMeters.y * 1000f);
-
-                // Place in front of camera
-                PositionWorldSpaceCanvas(canvasGO.transform);
-
-                canvas.worldCamera = _cam;
-            }
-            else
-            {
-                // ScreenSpaceOverlay often won't appear in HMD for XR.
-                // Use ScreenSpaceCamera and bind to the main camera.
-                canvas.renderMode = RenderMode.ScreenSpaceCamera;
-                canvas.worldCamera = _cam;
-                canvas.planeDistance = 1.0f;
-            }
+            // Apply desired mode immediately if XR is already active.
+            EnsureCanvasMode();
 
             var scaler = canvasGO.AddComponent<CanvasScaler>();
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
