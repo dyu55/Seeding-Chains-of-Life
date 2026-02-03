@@ -44,7 +44,8 @@ namespace SCoL.Visualization
 
                 // Use the tool controller's ray settings so highlight matches actual interaction.
                 float len = tool.rayLength;
-                var layers = tool.hitLayers;
+                var layers = tool.hitLayers.value != 0 ? tool.hitLayers : hitLayers;
+                if (len <= 0f) len = rayLength;
 
                 if (Physics.Raycast(toolRay, out var hit1, len, layers, QueryTriggerInteraction.Ignore))
                 {

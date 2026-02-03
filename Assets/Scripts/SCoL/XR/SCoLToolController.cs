@@ -72,6 +72,11 @@ namespace SCoL.XR
                 else if (Camera.main != null)
                     trackingOrigin = Camera.main.transform.root;
             }
+
+            // Safety: if the LayerMask is accidentally set to Nothing in the inspector,
+            // rays will never hit and VR will feel "dead".
+            if (hitLayers.value == 0)
+                hitLayers = ~0;
         }
 
         private void Update()
