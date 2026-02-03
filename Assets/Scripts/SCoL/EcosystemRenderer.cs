@@ -15,8 +15,12 @@ namespace SCoL
     public class EcosystemRenderer
     {
         private readonly GameObject[] _tiles;
+        private readonly Renderer[] _renderers;
         private readonly int _w;
         private readonly int _h;
+
+        private readonly Material _sharedTileMaterial;
+        private readonly MaterialPropertyBlock _mpb;
 
         public GridViewMode ViewMode { get; set; } = GridViewMode.Stage;
         public bool OverlayFire { get; set; } = true;
@@ -26,6 +30,12 @@ namespace SCoL
             _w = grid.Width;
             _h = grid.Height;
             _tiles = new GameObject[_w * _h];
+            _renderers = new Renderer[_w * _h];
+
+            // One shared material for all tiles; per-tile colors are applied via MaterialPropertyBlock
+            // to avoid instantiating a new material every frame (which can cause massive memory growth).
+            _sharedTileMaterial = CreateSharedTileMaterial();
+            _mpb = new MaterialPropertyBlock();
 
             for (int y = 0; y < _h; y++)
             {
@@ -42,6 +52,13 @@ namespace SCoL
 
                     // Keep collider on tiles so the ground is clearly segmented and easy to click.
                     // (If this causes issues later, we can switch back to a separate ground collider.)
+
+                    var r = go.GetComponent<Renderer>();
+                    if (r != null)
+                    {
+                        r.sharedMaterial = _sharedTileMaterial;
+                        _renderers[idx] = r;
+                    }
 
                     _tiles[idx] = go;
                 }
@@ -80,13 +97,31 @@ namespace SCoL
                 p.y = s.y * 0.5f;
                 t.position = p;
 
-                var r = go.GetComponent<Renderer>();
+                var r = _renderers[idx];
                 if (r != null)
                 {
-                    r.sharedMaterial = null;
-                    r.material.color = col;
+                    // Set per-tile color without creating per-renderer material instances.
+                    _mpb.SetColor("_BaseColor", col);
+                    _mpb.SetColor("_Color", col); // fallback for non-URP shaders
+                    r.SetPropertyBlock(_mpb);
                 }
             });
+        }
+
+        private static Material CreateSharedTileMaterial()
+        {
+            // Prefer URP Lit if available; otherwise fall back to Standard.
+            Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+            if (shader == null)
+                shader = Shader.Find("Standard");
+            if (shader == null)
+                shader = Shader.Find("Unlit/Color");
+
+            var m = new Material(shader)
+            {
+                name = "SCoL_TileSharedMaterial"
+            };
+            return m;
         }
 
         private static float StageHeight(CellState c)
