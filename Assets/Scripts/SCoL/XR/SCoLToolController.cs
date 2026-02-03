@@ -63,7 +63,10 @@ namespace SCoL.XR
                 fallbackCamera = Camera.main;
 
             if (trackingOrigin == null && Camera.main != null)
-                trackingOrigin = Camera.main.transform.parent;
+            {
+                // In XRI rigs, the main camera is usually nested; root is the XR Origin.
+                trackingOrigin = Camera.main.transform.root;
+            }
         }
 
         private void Update()
@@ -146,7 +149,7 @@ namespace SCoL.XR
             _prevLeftPrimary = leftPrimaryXR;
             _prevLeftSecondary = leftSecondaryXR;
 
-            bool rightTriggerXR = GetBool(rightXR, UnityEngine.XR.CommonUsages.triggerButton);
+            bool rightTriggerXR = GetBool(rightXR, UnityEngine.XR.CommonUsages.triggerButton) || GetTrigger(rightXR);
             if (rightTriggerXR && !_prevRightTrigger)
             {
                 if (TryGetToolAimRay(out var ray) && Physics.Raycast(ray, out var hit, rayLength, hitLayers, QueryTriggerInteraction.Ignore))
@@ -355,6 +358,15 @@ namespace SCoL.XR
         {
             if (!device.isValid) return false;
             return device.TryGetFeatureValue(usage, out bool v) && v;
+        }
+
+        private static bool GetTrigger(UnityEngine.XR.InputDevice device, float threshold = 0.75f)
+        {
+            if (!device.isValid) return false;
+            // Some runtimes don't expose triggerButton reliably; use analog trigger axis.
+            if (device.TryGetFeatureValue(UnityEngine.XR.CommonUsages.trigger, out float v))
+                return v >= threshold;
+            return false;
         }
     }
 }

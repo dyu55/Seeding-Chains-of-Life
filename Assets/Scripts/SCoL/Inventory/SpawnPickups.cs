@@ -11,8 +11,19 @@ namespace SCoL.Inventory
         public int waterCount = 6;
         public int fireCount = 3;
 
+        [Header("Placement")]
+        public bool scatterAcrossGrid = true;
+
+        [Tooltip("Used when scatterAcrossGrid=false.")]
         public Vector3 center = new Vector3(0f, 1.1f, 1.2f);
+
+        [Tooltip("Used when scatterAcrossGrid=false.")]
         public float radius = 0.8f;
+
+        [Tooltip("Vertical offset above ground/tile for spawned pickups.")]
+        public float yOffset = 0.25f;
+
+        private SCoL.SCoLRuntime _runtime;
 
         private bool _spawned;
 
@@ -20,6 +31,8 @@ namespace SCoL.Inventory
         {
             if (_spawned) return;
             _spawned = true;
+
+            _runtime = FindFirstObjectByType<SCoL.SCoLRuntime>();
 
             Spawn(SCoLItemType.Seed, seedCount, 0f);
             Spawn(SCoLItemType.Water, waterCount, 1.5f);
@@ -29,10 +42,23 @@ namespace SCoL.Inventory
         private void Spawn(SCoLItemType type, int count, float angleOffset)
         {
             if (count <= 0) return;
+
             for (int i = 0; i < count; i++)
             {
-                float a = angleOffset + (i / (float)count) * Mathf.PI * 2f;
-                Vector3 pos = center + new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a)) * radius;
+                Vector3 pos;
+
+                if (scatterAcrossGrid && _runtime != null && _runtime.Grid != null)
+                {
+                    int x = Random.Range(0, _runtime.Grid.Width);
+                    int y = Random.Range(0, _runtime.Grid.Height);
+                    pos = _runtime.Grid.CellCenterWorld(x, y);
+                    pos.y += yOffset;
+                }
+                else
+                {
+                    float a = angleOffset + (i / (float)count) * Mathf.PI * 2f;
+                    pos = center + new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a)) * radius;
+                }
 
                 var go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
                 go.name = $"Pickup_{type}_{i}";
