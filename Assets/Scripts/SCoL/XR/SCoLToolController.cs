@@ -359,13 +359,17 @@ namespace SCoL.XR
             if (!dev.isValid) return false;
 
             // Many runtimes provide a controller "pointer" pose even when "device" pose is unavailable.
-            // Prefer pointer for aiming.
+            // Some Unity versions don't expose pointerPosition/pointerRotation in CommonUsages,
+            // so we use explicit feature usages.
             Vector3 localPos;
             Quaternion localRot;
 
-            bool hasPos = dev.TryGetFeatureValue(UnityEngine.XR.CommonUsages.pointerPosition, out localPos)
+            var pointerPosUsage = new InputFeatureUsage<Vector3>("PointerPosition");
+            var pointerRotUsage = new InputFeatureUsage<Quaternion>("PointerRotation");
+
+            bool hasPos = dev.TryGetFeatureValue(pointerPosUsage, out localPos)
                           || dev.TryGetFeatureValue(UnityEngine.XR.CommonUsages.devicePosition, out localPos);
-            bool hasRot = dev.TryGetFeatureValue(UnityEngine.XR.CommonUsages.pointerRotation, out localRot)
+            bool hasRot = dev.TryGetFeatureValue(pointerRotUsage, out localRot)
                           || dev.TryGetFeatureValue(UnityEngine.XR.CommonUsages.deviceRotation, out localRot);
 
             if (!hasPos || !hasRot)

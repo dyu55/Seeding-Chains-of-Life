@@ -65,23 +65,30 @@ namespace SCoL.Visualization
 
             // XR fallback: aim from right-hand controller pose (prefer pointer pose)
             var right = UnityEngine.XR.InputDevices.GetDeviceAtXRNode(UnityEngine.XR.XRNode.RightHand);
-            if (right.isValid &&
-                (right.TryGetFeatureValue(UnityEngine.XR.CommonUsages.pointerPosition, out var p) || right.TryGetFeatureValue(UnityEngine.XR.CommonUsages.devicePosition, out p)) &&
-                (right.TryGetFeatureValue(UnityEngine.XR.CommonUsages.pointerRotation, out var q) || right.TryGetFeatureValue(UnityEngine.XR.CommonUsages.deviceRotation, out q)))
+            if (right.isValid)
             {
-                var rayXR = new Ray(p, q * Vector3.forward);
-                if (Physics.Raycast(rayXR, out var hitXR, rayLength, hitLayers, QueryTriggerInteraction.Ignore))
+                var pointerPosUsage = new UnityEngine.XR.InputFeatureUsage<Vector3>("PointerPosition");
+                var pointerRotUsage = new UnityEngine.XR.InputFeatureUsage<Quaternion>("PointerRotation");
+
+                if ((right.TryGetFeatureValue(pointerPosUsage, out var p) || right.TryGetFeatureValue(UnityEngine.XR.CommonUsages.devicePosition, out p)) &&
+                    (right.TryGetFeatureValue(pointerRotUsage, out var q) || right.TryGetFeatureValue(UnityEngine.XR.CommonUsages.deviceRotation, out q)))
                 {
-                    if (runtime.TryWorldToCell(hitXR.point, out int x, out int y))
+                    var rayXR = new Ray(p, q * Vector3.forward);
+                    if (Physics.Raycast(rayXR, out var hitXR, rayLength, hitLayers, QueryTriggerInteraction.Ignore))
                     {
-                        if (x != _lastX || y != _lastY)
+                        if (runtime.TryWorldToCell(hitXR.point, out int x, out int y))
                         {
-                            _lastX = x;
-                            _lastY = y;
-                            runtime.ForceRender();
+                            if (x != _lastX || y != _lastY)
+                            {
+                                _lastX = x;
+                                _lastY = y;
+                                runtime.ForceRender();
+                            }
                         }
                     }
+                    return;
                 }
+
                 return;
             }
 
