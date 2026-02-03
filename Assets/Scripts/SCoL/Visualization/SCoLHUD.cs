@@ -26,7 +26,21 @@ namespace SCoL.Visualization
 
         [Header("UI")]
         public Color textColor = Color.white;
-        public int fontSize = 22;
+        public int fontSize = 18;
+
+        [Tooltip("Toggle HUD visibility at runtime.")]
+        public bool visible = true;
+
+        [Tooltip("Update interval (seconds). Lower = more responsive, higher = less GC/CPU.")]
+        [Min(0.02f)]
+        public float updateInterval = 0.15f;
+
+        [Header("Sections")]
+        public bool showTool = true;
+        public bool showSeasonWeather = true;
+        public bool showViewMode = true;
+        public bool showAimCell = true;
+        public bool showControlsHelp = false;
 
         [Tooltip("Optional font override. If left null, the HUD will use Unity's built-in LegacyRuntime.ttf (Unity 2023+/6000 compatible).")]
         public Font overrideFont;
@@ -37,6 +51,10 @@ namespace SCoL.Visualization
 
         private Text _text;
         private Camera _cam;
+        private float _t;
+        private readonly StringBuilder _sb = new StringBuilder(512);
+
+        private SCoL.XR.SCoLXRInteractor _tool;
 
         private void Awake()
         {
@@ -44,56 +62,87 @@ namespace SCoL.Visualization
                 runtime = FindFirstObjectByType<SCoL.SCoLRuntime>();
 
             _cam = Camera.main;
+            _tool = FindFirstObjectByType<SCoL.XR.SCoLXRInteractor>();
 
             CreateCanvasIfMissing();
         }
 
         private void Update()
         {
+            // Toggle visibility (H)
+#if ENABLE_INPUT_SYSTEM
+            if (Keyboard.current != null && Keyboard.current.hKey.wasPressedThisFrame)
+                visible = !visible;
+#endif
+
+            if (_text != null)
+                _text.enabled = visible;
+
+            if (!visible)
+                return;
+
+            _t += Time.unscaledDeltaTime;
+            if (_t < updateInterval)
+                return;
+            _t = 0f;
+
             if (runtime == null)
             {
                 runtime = FindFirstObjectByType<SCoL.SCoLRuntime>();
                 if (runtime == null) return;
             }
 
+            if (_tool == null)
+                _tool = FindFirstObjectByType<SCoL.XR.SCoLXRInteractor>();
+
             if (_cam == null) _cam = Camera.main;
 
-            var sb = new StringBuilder(256);
+            _sb.Clear();
+
+            // Header
+            _sb.AppendLine("SCoL");
 
             // Tool
-            var tool = FindFirstObjectByType<SCoL.XR.SCoLXRInteractor>();
-            if (tool != null)
-                sb.AppendLine($"Tool: {tool.currentTool}");
+            if (showTool && _tool != null)
+                _sb.AppendLine($"Tool: {_tool.currentTool}");
 
-            sb.AppendLine($"Season: {runtime.CurrentSeason}   Weather: {runtime.CurrentWeather}");
-            sb.AppendLine($"View: {runtime.ViewMode}   FireOverlay: {(runtime.OverlayFire ? "ON" : "OFF")}");
+            if (showSeasonWeather)
+                _sb.AppendLine($"{runtime.CurrentSeason} / {runtime.CurrentWeather}");
 
-            // Cell under aim
-            if (TryGetAimRay(out var ray) && Physics.Raycast(ray, out var hit, rayLength, hitLayers, QueryTriggerInteraction.Ignore))
+            if (showViewMode)
+                _sb.AppendLine($"View: {runtime.ViewMode}   Fire: {(runtime.OverlayFire ? "ON" : "OFF")}");
+
+            // Cell under aim (compact)
+            if (showAimCell)
             {
-                if (runtime.TryWorldToCell(hit.point, out int cx, out int cy))
+                if (TryGetAimRay(out var ray) && Physics.Raycast(ray, out var hit, rayLength, hitLayers, QueryTriggerInteraction.Ignore))
                 {
-                    var c = runtime.Grid.Get(cx, cy);
-                    sb.AppendLine($"Cell: ({cx},{cy})  Stage: {c.PlantStage}  OnFire: {(c.IsOnFire ? "YES" : "NO")}");
-                    sb.AppendLine($"Water: {c.Water:0.00}  Sun: {c.Sunlight:0.00}  Heat: {c.Heat:0.00}");
-                    sb.AppendLine($"Durability: {c.Durability:0.00}  Success: {c.Success:0.00}");
+                    if (runtime.TryWorldToCell(hit.point, out int cx, out int cy))
+                    {
+                        var c = runtime.Grid.Get(cx, cy);
+                        _sb.AppendLine($"Cell {cx},{cy}  {c.PlantStage}  Fire:{(c.IsOnFire ? "Y" : "N")}");
+                        _sb.AppendLine($"W:{c.Water:0.00} S:{c.Sunlight:0.00} H:{c.Heat:0.00}  D:{c.Durability:0.00}  ✓:{c.Success:0.00}");
+                    }
+                    else
+                    {
+                        _sb.AppendLine("Cell: out of bounds");
+                    }
                 }
                 else
                 {
-                    sb.AppendLine("Cell: (out of bounds)");
+                    _sb.AppendLine("Aim: no hit");
                 }
             }
-            else
+
+            if (showControlsHelp)
             {
-                sb.AppendLine("Aim: (no hit)");
+                _sb.AppendLine();
+                _sb.AppendLine("H: toggle HUD");
+                _sb.AppendLine("V: cycle view | F: fire overlay");
+                _sb.AppendLine("1/2/3: tool | LMB: apply (Editor)");
             }
 
-            sb.AppendLine();
-            sb.AppendLine("Controls:");
-            sb.AppendLine("- View: V cycle | F toggle fire overlay | 0/4/5/6/7/8 set mode");
-            sb.AppendLine("- Tool (Editor): 1/2/3 select | LMB apply");
-
-            _text.text = sb.ToString();
+            _text.text = _sb.ToString();
         }
 
         private bool TryGetAimRay(out Ray ray)
@@ -170,6 +219,7 @@ namespace SCoL.Visualization
 
             _text.fontSize = fontSize;
             _text.color = textColor;
+            _text.supportRichText = false;
             _text.alignment = TextAnchor.UpperLeft;
             _text.horizontalOverflow = HorizontalWrapMode.Overflow;
             _text.verticalOverflow = VerticalWrapMode.Overflow;
