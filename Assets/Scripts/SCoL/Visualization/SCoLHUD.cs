@@ -42,6 +42,12 @@ namespace SCoL.Visualization
         public bool showAimCell = true;
         public bool showControlsHelp = false;
 
+        [Header("Inventory")]
+        public bool showInventory = true;
+        [Tooltip("Anchor inventory panel to bottom-right.")]
+        public Vector2 inventoryOffset = new Vector2(-16, 16);
+        public int inventoryFontSize = 18;
+
         [Tooltip("Optional font override. If left null, the HUD will use Unity's built-in LegacyRuntime.ttf (Unity 2023+/6000 compatible).")]
         public Font overrideFont;
 
@@ -50,12 +56,14 @@ namespace SCoL.Visualization
         public LayerMask hitLayers = ~0;
 
         private Text _text;
+        private Text _invText;
         private Camera _cam;
         private float _t;
         private readonly StringBuilder _sb = new StringBuilder(512);
 
         private SCoL.XR.SCoLToolController _toolController;
         private SCoL.XR.SCoLXRInteractor _xrInteractor;
+        private SCoL.Inventory.SCoLInventory _inventory;
 
         private void Awake()
         {
@@ -65,6 +73,7 @@ namespace SCoL.Visualization
             _cam = Camera.main;
             _toolController = FindFirstObjectByType<SCoL.XR.SCoLToolController>();
             _xrInteractor = FindFirstObjectByType<SCoL.XR.SCoLXRInteractor>();
+            _inventory = FindFirstObjectByType<SCoL.Inventory.SCoLInventory>();
 
             CreateCanvasIfMissing();
         }
@@ -98,6 +107,8 @@ namespace SCoL.Visualization
                 _toolController = FindFirstObjectByType<SCoL.XR.SCoLToolController>();
             if (_xrInteractor == null)
                 _xrInteractor = FindFirstObjectByType<SCoL.XR.SCoLXRInteractor>();
+            if (_inventory == null)
+                _inventory = FindFirstObjectByType<SCoL.Inventory.SCoLInventory>();
 
             if (_cam == null) _cam = Camera.main;
 
@@ -152,6 +163,16 @@ namespace SCoL.Visualization
             }
 
             _text.text = _sb.ToString();
+
+            // Inventory panel (bottom-right)
+            if (_invText != null)
+            {
+                _invText.enabled = visible && showInventory && _inventory != null;
+                if (showInventory && _inventory != null)
+                {
+                    _invText.text = $"Seed: {_inventory.seeds}\nWater: {_inventory.water}\nFire: {_inventory.fire}";
+                }
+            }
         }
 
         private bool TryGetAimRay(out Ray ray)
@@ -210,6 +231,11 @@ namespace SCoL.Visualization
 
             _text = textGO.AddComponent<Text>();
 
+            // Inventory panel (bottom-right)
+            var invGO = new GameObject("Inventory");
+            invGO.transform.SetParent(canvasGO.transform, false);
+            _invText = invGO.AddComponent<Text>();
+
             // Unity 2023+/6000: Arial.ttf is no longer a valid built-in font.
             // Use LegacyRuntime.ttf as the built-in fallback.
             var font = overrideFont;
@@ -239,6 +265,22 @@ namespace SCoL.Visualization
             rt.pivot = new Vector2(0, 1);
             rt.anchoredPosition = new Vector2(12, -12);
             rt.sizeDelta = new Vector2(900, 600);
+
+            // Inventory style/position
+            _invText.font = font;
+            _invText.fontSize = inventoryFontSize;
+            _invText.color = textColor;
+            _invText.supportRichText = false;
+            _invText.alignment = TextAnchor.LowerRight;
+            _invText.horizontalOverflow = HorizontalWrapMode.Overflow;
+            _invText.verticalOverflow = VerticalWrapMode.Overflow;
+
+            var irt = _invText.rectTransform;
+            irt.anchorMin = new Vector2(1, 0);
+            irt.anchorMax = new Vector2(1, 0);
+            irt.pivot = new Vector2(1, 0);
+            irt.anchoredPosition = new Vector2(inventoryOffset.x, inventoryOffset.y);
+            irt.sizeDelta = new Vector2(220, 120);
         }
     }
 }
