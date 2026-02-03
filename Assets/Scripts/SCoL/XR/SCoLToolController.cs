@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.XR;
 using Unity.XR.CoreUtils;
+using UnityEngine.XR.Interaction.Toolkit;
 
 #if ENABLE_INPUT_SYSTEM
 using UnityEngine.InputSystem;
@@ -36,7 +37,13 @@ namespace SCoL.XR
         [Header("Refs")]
         public SCoL.SCoLRuntime runtime;
         public SCoL.Inventory.SCoLInventory inventory;
+
+        [Tooltip("Optional explicit transform used as the aim ray origin (recommended in XR). E.g., RightHand Controller or Ray Interactor transform.")]
+        public Transform aimOrigin;
+
+        [Tooltip("Tracking origin used to convert XR device poses into world space (only used if aimOrigin is not set).")]
         public Transform trackingOrigin;
+
         public Camera fallbackCamera;
 
         [Header("Ray")]
@@ -51,6 +58,8 @@ namespace SCoL.XR
         private bool _prevLeftSecondary;
         private bool _prevRightTrigger;
 
+        private XRRayInteractor _rightRayInteractor;
+
         private void Awake()
         {
             if (runtime == null)
@@ -62,6 +71,13 @@ namespace SCoL.XR
 
             if (fallbackCamera == null)
                 fallbackCamera = Camera.main;
+
+            // Try to auto-find a right-hand ray interactor (best source of aim direction).
+            // We pick the first one we find; if you have multiple, assign aimOrigin manually.
+            _rightRayInteractor = FindFirstObjectByType<XRRayInteractor>();
+
+            if (aimOrigin == null && _rightRayInteractor != null)
+                aimOrigin = _rightRayInteractor.transform;
 
             if (trackingOrigin == null)
             {
@@ -242,6 +258,13 @@ namespace SCoL.XR
         /// </summary>
         public bool TryGetToolAimRay(out Ray ray)
         {
+            // Best: an explicit transform (controller/ray interactor) so the ray matches what you see.
+            if (aimOrigin != null)
+            {
+                ray = new Ray(aimOrigin.position, aimOrigin.forward);
+                return true;
+            }
+
 #if ENABLE_INPUT_SYSTEM
             // Prefer mouse in editor
             if (Mouse.current != null)
