@@ -54,7 +54,8 @@ namespace SCoL.Visualization
         private float _t;
         private readonly StringBuilder _sb = new StringBuilder(512);
 
-        private SCoL.XR.SCoLXRInteractor _tool;
+        private SCoL.XR.SCoLToolController _toolController;
+        private SCoL.XR.SCoLXRInteractor _xrInteractor;
 
         private void Awake()
         {
@@ -62,7 +63,8 @@ namespace SCoL.Visualization
                 runtime = FindFirstObjectByType<SCoL.SCoLRuntime>();
 
             _cam = Camera.main;
-            _tool = FindFirstObjectByType<SCoL.XR.SCoLXRInteractor>();
+            _toolController = FindFirstObjectByType<SCoL.XR.SCoLToolController>();
+            _xrInteractor = FindFirstObjectByType<SCoL.XR.SCoLXRInteractor>();
 
             CreateCanvasIfMissing();
         }
@@ -92,8 +94,10 @@ namespace SCoL.Visualization
                 if (runtime == null) return;
             }
 
-            if (_tool == null)
-                _tool = FindFirstObjectByType<SCoL.XR.SCoLXRInteractor>();
+            if (_toolController == null)
+                _toolController = FindFirstObjectByType<SCoL.XR.SCoLToolController>();
+            if (_xrInteractor == null)
+                _xrInteractor = FindFirstObjectByType<SCoL.XR.SCoLXRInteractor>();
 
             if (_cam == null) _cam = Camera.main;
 
@@ -102,9 +106,14 @@ namespace SCoL.Visualization
             // Header
             _sb.AppendLine("SCoL");
 
-            // Tool
-            if (showTool && _tool != null)
-                _sb.AppendLine($"Tool: {_tool.currentTool}");
+            // Tool (prefer inventory-backed controller if present)
+            if (showTool)
+            {
+                if (_toolController != null)
+                    _sb.AppendLine($"Tool: {_toolController.currentTool}");
+                else if (_xrInteractor != null)
+                    _sb.AppendLine($"Tool: {_xrInteractor.currentTool}");
+            }
 
             if (showSeasonWeather)
                 _sb.AppendLine($"{runtime.CurrentSeason} / {runtime.CurrentWeather}");
