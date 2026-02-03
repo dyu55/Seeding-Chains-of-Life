@@ -36,12 +36,30 @@ namespace SCoL.Visualization
         [Min(0.02f)]
         public float updateInterval = 0.15f;
 
+        [Header("XR Presentation")]
+        [Tooltip("If true, render as a world-space panel in VR (more 'native' than screen overlay).")]
+        public bool useWorldSpaceInXR = true;
+
+        [Tooltip("Distance in front of the camera for the world-space panel.")]
+        [Range(0.3f, 3f)]
+        public float worldSpaceDistance = 1.25f;
+
+        [Tooltip("Panel size in meters (world space).")]
+        public Vector2 worldSpaceSizeMeters = new Vector2(0.65f, 0.42f);
+
+        [Tooltip("Offset from camera forward center (meters). +x=right, +y=up.")]
+        public Vector2 worldSpaceOffsetMeters = new Vector2(0.25f, -0.18f);
+
         [Header("Sections")]
         public bool showTool = true;
         public bool showSeasonWeather = true;
         public bool showViewMode = true;
         public bool showAimCell = true;
-        public bool showControlsHelp = false;
+        public bool showControlsHelp = true;
+
+        [Header("Control Labels")]
+        public string controlsVR = "VR: Left A/X = tool cycle | Right Trigger = apply | Aim at ball = auto-pickup";
+        public string controlsDesktop = "Desktop: 1/2/3 tool | LMB apply | V view | F fire overlay | H toggle HUD";
 
         [Header("Inventory")]
         public bool showInventory = true;
@@ -58,6 +76,7 @@ namespace SCoL.Visualization
 
         private Text _text;
         private Text _invText;
+        private RectTransform _canvasRect;
         private Camera _cam;
         private float _t;
         private readonly StringBuilder _sb = new StringBuilder(512);
@@ -92,6 +111,14 @@ namespace SCoL.Visualization
 
             if (!visible)
                 return;
+
+            // Keep the world-space HUD in front of the camera in XR
+            if (useWorldSpaceInXR && IsXRControllerValid())
+            {
+                var hudRoot = transform.Find("SCoL_HUD");
+                if (hudRoot != null)
+                    PositionWorldSpaceCanvas(hudRoot);
+            }
 
             _t += Time.unscaledDeltaTime;
             if (_t < updateInterval)
@@ -158,9 +185,10 @@ namespace SCoL.Visualization
             if (showControlsHelp)
             {
                 _sb.AppendLine();
-                _sb.AppendLine("H: toggle HUD");
-                _sb.AppendLine("V: cycle view | F: fire overlay");
-                _sb.AppendLine("1/2/3: tool | LMB: apply (Editor)");
+                if (IsXRControllerValid())
+                    _sb.AppendLine(controlsVR);
+                else
+                    _sb.AppendLine(controlsDesktop);
             }
 
             _text.text = _sb.ToString();
@@ -206,6 +234,23 @@ namespace SCoL.Visualization
             return l.isValid || r.isValid;
         }
 
+        private void PositionWorldSpaceCanvas(Transform hudTransform)
+        {
+            if (_cam == null) _cam = Camera.main;
+            if (_cam == null) return;
+
+            // Position relative to camera
+            Vector3 forward = _cam.transform.forward;
+            Vector3 right = _cam.transform.right;
+            Vector3 up = _cam.transform.up;
+
+            Vector3 pos = _cam.transform.position + forward * worldSpaceDistance + right * worldSpaceOffsetMeters.x + up * worldSpaceOffsetMeters.y;
+            hudTransform.position = pos;
+
+            // Face the camera
+            hudTransform.rotation = Quaternion.LookRotation(hudTransform.position - _cam.transform.position, up);
+        }
+
         private void CreateCanvasIfMissing()
         {
             // Avoid duplicates if domain reload is off or this component is toggled.
@@ -213,6 +258,8 @@ namespace SCoL.Visualization
             if (existing != null)
             {
                 _text = existing.GetComponentInChildren<Text>(includeInactive: true);
+                _invText = existing.Find("Inventory")?.GetComponent<Text>();
+                _canvasRect = existing.GetComponent<RectTransform>();
                 if (_text != null) return;
             }
 
@@ -221,15 +268,35 @@ namespace SCoL.Visualization
             canvasGO.transform.SetParent(transform, false);
 
             var canvas = canvasGO.AddComponent<Canvas>();
-
-            // ScreenSpaceOverlay often won't appear in HMD for XR.
-            // Use ScreenSpaceCamera and bind to the (XR) main camera.
-            canvas.renderMode = RenderMode.ScreenSpaceCamera;
             canvas.sortingOrder = 1000;
 
+            _canvasRect = canvas.GetComponent<RectTransform>();
+
             if (_cam == null) _cam = Camera.main;
-            canvas.worldCamera = _cam;
-            canvas.planeDistance = 1.0f;
+
+            // XR: prefer a world-space panel fixed in view.
+            // Non-XR: use ScreenSpaceCamera.
+            if (useWorldSpaceInXR && IsXRControllerValid())
+            {
+                canvas.renderMode = RenderMode.WorldSpace;
+
+                // Size in meters: RectTransform sizeDelta is in pixels, but in WorldSpace it maps to local units.
+                // We treat 1 unit as 1 meter for simplicity.
+                _canvasRect.sizeDelta = worldSpaceSizeMeters;
+
+                // Place in front of camera
+                PositionWorldSpaceCanvas(canvasGO.transform);
+
+                canvas.worldCamera = _cam;
+            }
+            else
+            {
+                // ScreenSpaceOverlay often won't appear in HMD for XR.
+                // Use ScreenSpaceCamera and bind to the main camera.
+                canvas.renderMode = RenderMode.ScreenSpaceCamera;
+                canvas.worldCamera = _cam;
+                canvas.planeDistance = 1.0f;
+            }
 
             var scaler = canvasGO.AddComponent<CanvasScaler>();
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
