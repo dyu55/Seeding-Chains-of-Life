@@ -63,10 +63,11 @@ namespace SCoL.Visualization
                 return;
             }
 
-            // XR fallback: aim from right-hand controller pose (if available)
+            // XR fallback: aim from right-hand controller pose (prefer pointer pose)
             var right = UnityEngine.XR.InputDevices.GetDeviceAtXRNode(UnityEngine.XR.XRNode.RightHand);
-            if (right.isValid && right.TryGetFeatureValue(UnityEngine.XR.CommonUsages.devicePosition, out var p) &&
-                right.TryGetFeatureValue(UnityEngine.XR.CommonUsages.deviceRotation, out var q))
+            if (right.isValid &&
+                (right.TryGetFeatureValue(UnityEngine.XR.CommonUsages.pointerPosition, out var p) || right.TryGetFeatureValue(UnityEngine.XR.CommonUsages.devicePosition, out p)) &&
+                (right.TryGetFeatureValue(UnityEngine.XR.CommonUsages.pointerRotation, out var q) || right.TryGetFeatureValue(UnityEngine.XR.CommonUsages.deviceRotation, out q)))
             {
                 var rayXR = new Ray(p, q * Vector3.forward);
                 if (Physics.Raycast(rayXR, out var hitXR, rayLength, hitLayers, QueryTriggerInteraction.Ignore))

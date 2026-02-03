@@ -358,9 +358,21 @@ namespace SCoL.XR
             var dev = InputDevices.GetDeviceAtXRNode(node);
             if (!dev.isValid) return false;
 
-            if (!dev.TryGetFeatureValue(UnityEngine.XR.CommonUsages.devicePosition, out var localPos)) return false;
-            if (!dev.TryGetFeatureValue(UnityEngine.XR.CommonUsages.deviceRotation, out var localRot)) return false;
+            // Many runtimes provide a controller "pointer" pose even when "device" pose is unavailable.
+            // Prefer pointer for aiming.
+            Vector3 localPos;
+            Quaternion localRot;
 
+            bool hasPos = dev.TryGetFeatureValue(UnityEngine.XR.CommonUsages.pointerPosition, out localPos)
+                          || dev.TryGetFeatureValue(UnityEngine.XR.CommonUsages.devicePosition, out localPos);
+            bool hasRot = dev.TryGetFeatureValue(UnityEngine.XR.CommonUsages.pointerRotation, out localRot)
+                          || dev.TryGetFeatureValue(UnityEngine.XR.CommonUsages.deviceRotation, out localRot);
+
+            if (!hasPos || !hasRot)
+                return false;
+
+            // NOTE: UnityEngine.XR poses are typically expressed in the XR Origin tracking space.
+            // If a trackingOrigin is provided, transform into world space.
             Vector3 pos = localPos;
             Quaternion rot = localRot;
             if (trackingOrigin != null)
