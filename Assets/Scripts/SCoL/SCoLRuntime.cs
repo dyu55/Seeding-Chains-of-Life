@@ -42,20 +42,20 @@ namespace SCoL
 
         private System.Random _rng;
 
-        private void EnsureOnGUIHUD()
+        private void EnsureHUD()
         {
-            // If the newer uGUI HUD exists, don't spawn the legacy OnGUI HUD.
-            if (FindFirstObjectByType<SCoL.Visualization.SCoLHUD>() != null)
+            // Prefer the uGUI HUD (works in desktop + VR). If missing, spawn it.
+            if (FindFirstObjectByType<SCoL.Visualization.SCoLHUD>() == null)
+            {
+                var go = new GameObject("SCoL_HUD");
+                go.transform.SetParent(transform, worldPositionStays: false);
+                go.AddComponent<SCoL.Visualization.SCoLHUD>();
                 return;
+            }
 
-            // If OnGUI HUD already exists in scene, do nothing.
+            // Legacy fallback: only spawn OnGUI HUD if uGUI HUD is not present.
             if (FindFirstObjectByType<SCoL.Visualization.SCoLOnGUIHUD>() != null)
                 return;
-
-            // Create as a child of runtime so it definitely exists in the active scene.
-            var go = new GameObject("SCoL_OnGUI_HUD");
-            go.transform.SetParent(transform, worldPositionStays: false);
-            go.AddComponent<SCoL.Visualization.SCoLOnGUIHUD>();
         }
 
         public void Init(SCoLConfig config, Vector3 worldCenter)
@@ -77,7 +77,7 @@ namespace SCoL
             _renderer = new EcosystemRenderer(Grid, _renderRoot);
             _renderer.Render(Grid);
 
-            EnsureOnGUIHUD();
+            EnsureHUD();
         }
 
         private void Update()
