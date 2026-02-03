@@ -76,6 +76,7 @@ namespace SCoL.XR
                 if (Keyboard.current.digit2Key.wasPressedThisFrame) currentTool = Tool.Water;
                 if (Keyboard.current.digit3Key.wasPressedThisFrame) currentTool = Tool.Fire;
             }
+#endif
 
             // --- Auto-pickup: if your pointer is over a pickup, collect immediately (no click).
             if (TryGetToolAimRay(out var autoRay))
@@ -87,6 +88,7 @@ namespace SCoL.XR
                 }
             }
 
+#if ENABLE_INPUT_SYSTEM
             // Mouse: Left click = use tool/apply at hit point (if not a pickup)
             if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
             {
@@ -129,8 +131,28 @@ namespace SCoL.XR
                     }
                 }
                 _prevRightTrigger = rt;
+                return;
             }
 #endif
+
+            // UnityEngine.XR fallback (Quest Link / OpenXR): controller buttons
+            var leftXR = InputDevices.GetDeviceAtXRNode(XRNode.LeftHand);
+            var rightXR = InputDevices.GetDeviceAtXRNode(XRNode.RightHand);
+
+            bool leftPrimaryXR = GetBool(leftXR, CommonUsages.primaryButton);
+            bool leftSecondaryXR = GetBool(leftXR, CommonUsages.secondaryButton);
+            if (leftPrimaryXR && !_prevLeftPrimary) CycleTool(+1);
+            if (leftSecondaryXR && !_prevLeftSecondary) CycleTool(-1);
+            _prevLeftPrimary = leftPrimaryXR;
+            _prevLeftSecondary = leftSecondaryXR;
+
+            bool rightTriggerXR = GetBool(rightXR, CommonUsages.triggerButton);
+            if (rightTriggerXR && !_prevRightTrigger)
+            {
+                if (TryGetToolAimRay(out var ray) && Physics.Raycast(ray, out var hit, rayLength, hitLayers, QueryTriggerInteraction.Ignore))
+                    HandleHit(hit);
+            }
+            _prevRightTrigger = rightTriggerXR;
         }
 
         private bool TryPickup(RaycastHit hit)
@@ -215,6 +237,10 @@ namespace SCoL.XR
             if (right != null && TryGetAimRay(right, out ray))
                 return true;
 #endif
+
+            // UnityEngine.XR pose (Quest Link / OpenXR)
+            if (TryGetXRNodeRay(XRNode.RightHand, out ray))
+                return true;
 
             var c = fallbackCamera != null ? fallbackCamera : Camera.main;
             if (c != null)
@@ -303,5 +329,32 @@ namespace SCoL.XR
             return axis != null && axis.ReadValue() > 0.75f;
         }
 #endif
+
+        private bool TryGetXRNodeRay(XRNode node, out Ray ray)
+        {
+            ray = default;
+            var dev = InputDevices.GetDeviceAtXRNode(node);
+            if (!dev.isValid) return false;
+
+            if (!dev.TryGetFeatureValue(CommonUsages.devicePosition, out var localPos)) return false;
+            if (!dev.TryGetFeatureValue(CommonUsages.deviceRotation, out var localRot)) return false;
+
+            Vector3 pos = localPos;
+            Quaternion rot = localRot;
+            if (trackingOrigin != null)
+            {
+                pos = trackingOrigin.TransformPoint(localPos);
+                rot = trackingOrigin.rotation * localRot;
+            }
+
+            ray = new Ray(pos, rot * Vector3.forward);
+            return true;
+        }
+
+        private static bool GetBool(InputDevice device, InputFeatureUsage<bool> usage)
+        {
+            if (!device.isValid) return false;
+            return device.TryGetFeatureValue(usage, out bool v) && v;
+        }
     }
 }

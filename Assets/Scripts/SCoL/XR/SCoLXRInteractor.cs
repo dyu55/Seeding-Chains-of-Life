@@ -43,6 +43,9 @@ namespace SCoL.XR
         [Tooltip("Optional. If empty, will auto-find SCoLRuntime in scene.")]
         public SCoL.SCoLRuntime runtime;
 
+        [Tooltip("Optional inventory. If assigned (or found), tools will consume items.")]
+        public SCoL.Inventory.SCoLInventory inventory;
+
         [Tooltip("Used to convert XR device local pose to world. Usually the 'XR Origin (VR)' transform.")]
         public Transform trackingOrigin;
 
@@ -72,6 +75,9 @@ namespace SCoL.XR
         {
             if (runtime == null)
                 runtime = FindFirstObjectByType<SCoL.SCoLRuntime>();
+
+            if (inventory == null)
+                inventory = FindFirstObjectByType<SCoL.Inventory.SCoLInventory>();
 
             if (trackingOrigin == null)
             {
@@ -374,6 +380,24 @@ namespace SCoL.XR
 
         private void ApplyTool(Vector3 worldPoint)
         {
+            // If an inventory exists, enforce consumption.
+            // (This keeps behavior consistent with SCoLToolController.)
+            if (inventory != null)
+            {
+                switch (currentTool)
+                {
+                    case Tool.Seed:
+                        if (!inventory.TryConsume(SCoL.Inventory.SCoLItemType.Seed, 1)) return;
+                        break;
+                    case Tool.Water:
+                        if (!inventory.TryConsume(SCoL.Inventory.SCoLItemType.Water, 1)) return;
+                        break;
+                    case Tool.Fire:
+                        if (!inventory.TryConsume(SCoL.Inventory.SCoLItemType.Fire, 1)) return;
+                        break;
+                }
+            }
+
             switch (currentTool)
             {
                 case Tool.Seed:
