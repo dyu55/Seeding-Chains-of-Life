@@ -139,14 +139,14 @@ namespace SCoL.XR
             var leftXR = InputDevices.GetDeviceAtXRNode(XRNode.LeftHand);
             var rightXR = InputDevices.GetDeviceAtXRNode(XRNode.RightHand);
 
-            bool leftPrimaryXR = GetBool(leftXR, CommonUsages.primaryButton);
-            bool leftSecondaryXR = GetBool(leftXR, CommonUsages.secondaryButton);
+            bool leftPrimaryXR = GetBool(leftXR, UnityEngine.XR.CommonUsages.primaryButton);
+            bool leftSecondaryXR = GetBool(leftXR, UnityEngine.XR.CommonUsages.secondaryButton);
             if (leftPrimaryXR && !_prevLeftPrimary) CycleTool(+1);
             if (leftSecondaryXR && !_prevLeftSecondary) CycleTool(-1);
             _prevLeftPrimary = leftPrimaryXR;
             _prevLeftSecondary = leftSecondaryXR;
 
-            bool rightTriggerXR = GetBool(rightXR, CommonUsages.triggerButton);
+            bool rightTriggerXR = GetBool(rightXR, UnityEngine.XR.CommonUsages.triggerButton);
             if (rightTriggerXR && !_prevRightTrigger)
             {
                 if (TryGetToolAimRay(out var ray) && Physics.Raycast(ray, out var hit, rayLength, hitLayers, QueryTriggerInteraction.Ignore))
@@ -336,8 +336,8 @@ namespace SCoL.XR
             var dev = InputDevices.GetDeviceAtXRNode(node);
             if (!dev.isValid) return false;
 
-            if (!dev.TryGetFeatureValue(CommonUsages.devicePosition, out var localPos)) return false;
-            if (!dev.TryGetFeatureValue(CommonUsages.deviceRotation, out var localRot)) return false;
+            if (!dev.TryGetFeatureValue(UnityEngine.XR.CommonUsages.devicePosition, out var localPos)) return false;
+            if (!dev.TryGetFeatureValue(UnityEngine.XR.CommonUsages.deviceRotation, out var localRot)) return false;
 
             Vector3 pos = localPos;
             Quaternion rot = localRot;
