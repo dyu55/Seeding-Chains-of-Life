@@ -42,7 +42,11 @@ namespace SCoL.Visualization
                 if (!tool.TryGetToolAimRay(out var toolRay))
                     return;
 
-                if (Physics.Raycast(toolRay, out var hit1, rayLength, hitLayers, QueryTriggerInteraction.Ignore))
+                // Use the tool controller's ray settings so highlight matches actual interaction.
+                float len = tool.rayLength;
+                var layers = tool.hitLayers;
+
+                if (Physics.Raycast(toolRay, out var hit1, len, layers, QueryTriggerInteraction.Ignore))
                 {
                     if (runtime.TryWorldToCell(hit1.point, out int x, out int y))
                     {

@@ -52,7 +52,7 @@ namespace SCoL.Visualization
         public float worldSpaceScale = 0.0015f;
 
         [Tooltip("Offset from camera forward center (meters). +x=right, +y=up.")]
-        public Vector2 worldSpaceOffsetMeters = new Vector2(0.25f, -0.18f);
+        public Vector2 worldSpaceOffsetMeters = new Vector2(0.10f, -0.18f);
 
         [Header("Sections")]
         public bool showTool = true;
