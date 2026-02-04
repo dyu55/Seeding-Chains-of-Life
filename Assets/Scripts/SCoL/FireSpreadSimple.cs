@@ -67,6 +67,7 @@ namespace SCoL
                     if (c.PlantStage != PlantStage.Empty)
                     {
                         c.PlantStage = PlantStage.Burnt; // scorched earth / remains
+                        c.PlantAgeSeconds = 0f;
                         c.WaterVisual = 0f;
                     }
                 }

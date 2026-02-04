@@ -343,6 +343,7 @@ namespace SCoL
             // if burnt, slowly recover success
             if (cur.PlantStage == PlantStage.Burnt)
             {
+                n.PlantAgeSeconds = 0f;
                 n.Success = Mathf.Clamp01(cur.Success + 0.01f);
                 return;
             }
@@ -377,6 +378,7 @@ namespace SCoL
                         if (_rng.NextDouble() < chance)
                         {
                             n.PlantStage = PlantStage.SmallPlant;
+                            n.PlantAgeSeconds = 0f;
                             n.Durability = 1.0f;
                         }
                     }
@@ -388,12 +390,37 @@ namespace SCoL
                 if (smallPlants == 3 && waterOk && sunOk && heatOk)
                 {
                     n.PlantStage = PlantStage.SmallPlant;
+                    n.PlantAgeSeconds = 0f;
                     n.Durability = 1.0f;
                 }
                 return;
             }
 
-            if (!cur.HasPlant) return;
+            if (!cur.HasPlant)
+            {
+                n.PlantAgeSeconds = 0f;
+                return;
+            }
+
+            // Lifecycle: plant disappears after a fixed lifetime (in seconds)
+            if (Config.enablePlantLifecycle)
+            {
+                float ageNext = cur.PlantAgeSeconds + Config.tickSeconds;
+                if (ageNext >= Config.plantLifetimeSeconds)
+                {
+                    n.PlantStage = PlantStage.Empty;
+                    n.PlantAgeSeconds = 0f;
+                    n.IsOnFire = false;
+                    n.FireFuel = 0f;
+                    return;
+                }
+
+                n.PlantAgeSeconds = ageNext;
+            }
+            else
+            {
+                n.PlantAgeSeconds = cur.PlantAgeSeconds;
+            }
 
             // For this prototype: once planted, a tile stays planted (no death-by-environment).
             // We still penalize success/durability so conditions matter, but we don't erase the plant.
@@ -449,6 +476,7 @@ namespace SCoL
 
             // Simple: seed always succeeds (visual green immediately)
             c.PlantStage = PlantStage.SmallPlant;
+            c.PlantAgeSeconds = 0f;
             c.Durability = 1.0f;
             c.WaterVisual = 0f;
 

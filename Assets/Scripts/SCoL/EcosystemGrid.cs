@@ -77,6 +77,7 @@ namespace SCoL
             return new CellState
             {
                 PlantStage = c.PlantStage,
+                PlantAgeSeconds = c.PlantAgeSeconds,
                 Water = c.Water,
                 Sunlight = c.Sunlight,
                 Heat = c.Heat,
@@ -92,6 +93,7 @@ namespace SCoL
         {
             var dst = Get(x, y);
             dst.PlantStage = src.PlantStage;
+            dst.PlantAgeSeconds = src.PlantAgeSeconds;
             dst.Water = src.Water;
             dst.Sunlight = src.Sunlight;
             dst.Heat = src.Heat;

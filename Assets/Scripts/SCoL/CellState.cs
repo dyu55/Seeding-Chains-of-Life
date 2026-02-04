@@ -7,6 +7,9 @@ namespace SCoL
     {
         public PlantStage PlantStage = PlantStage.Empty;
 
+        // Lifetime tracking (seconds). Used when plant lifecycle is enabled.
+        public float PlantAgeSeconds = 0f;
+
         // Continuous, 0..1
         public float Water = 0.2f;
         public float Sunlight = 0.8f;

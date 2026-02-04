@@ -11,7 +11,7 @@ namespace SCoL
         [Min(0.1f)] public float cellSize = 0.5f;
 
         [Header("Timing")]
-        [Min(0.05f)] public float tickSeconds = 1.0f;
+        [Min(0.05f)] public float tickSeconds = .25f;
         [Tooltip("Seconds per season (2.5min default).")]
         [Min(5f)] public float seasonSeconds = 150f;
 
@@ -24,10 +24,17 @@ namespace SCoL
         [Range(0f, 1f)] public float stompDamage = 0.10f;
 
         [Tooltip("Base chance per tick for an empty tile to sprout when near plants (stochastic CA birth).")]
-        [Range(0f, 1f)] public float stochasticSproutChance = 0.06f;
+        [Range(0f, 1f)] public float stochasticSproutChance = 0.50f;
 
         [Tooltip("If true, use stochastic sprouting instead of the strict Life-style (==3) birth rule.")]
         public bool useStochasticSprouting = true;
+
+        [Header("Lifecycle")]
+        [Tooltip("If true, plants disappear after 'plantLifetimeSeconds'.")]
+        public bool enablePlantLifecycle = true;
+
+        [Min(1f)]
+        public float plantLifetimeSeconds = 20f;
 
         [Header("Fire")]
         [Range(0f, 1f)] public float fireHeatPerTick = 0.25f;
