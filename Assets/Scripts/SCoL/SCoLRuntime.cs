@@ -357,7 +357,34 @@ namespace SCoL
 
             if (cur.PlantStage == PlantStage.Empty)
             {
-                // Birth: like life-game: exactly 3 nearby small plants + good conditions
+                // Birth: stochastic sprouting (less "grid-perfect" than strict Life rules).
+                // We bias toward sprouting near existing plants and under decent conditions.
+                if (Config.useStochasticSprouting)
+                {
+                    float env = 0f;
+                    if (waterOk) env += 0.45f;
+                    if (sunOk) env += 0.45f;
+                    if (heatOk) env += 0.25f;
+                    env = Mathf.Clamp01(env);
+
+                    // Require at least some nearby vegetation so it doesn't random-fill the whole map.
+                    if (anyPlants > 0 && env > 0.35f)
+                    {
+                        // Neighborhood factor: more neighbors => higher chance, but diminishing returns.
+                        float neigh = Mathf.Clamp01(anyPlants / 6f);
+                        float chance = Config.stochasticSproutChance * env * (0.35f + 0.65f * neigh);
+
+                        if (_rng.NextDouble() < chance)
+                        {
+                            n.PlantStage = PlantStage.SmallPlant;
+                            n.Durability = 1.0f;
+                        }
+                    }
+
+                    return;
+                }
+
+                // Strict CA birth (classic Life-style)
                 if (smallPlants == 3 && waterOk && sunOk && heatOk)
                 {
                     n.PlantStage = PlantStage.SmallPlant;

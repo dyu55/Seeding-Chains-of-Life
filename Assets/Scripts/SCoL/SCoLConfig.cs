@@ -23,6 +23,12 @@ namespace SCoL
         [Range(0f, 1f)] public float seedSuccessBase = 0.75f;
         [Range(0f, 1f)] public float stompDamage = 0.10f;
 
+        [Tooltip("Base chance per tick for an empty tile to sprout when near plants (stochastic CA birth).")]
+        [Range(0f, 1f)] public float stochasticSproutChance = 0.06f;
+
+        [Tooltip("If true, use stochastic sprouting instead of the strict Life-style (==3) birth rule.")]
+        public bool useStochasticSprouting = true;
+
         [Header("Fire")]
         [Range(0f, 1f)] public float fireHeatPerTick = 0.25f;
         [Range(0f, 1f)] public float fireFuelBurnPerTick = 0.12f;
