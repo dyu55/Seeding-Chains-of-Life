@@ -368,13 +368,12 @@ namespace SCoL
 
             if (!cur.HasPlant) return;
 
-            // Death by stomp or bad environment
+            // For this prototype: once planted, a tile stays planted (no death-by-environment).
+            // We still penalize success/durability so conditions matter, but we don't erase the plant.
             if (cur.Durability <= 0.15f || !waterOk || !sunOk || !heatOk)
             {
-                n.PlantStage = PlantStage.Empty;
-                n.IsOnFire = false;
-                n.FireFuel = 0f;
-                n.Success = Mathf.Clamp01(cur.Success - 0.05f);
+                n.Durability = Mathf.Clamp01(cur.Durability - 0.02f);
+                n.Success = Mathf.Clamp01(cur.Success - 0.03f);
                 return;
             }
 
