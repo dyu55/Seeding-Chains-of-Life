@@ -39,5 +39,9 @@ namespace SCoL
         [Header("Debug")]
         public bool generateGroundPlane = true;
         public bool spawnCameraRigHint = false;
+
+        [Header("Simulation")]
+        [Tooltip("If true, the cellular-automata style simulation tick runs every tickSeconds.")]
+        public bool enableSimulationTick = true;
     }
 }

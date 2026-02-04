@@ -68,6 +68,8 @@ namespace SCoL
 
             Grid = new EcosystemGrid(config.width, config.height, config.cellSize, gridOrigin);
             _rng = new System.Random(Environment.TickCount);
+            _tickTimer = 0f;
+            _seasonTimer = 0f;
 
             _renderRoot = new GameObject("SCoL_Render").transform;
             _renderRoot.SetParent(transform, worldPositionStays: true);
@@ -94,15 +96,13 @@ namespace SCoL
                 AdvanceSeason();
             }
 
-            // Disable background simulation tick for now so interaction feedback is stable and obvious.
-            // (We can re-enable once interactions + visuals are finalized.)
-            //
-            // if (_tickTimer >= Config.tickSeconds)
-            // {
-            //     _tickTimer = 0f;
-            //     Tick();
-            //     _renderer.Render(Grid);
-            // }
+            // Background simulation tick (cellular-automata style).
+            if (Config.enableSimulationTick && _tickTimer >= Config.tickSeconds)
+            {
+                _tickTimer = 0f;
+                Tick();
+                _renderer.Render(Grid);
+            }
         }
 
         private void AdvanceSeason()
