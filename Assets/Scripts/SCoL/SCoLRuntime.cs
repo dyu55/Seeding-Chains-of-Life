@@ -357,18 +357,12 @@ namespace SCoL
 
             if (cur.PlantStage == PlantStage.Empty)
             {
-                // Birth (CA): loosened from classic Life (==3) to a broader "viable neighborhood" range.
-                // This makes emergence visible in sparse, player-driven planting.
-                bool neighborOk = smallPlants >= 2 && smallPlants <= 4;
-                bool envOk = (waterOk && sunOk) || (waterOk && heatOk) || (sunOk && heatOk);
-
-                if (neighborOk && envOk)
+                // Birth: like life-game: exactly 3 nearby small plants + good conditions
+                if (smallPlants == 3 && waterOk && sunOk && heatOk)
                 {
                     n.PlantStage = PlantStage.SmallPlant;
                     n.Durability = 1.0f;
-                    n.Success = Mathf.Clamp01(cur.Success + 0.05f);
                 }
-
                 return;
             }
 
