@@ -1,7 +1,7 @@
 using UnityEngine;
 using UnityEngine.XR;
 using Unity.XR.CoreUtils;
-using UnityEngine.XR.Interaction.Toolkit;
+
 
 #if ENABLE_INPUT_SYSTEM
 using UnityEngine.InputSystem;
@@ -63,7 +63,7 @@ namespace SCoL.XR
         private bool _prevLeftSecondary;
         private bool _prevRightTrigger;
 
-        private XRRayInteractor _rightRayInteractor;
+        private UnityEngine.XR.Interaction.Toolkit.Interactors.XRRayInteractor _rightRayInteractor;
 
         private void Awake()
         {
@@ -79,7 +79,7 @@ namespace SCoL.XR
 
             // Try to auto-find a right-hand ray interactor (best source of aim direction).
             // We pick the first one we find; if you have multiple, assign aimOrigin manually.
-            _rightRayInteractor = FindFirstObjectByType<XRRayInteractor>();
+            _rightRayInteractor = FindFirstObjectByType<UnityEngine.XR.Interaction.Toolkit.Interactors.XRRayInteractor>();
 
             if (aimOrigin == null && _rightRayInteractor != null)
                 aimOrigin = _rightRayInteractor.transform;

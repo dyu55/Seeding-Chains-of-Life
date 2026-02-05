@@ -1,5 +1,7 @@
 using System;
 using UnityEngine;
+using SCoL.Voxels;
+using SCoL.Visualization;
 
 namespace SCoL
 {
@@ -16,6 +18,9 @@ namespace SCoL
 
         private EcosystemRenderer _renderer;
         private Transform _renderRoot;
+
+        private VoxelWorld _voxelWorld;
+        private PlantVoxelRenderer _plantRenderer;
 
         public GridViewMode ViewMode
         {
@@ -38,6 +43,7 @@ namespace SCoL
         public void ForceRender()
         {
             _renderer?.Render(Grid);
+            _plantRenderer?.RenderNow();
         }
 
         private System.Random _rng;
@@ -67,17 +73,45 @@ namespace SCoL
             Vector3 gridOrigin = worldCenter - new Vector3(config.width * config.cellSize * 0.5f, 0f, config.height * config.cellSize * 0.5f);
 
             Grid = new EcosystemGrid(config.width, config.height, config.cellSize, gridOrigin);
-            _rng = new System.Random(Environment.TickCount);
+
+            int seed = config.useFixedSeed ? config.seed : Environment.TickCount;
+            _rng = new System.Random(seed);
             _tickTimer = 0f;
             _seasonTimer = 0f;
 
             _renderRoot = new GameObject("SCoL_Render").transform;
             _renderRoot.SetParent(transform, worldPositionStays: true);
 
-            // Ground plane disabled for now; the tile grid itself is used as the visible ground.
+            // --- Voxel world (3D terrain) ---
+            _voxelWorld = FindFirstObjectByType<VoxelWorld>();
+            if (_voxelWorld == null)
+            {
+                var wgo = new GameObject("VoxelWorld");
+                wgo.transform.position = gridOrigin; // align voxel (0,0,0) to grid origin
+                _voxelWorld = wgo.AddComponent<VoxelWorld>();
+                // user can assign a VoxelWorldConfig in-scene later; defaults are fine for prototype.
+            }
+            _voxelWorld.useTransformAsOrigin = true;
+            _voxelWorld.InitIfNeeded();
 
-            _renderer = new EcosystemRenderer(Grid, _renderRoot);
-            _renderer.Render(Grid);
+            // --- Legacy tile renderer (disable for voxel mode) ---
+            if (config.enableLegacyTileRenderer)
+            {
+                _renderer = new EcosystemRenderer(Grid, _renderRoot);
+                _renderer.Render(Grid);
+            }
+
+            // --- Plant renderer (flowers as cubes, placed on voxel surface) ---
+            _plantRenderer = FindFirstObjectByType<PlantVoxelRenderer>();
+            if (_plantRenderer == null)
+            {
+                var pgo = new GameObject("PlantVoxelRenderer");
+                pgo.transform.SetParent(transform, worldPositionStays: true);
+                _plantRenderer = pgo.AddComponent<PlantVoxelRenderer>();
+            }
+            _plantRenderer.runtime = this;
+            _plantRenderer.voxelWorld = _voxelWorld;
+            _plantRenderer.RenderNow();
 
             EnsureHUD();
         }
@@ -101,7 +135,8 @@ namespace SCoL
             {
                 _tickTimer = 0f;
                 Tick();
-                _renderer.Render(Grid);
+                _renderer?.Render(Grid);
+                _plantRenderer?.RenderNow();
             }
         }
 
@@ -371,6 +406,37 @@ namespace SCoL
                     // Require at least some nearby vegetation so it doesn't random-fill the whole map.
                     if (anyPlants > 0 && env > 0.35f)
                     {
+                        // Voxel constraints for flowers:
+                        // - only grow on grass surface
+                        // - can climb up to +5 blocks relative to a neighboring flower source
+                        if (_voxelWorld != null)
+                        {
+                            if (!_voxelWorld.IsGrassSurface(x, y))
+                                return;
+
+                            int targetH = _voxelWorld.GetSurfaceY(x, y);
+                            bool hasReachableSource = false;
+
+                            for (int dy = -1; dy <= 1 && !hasReachableSource; dy++)
+                            for (int dx = -1; dx <= 1 && !hasReachableSource; dx++)
+                            {
+                                if (dx == 0 && dy == 0) continue;
+                                int nx = x + dx;
+                                int ny = y + dy;
+                                if (!Grid.InBounds(nx, ny)) continue;
+
+                                var nb = Grid.Get(nx, ny);
+                                if (nb.PlantStage != PlantStage.SmallPlant) continue;
+
+                                int sourceH = _voxelWorld.GetSurfaceY(nx, ny);
+                                if (targetH <= sourceH + 5)
+                                    hasReachableSource = true;
+                            }
+
+                            if (!hasReachableSource)
+                                return;
+                        }
+
                         // Neighborhood factor: more neighbors => higher chance, but diminishing returns.
                         float neigh = Mathf.Clamp01(anyPlants / 6f);
                         float chance = Config.stochasticSproutChance * env * (0.35f + 0.65f * neigh);
@@ -470,6 +536,10 @@ namespace SCoL
             if (!TryWorldToCell(world, out int x, out int y)) return;
 
             var c = Grid.Get(x, y);
+
+            // Only plant flowers on grass surface in voxel world.
+            if (_voxelWorld != null && !_voxelWorld.IsGrassSurface(x, y))
+                return;
 
             // Allow planting on empty OR burnt/scorched tiles.
             if (c.PlantStage != PlantStage.Empty && c.PlantStage != PlantStage.Burnt) return;

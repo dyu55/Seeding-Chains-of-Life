@@ -6,9 +6,9 @@ namespace SCoL
     public class SCoLConfig : ScriptableObject
     {
         [Header("Grid")]
-        [Min(1)] public int width = 32;
-        [Min(1)] public int height = 32;
-        [Min(0.1f)] public float cellSize = 0.5f;
+        [Min(1)] public int width = 100;
+        [Min(1)] public int height = 100;
+        [Min(0.1f)] public float cellSize = 1.0f;
 
         [Header("Timing")]
         [Min(0.05f)] public float tickSeconds = .25f;
@@ -24,7 +24,7 @@ namespace SCoL
         [Range(0f, 1f)] public float stompDamage = 0.10f;
 
         [Tooltip("Base chance per tick for an empty tile to sprout when near plants (stochastic CA birth).")]
-        [Range(0f, 1f)] public float stochasticSproutChance = 0.50f;
+        [Range(0f, 1f)] public float stochasticSproutChance = 0.15f;
 
         [Tooltip("If true, use stochastic sprouting instead of the strict Life-style (==3) birth rule.")]
         public bool useStochasticSprouting = true;
@@ -34,7 +34,7 @@ namespace SCoL
         public bool enablePlantLifecycle = true;
 
         [Min(1f)]
-        public float plantLifetimeSeconds = 20f;
+        public float plantLifetimeSeconds = 100f;
 
         [Header("Fire")]
         [Range(0f, 1f)] public float fireHeatPerTick = 0.25f;
@@ -53,8 +53,17 @@ namespace SCoL
         public bool generateGroundPlane = true;
         public bool spawnCameraRigHint = false;
 
+        [Header("Seed")]
+        [Tooltip("If true, the simulation uses a fixed seed (repeatable).")]
+        public bool useFixedSeed = true;
+        public int seed = 12345;
+
         [Header("Simulation")]
         [Tooltip("If true, the cellular-automata style simulation tick runs every tickSeconds.")]
         public bool enableSimulationTick = true;
+
+        [Header("Rendering")]
+        [Tooltip("Legacy 2D tile renderer (flat cubes). Disable when using VoxelWorld.")]
+        public bool enableLegacyTileRenderer = false;
     }
 }

@@ -16,7 +16,7 @@ namespace SCoL.Inventory
     {
         public SCoLInventory inventory;
 
-        private XRBaseInteractable _interactable;
+        private UnityEngine.XR.Interaction.Toolkit.Interactables.XRBaseInteractable _interactable;
         private SCoLPickup _pickup;
 
         private void Awake()
@@ -26,11 +26,11 @@ namespace SCoL.Inventory
                 inventory = FindFirstObjectByType<SCoLInventory>();
 
             // Ensure an interactable exists
-            _interactable = GetComponent<XRBaseInteractable>();
+            _interactable = GetComponent<UnityEngine.XR.Interaction.Toolkit.Interactables.XRBaseInteractable>();
             if (_interactable == null)
             {
                 // Grab interactable gives best default behavior with Starter Assets
-                _interactable = gameObject.AddComponent<XRGrabInteractable>();
+                _interactable = gameObject.AddComponent<UnityEngine.XR.Interaction.Toolkit.Interactables.XRGrabInteractable>();
             }
 
             _interactable.selectEntered.AddListener(OnSelectEntered);

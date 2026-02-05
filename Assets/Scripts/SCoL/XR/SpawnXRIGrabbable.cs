@@ -1,5 +1,5 @@
 using UnityEngine;
-using UnityEngine.XR.Interaction.Toolkit;
+
 
 namespace SCoL.XR
 {
@@ -48,7 +48,7 @@ namespace SCoL.XR
             rb.mass = mass;
 
             // XR Grab
-            primitive.AddComponent<XRGrabInteractable>();
+            primitive.AddComponent<UnityEngine.XR.Interaction.Toolkit.Interactables.XRGrabInteractable>();
 
             // Optional: make it a little bouncy/obvious
             var r = primitive.GetComponent<Renderer>();
