@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using Unity.XR.CoreUtils;
 
 namespace SCoL.Voxels
 {
@@ -350,19 +351,54 @@ namespace SCoL.Voxels
             return OriginWorld + new Vector3(x + 0.5f, y + 1.0f, z + 0.5f);
         }
 
+        public void ForceEnableChunksAtWorld(Vector3 worldPos, int renderRadiusChunks = 1, int colliderRadiusChunks = 1)
+        {
+            int cs = config.chunkSize;
+            Vector3 local = worldPos - OriginWorld;
+            int cx = Mathf.FloorToInt(local.x / cs);
+            int cz = Mathf.FloorToInt(local.z / cs);
+
+            for (int dz = -renderRadiusChunks; dz <= renderRadiusChunks; dz++)
+            for (int dx = -renderRadiusChunks; dx <= renderRadiusChunks; dx++)
+            {
+                var cc = new Vector2Int(cx + dx, cz + dz);
+                if (_chunkGOs.TryGetValue(cc, out var go) && go != null)
+                    go.SetActive(true);
+            }
+
+            for (int dz = -colliderRadiusChunks; dz <= colliderRadiusChunks; dz++)
+            for (int dx = -colliderRadiusChunks; dx <= colliderRadiusChunks; dx++)
+            {
+                var cc = new Vector2Int(cx + dx, cz + dz);
+                if (_chunkColliders.TryGetValue(cc, out var mc) && mc != null)
+                    mc.enabled = true;
+            }
+        }
+
         private void StreamAroundCamera()
         {
             if (_chunkGOs.Count == 0) return;
 
-            var cam = Camera.main;
-            if (cam == null) return;
+            // Prefer XR Origin position (stable "player" reference) over Camera.main.
+            Vector3 focusPos;
+            var xrOrigin = FindFirstObjectByType<Unity.XR.CoreUtils.XROrigin>();
+            if (xrOrigin != null)
+                focusPos = xrOrigin.transform.position;
+            else
+            {
+                var cam = Camera.main;
+                if (cam == null) return;
+                focusPos = cam.transform.position;
+            }
+
+            Camera frustumCam = Camera.main;
 
             int cs = config.chunkSize;
-            Vector3 local = cam.transform.position - OriginWorld;
+            Vector3 local = focusPos - OriginWorld;
             int camChunkX = Mathf.FloorToInt(local.x / cs);
             int camChunkZ = Mathf.FloorToInt(local.z / cs);
 
-            var planes = config.frustumCullChunks ? GeometryUtility.CalculateFrustumPlanes(cam) : null;
+            var planes = (config.frustumCullChunks && frustumCam != null) ? GeometryUtility.CalculateFrustumPlanes(frustumCam) : null;
 
             foreach (var kv in _chunkGOs)
             {

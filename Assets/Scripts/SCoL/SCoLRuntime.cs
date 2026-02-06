@@ -632,6 +632,9 @@ namespace SCoL
             // Spawn a bit higher so the CharacterController/Rigidbody has time to settle onto the collider.
             Vector3 snapped = _voxelWorld.OriginWorld + new Vector3(x + 0.5f, surfaceY + 1.75f, z + 0.5f);
             xrOrigin.transform.position = snapped;
+
+            // Ensure the chunk under the player is active and collidable even with streaming.
+            _voxelWorld.ForceEnableChunksAtWorld(snapped, renderRadiusChunks: 1, colliderRadiusChunks: 1);
         }
 
         private void IgniteCell(int x, int y, float fuel)
