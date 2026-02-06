@@ -8,15 +8,15 @@ namespace SCoL.Voxels
         [Header("World Size")]
         [Min(1)] public int worldWidth = 100;
         [Min(1)] public int worldDepth = 100;
-        [Min(16)] public int worldHeight = 64;
+        [Min(16)] public int worldHeight = 40;
 
         [Header("Chunk")]
         [Min(4)] public int chunkSize = 16;
 
         [Header("Terrain")]
-        [Min(0)] public int seaLevel = 20;
-        [Min(1)] public int baseHeight = 18;
-        [Min(1)] public int heightAmplitude = 18;
+        [Min(0)] public int seaLevel = 18;
+        [Min(1)] public int baseHeight = 20;
+        [Min(1)] public int heightAmplitude = 8;
 
         [Tooltip("Base noise scale. Smaller = larger features.")]
         [Min(0.001f)] public float noiseScale = 0.035f;
