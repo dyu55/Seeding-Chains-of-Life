@@ -2,6 +2,7 @@ using System;
 using UnityEngine;
 using SCoL.Voxels;
 using SCoL.Visualization;
+using Unity.XR.CoreUtils;
 
 namespace SCoL
 {
@@ -95,6 +96,9 @@ namespace SCoL
             }
             _voxelWorld.useTransformAsOrigin = true;
             _voxelWorld.InitIfNeeded();
+
+            // Snap XR rig to ground after voxel world exists.
+            StartCoroutine(SnapRigToGroundNextFrame());
 
             // --- Legacy tile renderer (disable for voxel mode) ---
             if (config.enableLegacyTileRenderer)
@@ -597,6 +601,36 @@ namespace SCoL
             if (damage < 0f) damage = Config.stompDamage;
             var c = Grid.Get(x, y);
             c.Durability = Mathf.Clamp01(c.Durability - damage);
+        }
+
+        private System.Collections.IEnumerator SnapRigToGroundNextFrame()
+        {
+            // Wait a frame so EnsureStarterXRRig has a chance to instantiate the rig.
+            yield return null;
+
+            if (_voxelWorld == null || _voxelWorld.Config == null)
+                yield break;
+
+            var xrOrigin = FindFirstObjectByType<XROrigin>();
+            if (xrOrigin == null)
+            {
+                var go = GameObject.Find("XR Origin (XR Rig)");
+                if (go != null) xrOrigin = go.GetComponent<XROrigin>();
+            }
+            if (xrOrigin == null)
+                yield break;
+
+            // Convert current rig position into a voxel column; clamp to bounds so we never spawn outside the world.
+            Vector3 local = xrOrigin.transform.position - _voxelWorld.OriginWorld;
+            int x = Mathf.Clamp(Mathf.FloorToInt(local.x), 0, _voxelWorld.Config.worldWidth - 1);
+            int z = Mathf.Clamp(Mathf.FloorToInt(local.z), 0, _voxelWorld.Config.worldDepth - 1);
+
+            int surfaceY = _voxelWorld.GetSurfaceY(x, z);
+
+            // XR Origin position is typically the tracking-space "floor"; camera height comes from a child offset.
+            // Put the floor slightly above the surface to avoid starting inside the collider.
+            Vector3 snapped = _voxelWorld.OriginWorld + new Vector3(x + 0.5f, surfaceY + 0.05f, z + 0.5f);
+            xrOrigin.transform.position = snapped;
         }
 
         private void IgniteCell(int x, int y, float fuel)
