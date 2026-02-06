@@ -54,12 +54,12 @@ namespace SCoL.Voxels
 
         private void EnsureDefaultMaterials()
         {
-            // Create simple colored materials if none provided.
+            // Create simple materials if none provided.
             Shader shader = Shader.Find("Universal Render Pipeline/Lit");
             if (shader == null) shader = Shader.Find("Standard");
 
             if (grassMat == null) grassMat = new Material(shader) { name = "Voxel_Grass" };
-            grassMat.color = new Color(0.25f, 0.80f, 0.25f);
+            ApplyGrassTextureIfAvailable(grassMat);
 
             if (dirtMat == null) dirtMat = new Material(shader) { name = "Voxel_Dirt" };
             dirtMat.color = new Color(0.45f, 0.32f, 0.22f);
@@ -69,6 +69,37 @@ namespace SCoL.Voxels
 
             if (waterMat == null) waterMat = new Material(shader) { name = "Voxel_Water" };
             waterMat.color = new Color(0.18f, 0.35f, 0.85f, 0.85f);
+        }
+
+        private static void ApplyGrassTextureIfAvailable(Material m)
+        {
+            // If a user assigned a material in inspector, don't override it.
+            if (m == null) return;
+
+            // Try load from Resources so this works in builds.
+            // File: Assets/Resources/Voxels/grass_basecolor.jpg
+            var tex = Resources.Load<Texture2D>("Voxels/grass_basecolor");
+            if (tex == null)
+            {
+                // fallback: readable green
+                m.color = new Color(0.25f, 0.80f, 0.25f);
+                return;
+            }
+
+            // Pixel-ish look: point sampling.
+            tex.filterMode = FilterMode.Point;
+            tex.anisoLevel = 0;
+
+            // URP Lit: _BaseMap; Standard: _MainTex
+            if (m.HasProperty("_BaseMap"))
+                m.SetTexture("_BaseMap", tex);
+            if (m.HasProperty("_MainTex"))
+                m.SetTexture("_MainTex", tex);
+
+            if (m.HasProperty("_BaseColor"))
+                m.SetColor("_BaseColor", Color.white);
+            if (m.HasProperty("_Color"))
+                m.SetColor("_Color", Color.white);
         }
 
         public void GenerateAll()
