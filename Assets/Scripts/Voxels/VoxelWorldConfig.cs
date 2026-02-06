@@ -25,7 +25,19 @@ namespace SCoL.Voxels
         public bool useFixedSeed = true;
         public int seed = 12345;
 
-        [Header("Rendering")]
+        [Header("Streaming / Culling")]
         public bool generateColliders = true;
+
+        [Tooltip("How far (in chunks) to keep renderers enabled around the camera.")]
+        [Min(1)] public int renderDistanceChunks = 6;
+
+        [Tooltip("How far (in chunks) to keep colliders enabled around the camera.")]
+        [Min(0)] public int colliderDistanceChunks = 3;
+
+        [Tooltip("If true, disable chunk GameObjects outside camera view frustum (extra safety on top of Unity frustum culling).")]
+        public bool frustumCullChunks = true;
+
+        [Tooltip("Seconds between streaming updates.")]
+        [Min(0.02f)] public float streamingUpdateSeconds = 0.25f;
     }
 }

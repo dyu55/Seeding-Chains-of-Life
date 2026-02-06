@@ -28,6 +28,9 @@ namespace SCoL.Voxels
         private readonly Dictionary<Vector2Int, VoxelChunk> _chunks = new();
         private readonly Dictionary<Vector2Int, GameObject> _chunkGOs = new();
         private readonly Dictionary<Vector2Int, VoxelBlockType[]> _chunkSubmeshOrder = new();
+        private readonly Dictionary<Vector2Int, MeshCollider> _chunkColliders = new();
+
+        private float _streamT;
 
         public Vector3 OriginWorld => useTransformAsOrigin ? transform.position : Vector3.zero;
 
@@ -50,6 +53,16 @@ namespace SCoL.Voxels
         private void Awake()
         {
             InitIfNeeded();
+        }
+
+        private void Update()
+        {
+            if (config == null) return;
+            _streamT += Time.unscaledDeltaTime;
+            if (_streamT < config.streamingUpdateSeconds) return;
+            _streamT = 0f;
+
+            StreamAroundCamera();
         }
 
         private void EnsureDefaultMaterials()
@@ -136,6 +149,7 @@ namespace SCoL.Voxels
             }
             _chunkGOs.Clear();
             _chunkSubmeshOrder.Clear();
+            _chunkColliders.Clear();
         }
 
         private float Noise(float x, float z)
@@ -228,6 +242,7 @@ namespace SCoL.Voxels
             {
                 var mc = go.AddComponent<MeshCollider>();
                 mc.sharedMesh = mesh;
+                _chunkColliders[cc] = mc;
             }
 
             _chunkGOs[cc] = go;
@@ -333,6 +348,56 @@ namespace SCoL.Voxels
         {
             int y = GetSurfaceY(x, z);
             return OriginWorld + new Vector3(x + 0.5f, y + 1.0f, z + 0.5f);
+        }
+
+        private void StreamAroundCamera()
+        {
+            if (_chunkGOs.Count == 0) return;
+
+            var cam = Camera.main;
+            if (cam == null) return;
+
+            int cs = config.chunkSize;
+            Vector3 local = cam.transform.position - OriginWorld;
+            int camChunkX = Mathf.FloorToInt(local.x / cs);
+            int camChunkZ = Mathf.FloorToInt(local.z / cs);
+
+            var planes = config.frustumCullChunks ? GeometryUtility.CalculateFrustumPlanes(cam) : null;
+
+            foreach (var kv in _chunkGOs)
+            {
+                var cc = kv.Key;
+                var go = kv.Value;
+                if (go == null) continue;
+
+                int dx = Mathf.Abs(cc.x - camChunkX);
+                int dz = Mathf.Abs(cc.y - camChunkZ);
+                int dist = Mathf.Max(dx, dz); // Chebyshev distance in chunk grid
+
+                bool withinRender = dist <= config.renderDistanceChunks;
+
+                // Optional frustum check for far chunks
+                if (withinRender && planes != null)
+                {
+                    // chunk bounds in world space
+                    var center = OriginWorld + new Vector3((cc.x * cs) + cs * 0.5f, config.worldHeight * 0.5f, (cc.y * cs) + cs * 0.5f);
+                    var size = new Vector3(cs, config.worldHeight, cs);
+                    var b = new Bounds(center, size);
+                    withinRender = GeometryUtility.TestPlanesAABB(planes, b);
+                }
+
+                if (go.activeSelf != withinRender)
+                    go.SetActive(withinRender);
+
+                if (!config.generateColliders) continue;
+
+                bool withinCollider = dist <= config.colliderDistanceChunks;
+                if (_chunkColliders.TryGetValue(cc, out var mc) && mc != null)
+                {
+                    if (mc.enabled != withinCollider)
+                        mc.enabled = withinCollider;
+                }
+            }
         }
     }
 }
