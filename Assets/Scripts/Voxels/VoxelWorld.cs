@@ -59,15 +59,19 @@ namespace SCoL.Voxels
             if (shader == null) shader = Shader.Find("Standard");
 
             if (grassMat == null) grassMat = new Material(shader) { name = "Voxel_Grass" };
+            grassMat.enableInstancing = true;
             ApplyGrassTextureIfAvailable(grassMat);
 
             if (dirtMat == null) dirtMat = new Material(shader) { name = "Voxel_Dirt" };
+            dirtMat.enableInstancing = true;
             dirtMat.color = new Color(0.45f, 0.32f, 0.22f);
 
             if (stoneMat == null) stoneMat = new Material(shader) { name = "Voxel_Stone" };
+            stoneMat.enableInstancing = true;
             stoneMat.color = new Color(0.55f, 0.55f, 0.60f);
 
             if (waterMat == null) waterMat = new Material(shader) { name = "Voxel_Water" };
+            waterMat.enableInstancing = true;
             waterMat.color = new Color(0.18f, 0.35f, 0.85f, 0.85f);
         }
 
@@ -194,6 +198,9 @@ namespace SCoL.Voxels
 
             var mf = go.AddComponent<MeshFilter>();
             var mr = go.AddComponent<MeshRenderer>();
+            // VR perf defaults: no shadows for voxel terrain.
+            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            mr.receiveShadows = false;
 
             var mesh = VoxelMesher.BuildChunkMesh(this, cc);
             mf.sharedMesh = mesh;

@@ -17,7 +17,9 @@ namespace SCoL.Visualization
         public Color flowerColor = new Color(0.95f, 0.20f, 0.75f);
         public Vector3 flowerScale = new Vector3(0.35f, 0.35f, 0.35f);
 
-        private GameObject[] _flowers;
+        // Sparse pool: only create flower objects for active flower cells.
+        private readonly System.Collections.Generic.Dictionary<int, GameObject> _active = new();
+        private readonly System.Collections.Generic.Stack<GameObject> _pool = new();
         private Material _mat;
 
         private void Awake()
@@ -31,51 +33,66 @@ namespace SCoL.Visualization
             _mat.color = flowerColor;
         }
 
-        public void Ensure()
+        private GameObject Rent()
         {
-            if (runtime == null || runtime.Grid == null) return;
-
-            int n = runtime.Grid.Width * runtime.Grid.Height;
-            if (_flowers != null && _flowers.Length == n) return;
-
-            _flowers = new GameObject[n];
-            for (int i = 0; i < n; i++)
+            if (_pool.Count > 0)
             {
-                var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                go.name = $"Flower_{i}";
-                go.transform.SetParent(transform, worldPositionStays: true);
-                go.transform.localScale = flowerScale;
-                var r = go.GetComponent<Renderer>();
-                if (r != null) r.sharedMaterial = _mat;
-                // Don't collide; VR locomotion should collide with terrain, not with every flower.
-                var col = go.GetComponent<Collider>();
-                if (col != null) Destroy(col);
-                go.SetActive(false);
-                _flowers[i] = go;
+                var go = _pool.Pop();
+                go.SetActive(true);
+                return go;
             }
+
+            var n = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            n.transform.SetParent(transform, worldPositionStays: true);
+            n.transform.localScale = flowerScale;
+            var r = n.GetComponent<Renderer>();
+            if (r != null) r.sharedMaterial = _mat;
+            // Don't collide; VR locomotion should collide with terrain, not with every flower.
+            var col = n.GetComponent<Collider>();
+            if (col != null) Destroy(col);
+            return n;
+        }
+
+        private void Return(GameObject go)
+        {
+            if (go == null) return;
+            go.SetActive(false);
+            _pool.Push(go);
         }
 
         public void RenderNow()
         {
             if (runtime == null || runtime.Grid == null) return;
-            Ensure();
 
             int w = runtime.Grid.Width;
             int h = runtime.Grid.Height;
+
+            // Mark all currently active as potentially removable.
+            // We'll remove ones that are no longer flowers.
+            var toRemove = new System.Collections.Generic.List<int>();
+            foreach (var kv in _active)
+                toRemove.Add(kv.Key);
 
             for (int y = 0; y < h; y++)
             for (int x = 0; x < w; x++)
             {
                 int idx = y * w + x;
                 var cell = runtime.Grid.Get(x, y);
-                var go = _flowers[idx];
-
                 bool isFlower = cell.PlantStage == SCoL.PlantStage.SmallPlant;
+
                 if (!isFlower)
-                {
-                    if (go.activeSelf) go.SetActive(false);
                     continue;
+
+                // It's a flower: ensure it exists.
+                if (!_active.TryGetValue(idx, out var go) || go == null)
+                {
+                    go = Rent();
+                    go.name = $"Flower_{x}_{y}";
+                    _active[idx] = go;
                 }
+
+                // Remove from removal set
+                toRemove.Remove(idx);
 
                 if (voxelWorld != null)
                 {
@@ -84,11 +101,16 @@ namespace SCoL.Visualization
                 }
                 else
                 {
-                    // Fallback: place on 2D grid cell center
                     go.transform.position = runtime.Grid.CellCenterWorld(x, y) + Vector3.up * 0.25f;
                 }
+            }
 
-                if (!go.activeSelf) go.SetActive(true);
+            // Return inactive flowers to pool.
+            foreach (var idx in toRemove)
+            {
+                if (_active.TryGetValue(idx, out var go) && go != null)
+                    Return(go);
+                _active.Remove(idx);
             }
         }
     }
