@@ -20,10 +20,18 @@ namespace SCoL.Voxels
         public Material stoneMat;
         public Material waterMat;
 
+        [Header("Grass Props (decorations)")]
+        public bool enableGrassProps = true;
+        [Range(0f, 1f)] public float grassPropDensity = 0.20f;
+        public int grassPropsMaxPerChunk = 256;
+        public Mesh grassPropMesh;
+        public Material grassPropMaterial;
+
         [Tooltip("If true, world (0,0,0) is placed at this transform position.")]
         public bool useTransformAsOrigin = true;
 
         private System.Random _rng;
+        private int _seed;
         private Vector2 _noiseOffset;
 
         private readonly Dictionary<Vector2Int, VoxelChunk> _chunks = new();
@@ -43,11 +51,12 @@ namespace SCoL.Voxels
                 config = ScriptableObject.CreateInstance<VoxelWorldConfig>();
             }
 
-            int seed = config.useFixedSeed ? config.seed : Environment.TickCount;
-            _rng = new System.Random(seed);
+            _seed = config.useFixedSeed ? config.seed : Environment.TickCount;
+            _rng = new System.Random(_seed);
             _noiseOffset = new Vector2(_rng.Next(-100000, 100000), _rng.Next(-100000, 100000));
 
             EnsureDefaultMaterials();
+            EnsureGrassPropAssets();
             GenerateAll();
         }
 
@@ -87,6 +96,43 @@ namespace SCoL.Voxels
             if (waterMat == null) waterMat = new Material(shader) { name = "Voxel_Water" };
             waterMat.enableInstancing = true;
             waterMat.color = new Color(0.18f, 0.35f, 0.85f, 0.85f);
+        }
+
+        private void EnsureGrassPropAssets()
+        {
+#if UNITY_EDITOR
+            // Auto-load the mesh/material in editor for quick iteration.
+            if (grassPropMesh == null)
+            {
+                // OBJ is imported by Unity as a Mesh asset.
+                var mesh = UnityEditor.AssetDatabase.LoadAssetAtPath<Mesh>("Assets/Models/Modeling/_Incoming/grass patch 1/grass3.obj");
+                if (mesh != null) grassPropMesh = mesh;
+            }
+
+            if (grassPropMaterial == null)
+            {
+                Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+                if (shader == null) shader = Shader.Find("Standard");
+
+                grassPropMaterial = new Material(shader) { name = "GrassProp_Mat" };
+                grassPropMaterial.enableInstancing = true;
+
+                // Reuse the same basecolor as ground grass for now.
+                var tex = Resources.Load<Texture2D>("Voxels/grass_basecolor");
+                if (tex != null)
+                {
+                    tex.filterMode = FilterMode.Point;
+                    if (grassPropMaterial.HasProperty("_BaseMap")) grassPropMaterial.SetTexture("_BaseMap", tex);
+                    if (grassPropMaterial.HasProperty("_MainTex")) grassPropMaterial.SetTexture("_MainTex", tex);
+                    if (grassPropMaterial.HasProperty("_BaseColor")) grassPropMaterial.SetColor("_BaseColor", Color.white);
+                    if (grassPropMaterial.HasProperty("_Color")) grassPropMaterial.SetColor("_Color", Color.white);
+                }
+                else
+                {
+                    grassPropMaterial.color = new Color(0.35f, 0.85f, 0.35f);
+                }
+            }
+#endif
         }
 
         private static void ApplyGrassTextureIfAvailable(Material m)
@@ -247,6 +293,19 @@ namespace SCoL.Voxels
             }
 
             _chunkGOs[cc] = go;
+
+            // Grass props (decorations) are attached to the chunk GO so streaming toggles them.
+            if (enableGrassProps && grassPropMesh != null && grassPropMaterial != null)
+            {
+                var gp = go.AddComponent<GrassPropChunk>();
+                gp.world = this;
+                gp.chunkCoord = cc;
+                gp.grassMesh = grassPropMesh;
+                gp.grassMaterial = grassPropMaterial;
+                gp.density = grassPropDensity;
+                gp.maxPerChunk = grassPropsMaxPerChunk;
+                gp.Rebuild(_seed);
+            }
         }
 
         private List<VoxelBlockType> GetUsedTypesInChunk(Vector2Int cc)
