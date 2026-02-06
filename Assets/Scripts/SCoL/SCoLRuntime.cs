@@ -71,6 +71,8 @@ namespace SCoL
             // Treat the provided origin as the *center* of the world/grid.
             // EcosystemGrid expects Origin to be the bottom-left corner in world space.
             Vector3 gridOrigin = worldCenter - new Vector3(config.width * config.cellSize * 0.5f, 0f, config.height * config.cellSize * 0.5f);
+            // Keep ground at y=0 so XR rigs/pickups don't spawn below terrain.
+            gridOrigin.y = 0f;
 
             Grid = new EcosystemGrid(config.width, config.height, config.cellSize, gridOrigin);
 
