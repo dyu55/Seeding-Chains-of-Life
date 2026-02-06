@@ -21,7 +21,7 @@ namespace SCoL.Voxels
         public Material waterMat;
 
         [Header("Grass Props (decorations)")]
-        public bool enableGrassProps = true;
+        public bool enableGrassProps = false;
         [Range(0f, 1f)] public float grassPropDensity = 0.20f;
         public int grassPropsMaxPerChunk = 256;
         public Mesh grassPropMesh;
