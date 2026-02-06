@@ -170,6 +170,21 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::SCoL.SCoLBootstrap
   config: {fileID: 11400000, guid: b09076b5d538f468898a216a9f43cde4, type: 2}
   origin: {x: 0, y: 0, z: 0}
+--- !u!4 &123275004
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 123275002}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -1.15223, y: 0.5514, z: 0.35372}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!114 &123275005
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -198,6 +213,26 @@ MonoBehaviour:
   runtime: {fileID: 0}
   textColor: {r: 1, g: 1, b: 1, a: 1}
   fontSize: 22
+  visible: 1
+  updateInterval: 0.15
+  useWorldSpaceInXR: 1
+  worldSpaceDistance: 1.25
+  worldSpaceSizeMeters: {x: 0.65, y: 0.42}
+  worldSpaceScale: 0.0015
+  worldSpaceOffsetMeters: {x: 0.1, y: -0.18}
+  showTool: 1
+  showSeasonWeather: 1
+  showViewMode: 1
+  showAimCell: 1
+  showControlsHelp: 1
+  controlsVR: 'VR: A/X = next tool | B/Y = prev tool | Right Trigger = apply | Aim
+    at ball = auto-pickup'
+  controlsDesktop: 'Desktop: 1/2/3 tool | LMB apply | V view | F fire overlay | H
+    toggle HUD'
+  showInventory: 1
+  inventoryOffset: {x: -16, y: 16}
+  inventoryFontSize: 18
+  overrideFont: {fileID: 0}
   rayLength: 50
   hitLayers:
     serializedVersion: 2
@@ -214,10 +249,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8228b2a06dd04dc6b39f303710bdb89e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  rigPrefabPath: Assets/Samples/XR Interaction Toolkit/3.3.1/Starter Assets/Prefabs/XR Origin (XR Rig).prefab
+  rigPrefab: {fileID: 0}
+  rigPrefabPath: Assets/Samples/XR Interaction Toolkit/3.3.1/Starter Assets/Prefabs/XR
+    Origin (XR Rig).prefab
+  rigPrefabResourcesName: XR Origin (XR Rig)
   disableLegacyRigName: XR Origin (VR)
-  spawnPosition: {x: 0, y: 0, z: -1.5}
-  onlyInPlayMode: 1
+  spawnPosition: {x: 0, y: 20, z: -1.5}
+  onlyInPlayMode: 0
 --- !u!114 &123275008
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -232,6 +270,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   runtime: {fileID: 0}
   inventory: {fileID: 0}
+  aimOrigin: {fileID: 0}
   trackingOrigin: {fileID: 0}
   fallbackCamera: {fileID: 0}
   rayLength: 50
@@ -240,6 +279,8 @@ MonoBehaviour:
     m_Bits: 4294967295
   currentTool: 0
   waterAmount: 0.35
+  logXRInput: 0
+  logIntervalSeconds: 1
 --- !u!114 &123275009
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -271,21 +312,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   runtime: {fileID: 0}
---- !u!4 &123275004
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 123275002}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -1.15223, y: 0.5514, z: 0.35372}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  enabledInEditor: 1
+  everyFrame: 0
+  intervalSeconds: 0.2
 --- !u!1 &426019055
 GameObject:
   m_ObjectHideFlags: 0
@@ -376,6 +405,123 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 18ddb545287c546e19cc77dc9fbb2189, type: 3}
+--- !u!1 &910000100
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 910000101}
+  - component: {fileID: 910000102}
+  m_Layer: 0
+  m_Name: SCoL_XRI_GrabbableSpawner
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &910000101
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 910000100}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &910000102
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 910000100}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7c515e4110a846afb7f1c5b06f84b549, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  shape: 0
+  position: {x: 0.5, y: 1.2, z: 1}
+  scale: 0.15
+  useGravity: 1
+  mass: 0.2
+  objectName: XRI_Grabbable
+--- !u!1 &920000100
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 920000101}
+  - component: {fileID: 920000102}
+  - component: {fileID: 920000103}
+  m_Layer: 0
+  m_Name: SCoLInventory
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &920000101
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 920000100}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &920000102
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 920000100}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7dc1456e96b64cde8ca18ec152d15549, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  seeds: 2
+  water: 2
+  fire: 1
+--- !u!114 &920000103
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 920000100}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5e97733662d1485a84207dffee5f6f7d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  seedCount: 6
+  waterCount: 6
+  fireCount: 3
+  scatterAcrossGrid: 1
+  center: {x: 0, y: 1.1, z: 1.2}
+  radius: 0.8
+  yOffset: 0.25
 --- !u!1 &980379203
 GameObject:
   m_ObjectHideFlags: 0
@@ -626,13 +772,14 @@ GameObject:
   - component: {fileID: 1140753245}
   - component: {fileID: 1140753244}
   - component: {fileID: 1140753243}
+  - component: {fileID: 1140753246}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!81 &1140753243
 AudioListener:
   m_ObjectHideFlags: 0
@@ -707,6 +854,50 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1140753246
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1140753242}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a79441f348de89743a2939f4d699eac1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.RenderPipelines.Universal.Runtime::UnityEngine.Rendering.Universal.UniversalAdditionalCameraData
+  m_RenderShadows: 1
+  m_RequiresDepthTextureOption: 2
+  m_RequiresOpaqueTextureOption: 2
+  m_CameraType: 0
+  m_Cameras: []
+  m_RendererIndex: -1
+  m_VolumeLayerMask:
+    serializedVersion: 2
+    m_Bits: 1
+  m_VolumeTrigger: {fileID: 0}
+  m_VolumeFrameworkUpdateModeOption: 2
+  m_RenderPostProcessing: 0
+  m_Antialiasing: 0
+  m_AntialiasingQuality: 2
+  m_StopNaN: 0
+  m_Dithering: 0
+  m_ClearDepth: 1
+  m_AllowXRRendering: 1
+  m_AllowHDROutput: 1
+  m_UseScreenCoordOverride: 0
+  m_ScreenSizeOverride: {x: 0, y: 0, z: 0, w: 0}
+  m_ScreenCoordScaleBias: {x: 0, y: 0, z: 0, w: 0}
+  m_RequiresDepthTexture: 0
+  m_RequiresColorTexture: 0
+  m_TaaSettings:
+    m_Quality: 3
+    m_FrameInfluence: 0.1
+    m_JitterScale: 1
+    m_MipBias: 0
+    m_VarianceClampScale: 0.9
+    m_ContrastAdaptiveSharpening: 0
+  m_Version: 2
 --- !u!1 &1317383918
 GameObject:
   m_ObjectHideFlags: 0
@@ -1217,7 +1408,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &1981361364
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1378,6 +1569,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SCoL.XR.SCoLXRInteractor
   runtime: {fileID: 0}
+  inventory: {fileID: 0}
   trackingOrigin: {fileID: 1981361366}
   fallbackCamera: {fileID: 1566699904}
   rayLength: 50
@@ -1406,123 +1598,8 @@ MonoBehaviour:
   handVisualScale: 0.08
   spawnProps: 1
   propCount: 6
-  propsCenter: {x: 0.5, y: 1.1, z: 1.0}
+  propsCenter: {x: 0.5, y: 1.1, z: 1}
   propsRadius: 0.35
---- !u!1 &910000100
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 910000101}
-  - component: {fileID: 910000102}
-  m_Layer: 0
-  m_Name: SCoL_XRI_GrabbableSpawner
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!4 &910000101
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 910000100}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &910000102
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 910000100}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 7c515e4110a846afb7f1c5b06f84b549, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  shape: 0
-  position: {x: 0.5, y: 1.2, z: 1.0}
-  scale: 0.15
-  useGravity: 1
-  mass: 0.2
-  objectName: XRI_Grabbable
---- !u!1 &920000100
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 920000101}
-  - component: {fileID: 920000102}
-  - component: {fileID: 920000103}
-  m_Layer: 0
-  m_Name: SCoLInventory
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!4 &920000101
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 920000100}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &920000102
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 920000100}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 7dc1456e96b64cde8ca18ec152d15549, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  seeds: 2
-  water: 2
-  fire: 1
---- !u!114 &920000103
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 920000100}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 5e97733662d1485a84207dffee5f6f7d, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  seedCount: 6
-  waterCount: 6
-  fireCount: 3
-  center: {x: 0, y: 1.1, z: 1.2}
-  radius: 0.8
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
