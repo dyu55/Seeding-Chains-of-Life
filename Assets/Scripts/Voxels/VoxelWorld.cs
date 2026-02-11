@@ -25,8 +25,6 @@ namespace SCoL.Voxels
         [Range(0f, 1f)] public float grassPropDensity = 0.20f;
         public int grassPropsMaxPerChunk = 256;
         public Mesh grassPropMesh;
-        public Mesh grassPropMeshVariant1;
-        public Mesh grassPropMeshVariant2;
         public Material grassPropMaterial;
 
         [Header("Flora Props (flowers/trees)")]
@@ -127,23 +125,7 @@ namespace SCoL.Voxels
                 if (mesh != null) grassPropMesh = mesh;
             }
 
-            // Variants (optional) - keep older grass meshes for visual variety.
-            if (grassPropMeshVariant1 == null)
-            {
-                var mesh = UnityEditor.AssetDatabase.LoadAssetAtPath<Mesh>("Assets/Models/Modeling/_Incoming/grass1.obj");
-                if (mesh != null) grassPropMeshVariant1 = mesh;
-            }
-            if (grassPropMeshVariant2 == null)
-            {
-                var mesh = UnityEditor.AssetDatabase.LoadAssetAtPath<Mesh>("Assets/Models/Modeling/_Incoming/grass2.obj");
-                if (mesh != null) grassPropMeshVariant2 = mesh;
-            }
-            // Also include the previous patch as a fallback/variant.
-            if (grassPropMeshVariant2 == null)
-            {
-                var mesh = UnityEditor.AssetDatabase.LoadAssetAtPath<Mesh>("Assets/Models/Modeling/_Incoming/grass patch 1/grass3.obj");
-                if (mesh != null) grassPropMeshVariant2 = mesh;
-            }
+            // Only use the low-poly grass patch (no variants) to keep the look consistent.
 
             if (grassPropMaterial == null)
             {
@@ -372,7 +354,7 @@ namespace SCoL.Voxels
                 gp.world = this;
                 gp.chunkCoord = cc;
                 gp.grassMesh = grassPropMesh;
-                gp.grassMeshVariants = new[] { grassPropMeshVariant1, grassPropMeshVariant2 };
+                gp.grassMeshVariants = null;
                 gp.grassMaterial = grassPropMaterial;
                 gp.density = grassPropDensity;
                 gp.maxPerChunk = grassPropsMaxPerChunk;

@@ -23,6 +23,10 @@ namespace SCoL.Voxels
         [Header("Distribution")]
         [Range(0f, 1f)] public float density = 0.20f; // chance per grass column
         public int maxPerChunk = 256;
+        public bool snapToGrid = true;
+        [Tooltip("If true, uses exact block-center placement with no random offset/rotation/scale.")]
+        public bool strictGridPlacement = true;
+
         public Vector2 randomOffsetXZ = new Vector2(0.35f, 0.35f);
         public Vector2 scaleRange = new Vector2(0.6f, 1.2f);
 
@@ -70,12 +74,20 @@ namespace SCoL.Voxels
 
                 int y = world.GetSurfaceY(x, z);
 
-                float ox = (float)(rng.NextDouble() * 2.0 - 1.0) * randomOffsetXZ.x;
-                float oz = (float)(rng.NextDouble() * 2.0 - 1.0) * randomOffsetXZ.y;
+                float ox = 0f;
+                float oz = 0f;
+                float yaw = 0f;
+                float s = 1f;
 
-                float yaw = (float)rng.NextDouble() * 360f;
-                float s = Mathf.Lerp(scaleRange.x, scaleRange.y, (float)rng.NextDouble());
+                if (!strictGridPlacement)
+                {
+                    ox = (float)(rng.NextDouble() * 2.0 - 1.0) * randomOffsetXZ.x;
+                    oz = (float)(rng.NextDouble() * 2.0 - 1.0) * randomOffsetXZ.y;
+                    yaw = (float)rng.NextDouble() * 360f;
+                    s = Mathf.Lerp(scaleRange.x, scaleRange.y, (float)rng.NextDouble());
+                }
 
+                // Strict placement: align to voxel cell centers.
                 Vector3 pos = world.OriginWorld + new Vector3(x + 0.5f + ox, y + 1.0f, z + 0.5f + oz);
                 var rot = Quaternion.Euler(0f, yaw, 0f);
                 var scale = Vector3.one * s;

@@ -28,6 +28,9 @@ namespace SCoL.Voxels
             public bool requireAboveSeaLevel = true;
 
             [Header("Transform")]
+            [Tooltip("If true, uses exact block-center placement with no random offset/rotation/scale.")]
+            public bool strictGridPlacement = true;
+
             public Vector2 randomOffsetXZ = new Vector2(0.35f, 0.35f);
             public Vector2 scaleRange = new Vector2(0.9f, 1.2f);
 
@@ -89,10 +92,18 @@ namespace SCoL.Voxels
                     if (rng.NextDouble() > p.density)
                         continue;
 
-                    float ox = (float)(rng.NextDouble() * 2.0 - 1.0) * p.randomOffsetXZ.x;
-                    float oz = (float)(rng.NextDouble() * 2.0 - 1.0) * p.randomOffsetXZ.y;
-                    float yaw = (float)rng.NextDouble() * 360f;
-                    float s = Mathf.Lerp(p.scaleRange.x, p.scaleRange.y, (float)rng.NextDouble());
+                    float ox = 0f;
+                    float oz = 0f;
+                    float yaw = 0f;
+                    float s = 1f;
+
+                    if (!p.strictGridPlacement)
+                    {
+                        ox = (float)(rng.NextDouble() * 2.0 - 1.0) * p.randomOffsetXZ.x;
+                        oz = (float)(rng.NextDouble() * 2.0 - 1.0) * p.randomOffsetXZ.y;
+                        yaw = (float)rng.NextDouble() * 360f;
+                        s = Mathf.Lerp(p.scaleRange.x, p.scaleRange.y, (float)rng.NextDouble());
+                    }
 
                     Vector3 pos = world.OriginWorld + new Vector3(x + 0.5f + ox, ySurface + 1.0f, z + 0.5f + oz);
                     var rot = Quaternion.Euler(0f, yaw, 0f);
