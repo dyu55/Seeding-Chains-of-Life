@@ -24,11 +24,15 @@ namespace SCoL.Voxels
         public bool enableGrassProps = true;
         [Range(0f, 1f)] public float grassPropDensity = 0.20f;
         public int grassPropsMaxPerChunk = 256;
+        [Tooltip("Extra perf guardrail: only render grass props within this many chunks from the camera.")]
+        public int grassPropsDistanceChunks = 2;
         public Mesh grassPropMesh;
         public Material grassPropMaterial;
 
         [Header("Flora Props (flowers/trees)")]
         public bool enableFloraProps = true;
+        [Tooltip("Extra perf guardrail: only render flora props (flowers/trees) within this many chunks from the camera.")]
+        public int floraPropsDistanceChunks = 2;
         [Range(0f, 1f)] public float flowerDensity = 0.02f;
         public int flowersMaxPerChunk = 32;
         public Vector2 flowerScaleRange = new Vector2(0.7f, 1.1f);
@@ -53,6 +57,8 @@ namespace SCoL.Voxels
         private readonly Dictionary<Vector2Int, GameObject> _chunkGOs = new();
         private readonly Dictionary<Vector2Int, VoxelBlockType[]> _chunkSubmeshOrder = new();
         private readonly Dictionary<Vector2Int, MeshCollider> _chunkColliders = new();
+        private readonly Dictionary<Vector2Int, GrassPropChunk> _chunkGrassProps = new();
+        private readonly Dictionary<Vector2Int, FloraPropChunk> _chunkFloraProps = new();
 
         private float _streamT;
 
@@ -250,6 +256,8 @@ namespace SCoL.Voxels
             _chunkGOs.Clear();
             _chunkSubmeshOrder.Clear();
             _chunkColliders.Clear();
+            _chunkGrassProps.Clear();
+            _chunkFloraProps.Clear();
         }
 
         private float Noise(float x, float z)
@@ -358,7 +366,9 @@ namespace SCoL.Voxels
                 gp.grassMaterial = grassPropMaterial;
                 gp.density = grassPropDensity;
                 gp.maxPerChunk = grassPropsMaxPerChunk;
+                gp.strictGridPlacement = true;
                 gp.Rebuild(_seed);
+                _chunkGrassProps[cc] = gp;
             }
 
             // Flora props (flowers/trees)
@@ -427,6 +437,7 @@ namespace SCoL.Voxels
 
                 fp.props = props.ToArray();
                 fp.Rebuild(_seed);
+                _chunkFloraProps[cc] = fp;
             }
         }
 
@@ -605,6 +616,21 @@ namespace SCoL.Voxels
 
                 if (go.activeSelf != withinRender)
                     go.SetActive(withinRender);
+
+                // Props guardrails for stable framerate: keep decorative instancing close to camera.
+                if (withinRender)
+                {
+                    if (_chunkGrassProps.TryGetValue(cc, out var gp) && gp != null)
+                    {
+                        bool withinGrassProps = dist <= Mathf.Max(0, grassPropsDistanceChunks);
+                        if (gp.enabled != withinGrassProps) gp.enabled = withinGrassProps;
+                    }
+                    if (_chunkFloraProps.TryGetValue(cc, out var fp) && fp != null)
+                    {
+                        bool withinFloraProps = dist <= Mathf.Max(0, floraPropsDistanceChunks);
+                        if (fp.enabled != withinFloraProps) fp.enabled = withinFloraProps;
+                    }
+                }
 
                 if (!config.generateColliders) continue;
 
