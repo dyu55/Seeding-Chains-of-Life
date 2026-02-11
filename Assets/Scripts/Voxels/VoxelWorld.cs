@@ -25,7 +25,24 @@ namespace SCoL.Voxels
         [Range(0f, 1f)] public float grassPropDensity = 0.20f;
         public int grassPropsMaxPerChunk = 256;
         public Mesh grassPropMesh;
+        public Mesh grassPropMeshVariant1;
+        public Mesh grassPropMeshVariant2;
         public Material grassPropMaterial;
+
+        [Header("Flora Props (flowers/trees)")]
+        public bool enableFloraProps = true;
+        [Range(0f, 1f)] public float flowerDensity = 0.02f;
+        public int flowersMaxPerChunk = 32;
+        public Vector2 flowerScaleRange = new Vector2(0.7f, 1.1f);
+        public Mesh daisyMesh;
+        public Mesh roseMesh;
+        public Material flowerMaterial;
+
+        [Range(0f, 1f)] public float treeDensity = 0.004f;
+        public int treesMaxPerChunk = 12;
+        public Vector2 treeScaleRange = new Vector2(0.9f, 1.4f);
+        public Mesh treeMesh;
+        public Material treeMaterial;
 
         [Tooltip("If true, world (0,0,0) is placed at this transform position.")]
         public bool useTransformAsOrigin = true;
@@ -101,12 +118,23 @@ namespace SCoL.Voxels
         private void EnsureGrassPropAssets()
         {
 #if UNITY_EDITOR
-            // Auto-load the mesh/material in editor for quick iteration.
+            // Auto-load meshes/materials in editor for quick iteration.
             if (grassPropMesh == null)
             {
-                // OBJ is imported by Unity as a Mesh asset.
                 var mesh = UnityEditor.AssetDatabase.LoadAssetAtPath<Mesh>("Assets/Models/Modeling/_Incoming/grass patch 1/grass3.obj");
                 if (mesh != null) grassPropMesh = mesh;
+            }
+
+            // Variants (optional)
+            if (grassPropMeshVariant1 == null)
+            {
+                var mesh = UnityEditor.AssetDatabase.LoadAssetAtPath<Mesh>("Assets/Models/Modeling/_Incoming/grass1.obj");
+                if (mesh != null) grassPropMeshVariant1 = mesh;
+            }
+            if (grassPropMeshVariant2 == null)
+            {
+                var mesh = UnityEditor.AssetDatabase.LoadAssetAtPath<Mesh>("Assets/Models/Modeling/_Incoming/grass2.obj");
+                if (mesh != null) grassPropMeshVariant2 = mesh;
             }
 
             if (grassPropMaterial == null)
@@ -131,6 +159,41 @@ namespace SCoL.Voxels
                 {
                     grassPropMaterial.color = new Color(0.35f, 0.85f, 0.35f);
                 }
+            }
+
+            // Flowers / Trees
+            if (daisyMesh == null)
+            {
+                var mesh = UnityEditor.AssetDatabase.LoadAssetAtPath<Mesh>("Assets/Models/Modeling/_Incoming/Daisy/base.obj");
+                if (mesh != null) daisyMesh = mesh;
+            }
+            if (roseMesh == null)
+            {
+                var mesh = UnityEditor.AssetDatabase.LoadAssetAtPath<Mesh>("Assets/Models/Modeling/_Incoming/rose/rose.obj");
+                if (mesh != null) roseMesh = mesh;
+            }
+            if (treeMesh == null)
+            {
+                var mesh = UnityEditor.AssetDatabase.LoadAssetAtPath<Mesh>("Assets/Models/Modeling/_Incoming/Tree 1 Growth/Tree Growth.obj");
+                if (mesh != null) treeMesh = mesh;
+            }
+
+            if (flowerMaterial == null)
+            {
+                Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+                if (shader == null) shader = Shader.Find("Standard");
+                flowerMaterial = new Material(shader) { name = "FlowerProp_Mat" };
+                flowerMaterial.enableInstancing = true;
+                flowerMaterial.color = new Color(0.95f, 0.90f, 0.95f);
+            }
+
+            if (treeMaterial == null)
+            {
+                Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+                if (shader == null) shader = Shader.Find("Standard");
+                treeMaterial = new Material(shader) { name = "TreeProp_Mat" };
+                treeMaterial.enableInstancing = true;
+                treeMaterial.color = new Color(0.55f, 0.75f, 0.55f);
             }
 #endif
         }
@@ -301,10 +364,79 @@ namespace SCoL.Voxels
                 gp.world = this;
                 gp.chunkCoord = cc;
                 gp.grassMesh = grassPropMesh;
+                gp.grassMeshVariants = new[] { grassPropMeshVariant1, grassPropMeshVariant2 };
                 gp.grassMaterial = grassPropMaterial;
                 gp.density = grassPropDensity;
                 gp.maxPerChunk = grassPropsMaxPerChunk;
                 gp.Rebuild(_seed);
+            }
+
+            // Flora props (flowers/trees)
+            if (enableFloraProps)
+            {
+                var fp = go.AddComponent<FloraPropChunk>();
+                fp.world = this;
+                fp.chunkCoord = cc;
+
+                var props = new List<FloraPropChunk.Prop>();
+
+                // Flowers
+                if (flowerMaterial != null)
+                {
+                    if (daisyMesh != null)
+                    {
+                        props.Add(new FloraPropChunk.Prop
+                        {
+                            name = "Daisy",
+                            mesh = daisyMesh,
+                            material = flowerMaterial,
+                            density = flowerDensity,
+                            maxPerChunk = flowersMaxPerChunk,
+                            onlyOnGrass = true,
+                            requireAboveSeaLevel = true,
+                            scaleRange = flowerScaleRange,
+                            avoidSteepSlopes = true,
+                            maxNeighborDelta = 1
+                        });
+                    }
+                    if (roseMesh != null)
+                    {
+                        props.Add(new FloraPropChunk.Prop
+                        {
+                            name = "Rose",
+                            mesh = roseMesh,
+                            material = flowerMaterial,
+                            density = flowerDensity * 0.6f,
+                            maxPerChunk = Mathf.Max(1, flowersMaxPerChunk / 2),
+                            onlyOnGrass = true,
+                            requireAboveSeaLevel = true,
+                            scaleRange = new Vector2(flowerScaleRange.x * 0.9f, flowerScaleRange.y * 1.15f),
+                            avoidSteepSlopes = true,
+                            maxNeighborDelta = 1
+                        });
+                    }
+                }
+
+                // Trees
+                if (treeMesh != null && treeMaterial != null)
+                {
+                    props.Add(new FloraPropChunk.Prop
+                    {
+                        name = "Tree",
+                        mesh = treeMesh,
+                        material = treeMaterial,
+                        density = treeDensity,
+                        maxPerChunk = treesMaxPerChunk,
+                        onlyOnGrass = true,
+                        requireAboveSeaLevel = true,
+                        scaleRange = treeScaleRange,
+                        avoidSteepSlopes = true,
+                        maxNeighborDelta = 2
+                    });
+                }
+
+                fp.props = props.ToArray();
+                fp.Rebuild(_seed);
             }
         }
 

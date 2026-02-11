@@ -16,6 +16,8 @@ namespace SCoL.Voxels
 
         [Header("Asset")]
         public Mesh grassMesh;
+        [Tooltip("Optional additional meshes to vary visuals. If empty, grassMesh is used.")]
+        public Mesh[] grassMeshVariants;
         public Material grassMaterial;
 
         [Header("Distribution")]
@@ -24,19 +26,33 @@ namespace SCoL.Voxels
         public Vector2 randomOffsetXZ = new Vector2(0.35f, 0.35f);
         public Vector2 scaleRange = new Vector2(0.6f, 1.2f);
 
-        private readonly List<Matrix4x4> _matrices = new();
+        private readonly Dictionary<Mesh, List<Matrix4x4>> _matricesByMesh = new();
 
         public void Rebuild(int seed)
         {
-            _matrices.Clear();
+            _matricesByMesh.Clear();
             if (world == null || world.Config == null) return;
-            if (grassMesh == null || grassMaterial == null) return;
+            if (grassMaterial == null) return;
+
+            // Build mesh list
+            var meshes = new List<Mesh>();
+            if (grassMesh != null) meshes.Add(grassMesh);
+            if (grassMeshVariants != null)
+            {
+                foreach (var m in grassMeshVariants)
+                    if (m != null && !meshes.Contains(m)) meshes.Add(m);
+            }
+            if (meshes.Count == 0) return;
 
             int cs = world.Config.chunkSize;
             int baseX = chunkCoord.x * cs;
             int baseZ = chunkCoord.y * cs;
 
             var rng = new System.Random(Hash(seed, chunkCoord.x, chunkCoord.y));
+
+            // Pre-create per-mesh matrix lists
+            foreach (var m in meshes)
+                _matricesByMesh[m] = new List<Matrix4x4>(Mathf.Min(maxPerChunk, 64));
 
             for (int lz = 0; lz < cs; lz++)
             for (int lx = 0; lx < cs; lx++)
@@ -64,25 +80,38 @@ namespace SCoL.Voxels
                 var rot = Quaternion.Euler(0f, yaw, 0f);
                 var scale = Vector3.one * s;
 
-                _matrices.Add(Matrix4x4.TRS(pos, rot, scale));
-                if (_matrices.Count >= maxPerChunk)
+                // Choose a mesh variant
+                Mesh chosen = meshes[rng.Next(meshes.Count)];
+                _matricesByMesh[chosen].Add(Matrix4x4.TRS(pos, rot, scale));
+
+                // Respect max per chunk across all variants
+                int total = 0;
+                foreach (var kv in _matricesByMesh) total += kv.Value.Count;
+                if (total >= maxPerChunk)
                     return;
             }
         }
 
         private void LateUpdate()
         {
-            if (grassMesh == null || grassMaterial == null) return;
-            if (_matrices.Count == 0) return;
+            if (grassMaterial == null) return;
+            if (_matricesByMesh.Count == 0) return;
 
-            // Draw in batches of 1023 (Unity limit per call)
-            int i = 0;
-            while (i < _matrices.Count)
+            foreach (var kv in _matricesByMesh)
             {
-                int n = Mathf.Min(1023, _matrices.Count - i);
-                Graphics.DrawMeshInstanced(grassMesh, 0, grassMaterial, _matrices.GetRange(i, n), null,
-                    UnityEngine.Rendering.ShadowCastingMode.Off, receiveShadows: false, layer: gameObject.layer);
-                i += n;
+                Mesh mesh = kv.Key;
+                List<Matrix4x4> matrices = kv.Value;
+                if (mesh == null || matrices == null || matrices.Count == 0) continue;
+
+                // Draw in batches of 1023 (Unity limit per call)
+                int i = 0;
+                while (i < matrices.Count)
+                {
+                    int n = Mathf.Min(1023, matrices.Count - i);
+                    Graphics.DrawMeshInstanced(mesh, 0, grassMaterial, matrices.GetRange(i, n), null,
+                        UnityEngine.Rendering.ShadowCastingMode.Off, receiveShadows: false, layer: gameObject.layer);
+                    i += n;
+                }
             }
         }
 
