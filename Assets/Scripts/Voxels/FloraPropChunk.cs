@@ -50,6 +50,9 @@ namespace SCoL.Voxels
         private readonly Dictionary<Mesh, List<Matrix4x4>> _matricesByMesh = new();
         private readonly Dictionary<Mesh, Material> _materialByMesh = new();
 
+        // Reused per-frame buffer to avoid allocations (Unity limit: 1023 instances per call).
+        private readonly Matrix4x4[] _batchBuffer = new Matrix4x4[1023];
+
         public void Rebuild(int seed)
         {
             _matricesByMesh.Clear();
@@ -152,7 +155,10 @@ namespace SCoL.Voxels
                 while (i < matrices.Count)
                 {
                     int n = Mathf.Min(1023, matrices.Count - i);
-                    Graphics.DrawMeshInstanced(mesh, 0, mat, matrices.GetRange(i, n), null,
+                    for (int j = 0; j < n; j++)
+                        _batchBuffer[j] = matrices[i + j];
+
+                    Graphics.DrawMeshInstanced(mesh, 0, mat, _batchBuffer, n, null,
                         UnityEngine.Rendering.ShadowCastingMode.Off, receiveShadows: false, layer: gameObject.layer);
                     i += n;
                 }
