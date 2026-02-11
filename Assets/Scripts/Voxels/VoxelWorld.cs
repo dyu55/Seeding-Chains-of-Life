@@ -119,13 +119,15 @@ namespace SCoL.Voxels
         {
 #if UNITY_EDITOR
             // Auto-load meshes/materials in editor for quick iteration.
+            // Prefer the newer low-poly grass patch as the main grass prop.
             if (grassPropMesh == null)
             {
-                var mesh = UnityEditor.AssetDatabase.LoadAssetAtPath<Mesh>("Assets/Models/Modeling/_Incoming/grass patch 1/grass3.obj");
+                var mesh = UnityEditor.AssetDatabase.LoadAssetAtPath<Mesh>(
+                    "Assets/Models/Modeling/_Incoming/grass patch low poly/tripo_convert_cb595927-be5f-4853-8a13-d5735ba4871c.obj");
                 if (mesh != null) grassPropMesh = mesh;
             }
 
-            // Variants (optional)
+            // Variants (optional) - keep older grass meshes for visual variety.
             if (grassPropMeshVariant1 == null)
             {
                 var mesh = UnityEditor.AssetDatabase.LoadAssetAtPath<Mesh>("Assets/Models/Modeling/_Incoming/grass1.obj");
@@ -134,6 +136,12 @@ namespace SCoL.Voxels
             if (grassPropMeshVariant2 == null)
             {
                 var mesh = UnityEditor.AssetDatabase.LoadAssetAtPath<Mesh>("Assets/Models/Modeling/_Incoming/grass2.obj");
+                if (mesh != null) grassPropMeshVariant2 = mesh;
+            }
+            // Also include the previous patch as a fallback/variant.
+            if (grassPropMeshVariant2 == null)
+            {
+                var mesh = UnityEditor.AssetDatabase.LoadAssetAtPath<Mesh>("Assets/Models/Modeling/_Incoming/grass patch 1/grass3.obj");
                 if (mesh != null) grassPropMeshVariant2 = mesh;
             }
 
