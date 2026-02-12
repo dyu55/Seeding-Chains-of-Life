@@ -18,12 +18,18 @@ namespace SCoL.Visualization
         [Header("References")]
         public WeatherSystem weatherSystem;
 
-        [Tooltip("If true, the rain effect follows Camera.main.")]
+        [Tooltip("If true, the rain effect follows a camera/target transform.")]
         public bool followMainCamera = true;
+
+        [Tooltip("Optional explicit target to follow (recommended for XR). If null, uses Camera.main.")]
+        public Transform followTarget;
 
         [Header("Rain VFX")]
         [Tooltip("Optional ParticleSystem. If null, one will be created at runtime.")]
         public ParticleSystem rainParticleSystem;
+
+        [Tooltip("Material used for the runtime-created rain ParticleSystem renderer.")]
+        public Material rainMaterial;
 
         [Tooltip("Enable rain during Thunderstorm as well.")]
         public bool rainAlsoInThunderstorm = true;
@@ -44,10 +50,10 @@ namespace SCoL.Visualization
         public Vector2 lifetimeRange = new Vector2(0.8f, 1.6f);
 
         [Tooltip("Particle size range.")]
-        public Vector2 sizeRange = new Vector2(2.02f, 2.05f);
+        public Vector2 sizeRange = new Vector2(0.2f, 0.5f);
 
         [Tooltip("Vertical offset above camera.")]
-        public float heightOffset = 4.0f;
+        public float heightOffset = 2.0f;
 
         [Header("Performance")]
         [Tooltip("If true, disables rain in Edit Mode (always) and only runs during Play Mode.")]
@@ -80,16 +86,22 @@ namespace SCoL.Visualization
             if (weatherSystem == null)
                 weatherSystem = FindFirstObjectByType<WeatherSystem>();
 
-            // Follow camera
+            // Follow camera/target
             if (followMainCamera)
             {
-                var cam = Camera.main;
-                if (cam != null)
+                Transform target = followTarget;
+                if (target == null)
+                {
+                    var cam = Camera.main;
+                    target = cam != null ? cam.transform : null;
+                }
+
+                if (target != null)
                 {
                     var tr = rainParticleSystem != null ? rainParticleSystem.transform : null;
                     if (tr != null)
                     {
-                        Vector3 p = cam.transform.position;
+                        Vector3 p = target.position;
                         p.y += heightOffset;
                         tr.position = p;
                     }
@@ -156,7 +168,7 @@ namespace SCoL.Visualization
             main.startLifetime = new ParticleSystem.MinMaxCurve(lifetimeRange.x, lifetimeRange.y);
             main.startSpeed = new ParticleSystem.MinMaxCurve(fallSpeedRange.x, fallSpeedRange.y);
             main.startSize = new ParticleSystem.MinMaxCurve(sizeRange.x, sizeRange.y);
-            main.startColor = new Color(0.85f, 0.9f, 1f, 0.35f);
+            main.startColor = new Color(0.85f, 0.9f, 1f, 1f);
 
             var emission = rainParticleSystem.emission;
             emission.enabled = true;
@@ -180,6 +192,8 @@ namespace SCoL.Visualization
 
             var renderer = rainParticleSystem.GetComponent<ParticleSystemRenderer>();
             renderer.renderMode = ParticleSystemRenderMode.Billboard;
+            if (rainMaterial != null)
+                renderer.sharedMaterial = rainMaterial;
 
             // Start off (will be toggled by ApplyForPhase)
             rainParticleSystem.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
