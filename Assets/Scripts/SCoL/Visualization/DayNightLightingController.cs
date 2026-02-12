@@ -1,4 +1,5 @@
 using UnityEngine;
+using SCoL.Weather;
 
 namespace SCoL.Visualization
 {
@@ -56,6 +57,49 @@ namespace SCoL.Visualization
         [Header("Fog (optional)")]
         public bool driveFog = true;
 
+        [Header("Weather (optional)")]
+        [Tooltip("Optional global WeatherSystem. If assigned, lighting/fog will respond to weather and thunderstorms can flash.")]
+        public WeatherSystem weatherSystem;
+
+        [Tooltip("Multiplier applied to fog density during rain.")]
+        [Min(0f)] public float fogDensityRainMultiplier = 1.35f;
+
+        [Tooltip("Multiplier applied to fog density during thunderstorms.")]
+        [Min(0f)] public float fogDensityThunderMultiplier = 1.6f;
+
+        [Tooltip("Multiplier applied to ambient intensity during rain/thunder.")]
+        [Range(0f, 1f)] public float ambientDimmingInBadWeather = 0.85f;
+
+        [Header("Weather Audio (optional)")]
+        [Tooltip("Optional AudioSource used to play looping weather ambience.")]
+        public AudioSource weatherAudioSource;
+
+        [Tooltip("Loop played during Clear weather. Leave null for silence.")]
+        public AudioClip clearLoop;
+
+        [Tooltip("Loop played during Rain.")]
+        public AudioClip rainLoop;
+
+        [Tooltip("Loop played during Thunderstorm.")]
+        public AudioClip thunderLoop;
+
+        [Range(0f, 1f)] public float weatherVolume = 0.9f;
+
+        [Header("Thunderstorm Lightning Flash (optional)")]
+        public bool enableThunderFlash = true;
+
+        [Tooltip("Seconds the flash stays bright.")]
+        [Range(0.01f, 0.5f)] public float lightningFlashDuration = 0.08f;
+
+        [Tooltip("Random time range between flashes while thunderstorm is active.")]
+        public Vector2 lightningFlashIntervalRange = new Vector2(0.6f, 1.6f);
+
+        [Tooltip("Intensity multiplier applied to the directional light during a flash.")]
+        [Min(1f)] public float lightningIntensityMultiplier = 3.0f;
+
+        [Tooltip("Color used during the flash.")]
+        public Color lightningFlashColor = new Color(0.95f, 0.97f, 1.0f);
+
         [Tooltip("Fog color over time.")]
         public Gradient fogColor = DefaultFogColor();
 
@@ -69,6 +113,15 @@ namespace SCoL.Visualization
         [Min(0f)] public float giUpdateIntervalSeconds = 2f;
 
         float _giT;
+
+        float _flashT;
+        float _nextFlashIn;
+        float _preFlashIntensity;
+        Color _preFlashColor;
+        bool _hasPreFlash;
+
+        WeatherPhase _lastWeatherPhase;
+        bool _hasLastWeatherPhase;
 
         void Reset()
         {
@@ -86,12 +139,29 @@ namespace SCoL.Visualization
             }
         }
 
+        void OnEnable()
+        {
+            if (weatherSystem != null)
+                weatherSystem.OnPhaseStarted += HandleWeatherPhaseStarted;
+        }
+
+        void OnDisable()
+        {
+            if (weatherSystem != null)
+                weatherSystem.OnPhaseStarted -= HandleWeatherPhaseStarted;
+        }
+
         void Start()
         {
             if (setTimeOnStart)
                 timeOfDay01 = startTime01;
 
             Apply(forceGI: true);
+            _nextFlashIn = SampleFlashInterval();
+
+            // Initialize audio for the starting phase.
+            if (Application.isPlaying && weatherSystem != null)
+                ApplyWeatherAudio(weatherSystem.CurrentPhase);
         }
 
         void Update()
@@ -100,6 +170,19 @@ namespace SCoL.Visualization
             {
                 timeOfDay01 += Time.deltaTime / cycleDurationSeconds;
                 if (timeOfDay01 > 1f) timeOfDay01 -= 1f;
+            }
+
+            // Fallback: if event subscription didn't happen (e.g., references assigned late),
+            // poll the current phase and update audio when it changes.
+            if (Application.isPlaying && weatherSystem != null)
+            {
+                var p = weatherSystem.CurrentPhase;
+                if (!_hasLastWeatherPhase || p != _lastWeatherPhase)
+                {
+                    _lastWeatherPhase = p;
+                    _hasLastWeatherPhase = true;
+                    ApplyWeatherAudio(p);
+                }
             }
 
             Apply(forceGI: false);
@@ -126,18 +209,88 @@ namespace SCoL.Visualization
 
                 directionalLight.intensity = Mathf.Max(0f, sunIntensity.Evaluate(t));
                 directionalLight.color = sunColor.Evaluate(t);
+
+                // Optional thunderstorm lightning flash (visual only).
+                if (enableThunderFlash && weatherSystem != null && Application.isPlaying)
+                {
+                    bool inThunder = weatherSystem.CurrentPhase == WeatherPhase.Thunderstorm;
+
+                    // Countdown to next flash while in thunder.
+                    if (inThunder)
+                    {
+                        _nextFlashIn -= Time.deltaTime;
+                        if (_nextFlashIn <= 0f)
+                        {
+                            _flashT = lightningFlashDuration;
+                            _nextFlashIn = SampleFlashInterval();
+
+                            if (!_hasPreFlash)
+                            {
+                                _preFlashIntensity = directionalLight.intensity;
+                                _preFlashColor = directionalLight.color;
+                                _hasPreFlash = true;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        _flashT = 0f;
+                        _hasPreFlash = false;
+                        _nextFlashIn = SampleFlashInterval();
+                    }
+
+                    // Apply flash if active.
+                    if (_flashT > 0f)
+                    {
+                        _flashT -= Time.deltaTime;
+                        float baseIntensity = _hasPreFlash ? _preFlashIntensity : directionalLight.intensity;
+                        Color baseColor = _hasPreFlash ? _preFlashColor : directionalLight.color;
+
+                        directionalLight.intensity = baseIntensity * Mathf.Max(1f, lightningIntensityMultiplier);
+                        directionalLight.color = lightningFlashColor;
+
+                        if (_flashT <= 0f)
+                        {
+                            directionalLight.intensity = baseIntensity;
+                            directionalLight.color = baseColor;
+                            _hasPreFlash = false;
+                        }
+                    }
+                }
             }
 
             // --- Ambient + reflections
-            RenderSettings.ambientIntensity = Mathf.Max(0f, ambientIntensity.Evaluate(t));
-            RenderSettings.reflectionIntensity = Mathf.Max(0f, reflectionIntensity.Evaluate(t));
+            float ambient = Mathf.Max(0f, ambientIntensity.Evaluate(t));
+            float reflections = Mathf.Max(0f, reflectionIntensity.Evaluate(t));
+
+            if (weatherSystem != null)
+            {
+                if (weatherSystem.CurrentPhase == WeatherPhase.Rain || weatherSystem.CurrentPhase == WeatherPhase.Thunderstorm)
+                {
+                    ambient *= Mathf.Clamp01(ambientDimmingInBadWeather);
+                    reflections *= Mathf.Clamp01(ambientDimmingInBadWeather);
+                }
+            }
+
+            RenderSettings.ambientIntensity = ambient;
+            RenderSettings.reflectionIntensity = reflections;
 
             // --- Fog
             if (driveFog)
             {
                 RenderSettings.fog = true;
                 RenderSettings.fogColor = fogColor.Evaluate(t);
-                RenderSettings.fogDensity = Mathf.Max(0f, fogDensity.Evaluate(t));
+
+                float d = Mathf.Max(0f, fogDensity.Evaluate(t));
+                if (weatherSystem != null)
+                {
+                    if (weatherSystem.CurrentPhase == WeatherPhase.Rain)
+                        d *= Mathf.Max(0f, fogDensityRainMultiplier);
+                    else if (weatherSystem.CurrentPhase == WeatherPhase.Thunderstorm)
+                        d *= Mathf.Max(0f, fogDensityThunderMultiplier);
+                }
+
+                RenderSettings.fogDensity = d;
             }
 
             // --- GI update (throttled)
@@ -156,6 +309,56 @@ namespace SCoL.Visualization
                 _giT = 0f;
                 DynamicGI.UpdateEnvironment();
             }
+        }
+
+        void HandleWeatherPhaseStarted(WeatherPhase phase)
+        {
+            ApplyWeatherAudio(phase);
+        }
+
+        void ApplyWeatherAudio(WeatherPhase phase)
+        {
+            if (weatherAudioSource == null) return;
+
+            weatherAudioSource.spatialBlend = 0f; // 2D
+            weatherAudioSource.volume = Mathf.Clamp01(weatherVolume);
+
+            AudioClip target = phase switch
+            {
+                WeatherPhase.Clear => clearLoop,
+                WeatherPhase.Rain => rainLoop,
+                WeatherPhase.Thunderstorm => thunderLoop,
+                _ => null
+            };
+
+            if (target == null)
+            {
+                if (weatherAudioSource.isPlaying)
+                    weatherAudioSource.Stop();
+                weatherAudioSource.clip = null;
+                return;
+            }
+
+            // Swap loop if needed.
+            if (weatherAudioSource.clip != target)
+            {
+                weatherAudioSource.clip = target;
+                weatherAudioSource.loop = true;
+                weatherAudioSource.Play();
+            }
+            else if (!weatherAudioSource.isPlaying)
+            {
+                weatherAudioSource.loop = true;
+                weatherAudioSource.Play();
+            }
+        }
+
+        float SampleFlashInterval()
+        {
+            float a = Mathf.Min(lightningFlashIntervalRange.x, lightningFlashIntervalRange.y);
+            float b = Mathf.Max(lightningFlashIntervalRange.x, lightningFlashIntervalRange.y);
+            if (Mathf.Approximately(a, b)) return a;
+            return UnityEngine.Random.Range(a, b);
         }
 
         // -------- defaults --------
