@@ -6,8 +6,11 @@ namespace SCoL.Weather
     /// </summary>
     public enum WeatherPhase
     {
+        // IMPORTANT: keep existing numeric values stable for Unity serialization.
         Clear = 0,
         Rain = 1,
         Thunderstorm = 2,
+        Wind = 3,
+        Snow = 4,
     }
 }

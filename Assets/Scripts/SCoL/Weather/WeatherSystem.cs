@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using SCoL.Visualization;
 
 namespace SCoL.Weather
 {
@@ -8,8 +9,8 @@ namespace SCoL.Weather
     ///
     /// Design goals:
     /// - Global (one weather at a time)
-    /// - No dependency on day/night system, but can be configured with a "day length" to track rainy-day streaks
-    /// - Clear is most common; Rain is second; Thunderstorm only occurs as escalation after prolonged rain
+    /// - Season-aware: each season has its own frequency weights
+    /// - Thunderstorm only occurs as escalation after 2 consecutive Rain segments (sessions)
     /// - Tunable, deterministic (optional seed)
     ///
     /// This class does NOT do visuals by itself; consumers (VFX/audio/lighting) should subscribe to events
@@ -17,12 +18,54 @@ namespace SCoL.Weather
     /// </summary>
     public sealed class WeatherSystem : MonoBehaviour
     {
-        [Header("Time Model")]
-        [Tooltip("Seconds per in-game day (used only for rainy-day streak tracking).")]
-        [Min(0.1f)] public float dayLengthSeconds = 20f;
+        [Serializable]
+        public struct SeasonWeights
+        {
+            [Range(0f, 1f)] public float clear;
+            [Range(0f, 1f)] public float rain;
+            [Range(0f, 1f)] public float wind;
+            [Range(0f, 1f)] public float snow;
 
-        [Tooltip("How many seconds of Rain/Thunder within a day counts as a 'rainy day'.")]
-        [Min(0f)] public float rainyDayThresholdSeconds = 8f;
+            public static SeasonWeights Normalize(SeasonWeights w)
+            {
+                // NOTE: thunder is not a base weight; it's escalation-only.
+                float c = Mathf.Max(0f, w.clear);
+                float r = Mathf.Max(0f, w.rain);
+                float wi = Mathf.Max(0f, w.wind);
+                float s = Mathf.Max(0f, w.snow);
+
+                float sum = c + r + wi + s;
+                if (sum <= 0f)
+                {
+                    w.clear = 1f;
+                    w.rain = w.wind = w.snow = 0f;
+                    return w;
+                }
+
+                w.clear = c / sum;
+                w.rain = r / sum;
+                w.wind = wi / sum;
+                w.snow = s / sum;
+                return w;
+            }
+        }
+
+        [Header("Season Source")]
+        [Tooltip("Optional: drives seasonal weather frequencies. If null, defaults to Spring config.")]
+        public SeasonSkyboxController seasonSource;
+
+        [Header("Seasonal Frequencies (weights)")]
+        [Tooltip("Spring target: Clear ~70%, Rain ~30% (Thunder is escalation-only).")]
+        public SeasonWeights spring = new SeasonWeights { clear = 0.70f, rain = 0.30f, wind = 0f, snow = 0f };
+
+        [Tooltip("Summer target: Clear ~60%, Rain ~40% (Thunder is escalation-only).")]
+        public SeasonWeights summer = new SeasonWeights { clear = 0.60f, rain = 0.40f, wind = 0f, snow = 0f };
+
+        [Tooltip("Autumn target: Clear ~40%, Wind ~50%, remaining Rain. Thunder is escalation-only.")]
+        public SeasonWeights autumn = new SeasonWeights { clear = 0.40f, rain = 0.10f, wind = 0.50f, snow = 0f };
+
+        [Tooltip("Winter target: Snow ~80%, Clear ~20%.")]
+        public SeasonWeights winter = new SeasonWeights { clear = 0.20f, rain = 0f, wind = 0f, snow = 0.80f };
 
         [Header("Randomness")]
         [Tooltip("If true, use a fixed seed for deterministic weather.")]
@@ -32,21 +75,21 @@ namespace SCoL.Weather
 
         [Header("Durations (seconds)")]
         public Vector2 clearDurationRange = new Vector2(10f, 20f);
+        public Vector2 windDurationRange = new Vector2(8f, 14f);
         public Vector2 rainDurationRange = new Vector2(10f, 15f);
 
         [Tooltip("Thunderstorm duration (short burst).")]
         public Vector2 thunderDurationRange = new Vector2(4f, 6f);
 
-        [Header("Base Weights")]
-        [Range(0f, 1f)] public float clearWeight = 0.65f;
-        [Range(0f, 1f)] public float rainWeight = 0.35f;
+        public Vector2 snowDurationRange = new Vector2(12f, 20f);
 
-        [Tooltip("When currently raining, multiply rain's chance to continue by this factor.")]
-        [Min(0f)] public float rainStickiness = 1.6f;
+        [Header("Behavior")]
+        [Tooltip("When currently in the same category, multiply its chance to continue by this factor.")]
+        [Min(0f)] public float phaseStickiness = 1.25f;
 
         [Header("Thunderstorm (Escalation)")]
-        [Tooltip("Number of consecutive rainy days required before thunderstorms can occur.")]
-        [Min(1)] public int thunderAfterConsecutiveRainyDays = 2;
+        [Tooltip("Number of consecutive Rain segments required before thunderstorms can occur.")]
+        [Min(1)] public int thunderAfterConsecutiveRainSegments = 2;
 
         [Tooltip("If true, when the condition is met, the next eligible transition will be a thunderstorm.")]
         public bool thunderGuaranteedWhenQueued = true;
@@ -62,8 +105,10 @@ namespace SCoL.Weather
         public Vector3 windDirection = new Vector3(1f, 0f, 0f);
 
         [Min(0f)] public float windSpeedClear = 0.4f;
+        [Min(0f)] public float windSpeedWind = 1.0f;
         [Min(0f)] public float windSpeedRain = 0.8f;
         [Min(0f)] public float windSpeedThunder = 1.2f;
+        [Min(0f)] public float windSpeedSnow = 0.6f;
 
         [Header("Runtime (read-only)")]
         [SerializeField] WeatherPhase currentPhase = WeatherPhase.Clear;
@@ -79,9 +124,7 @@ namespace SCoL.Weather
 
         System.Random _rng;
 
-        float _dayT;
-        float _rainedThisDaySeconds;
-        int _rainStreakDays;
+        int _consecutiveRainSegments;
         bool _thunderQueued;
 
         void Awake()
@@ -91,6 +134,9 @@ namespace SCoL.Weather
 
         void Start()
         {
+            if (seasonSource == null)
+                seasonSource = FindFirstObjectByType<SeasonSkyboxController>();
+
             // Kick off with a clear segment by default.
             ForcePhase(WeatherPhase.Clear, SampleRange(clearDurationRange));
         }
@@ -99,38 +145,19 @@ namespace SCoL.Weather
         {
             float dt = Time.deltaTime;
 
-            // --- day accounting
-            _dayT += dt;
-
-            if (currentPhase == WeatherPhase.Rain || currentPhase == WeatherPhase.Thunderstorm)
-                _rainedThisDaySeconds += dt;
-
-            while (_dayT >= dayLengthSeconds)
-            {
-                _dayT -= dayLengthSeconds;
-                bool rainyDay = _rainedThisDaySeconds >= rainyDayThresholdSeconds;
-                _rainedThisDaySeconds = 0f;
-
-                if (rainyDay) _rainStreakDays++;
-                else _rainStreakDays = 0;
-
-                if (_rainStreakDays >= thunderAfterConsecutiveRainyDays)
-                    _thunderQueued = true;
-            }
-
             // --- phase countdown
             currentPhaseRemainingSeconds -= dt;
             if (currentPhaseRemainingSeconds <= 0f)
-            {
                 ScheduleNextPhase();
-            }
 
             // --- derived intensity
             Intensity01 = currentPhase switch
             {
                 WeatherPhase.Clear => 0f,
+                WeatherPhase.Wind => 0.35f,
                 WeatherPhase.Rain => 0.6f,
                 WeatherPhase.Thunderstorm => 1f,
+                WeatherPhase.Snow => 0.55f,
                 _ => 0f
             };
         }
@@ -146,8 +173,10 @@ namespace SCoL.Weather
             float speed = currentPhase switch
             {
                 WeatherPhase.Clear => windSpeedClear,
+                WeatherPhase.Wind => windSpeedWind,
                 WeatherPhase.Rain => windSpeedRain,
                 WeatherPhase.Thunderstorm => windSpeedThunder,
+                WeatherPhase.Snow => windSpeedSnow,
                 _ => windSpeedClear
             };
 
@@ -164,16 +193,33 @@ namespace SCoL.Weather
                 return;
             }
 
+            // End previous
             OnPhaseEnded?.Invoke(currentPhase);
+
+            // Start new
             currentPhase = phase;
             currentPhaseRemainingSeconds = durationSeconds;
+
+            // Maintain "2 consecutive rain sessions" rule state.
+            if (phase == WeatherPhase.Rain)
+            {
+                _consecutiveRainSegments++;
+                if (_consecutiveRainSegments >= thunderAfterConsecutiveRainSegments)
+                    _thunderQueued = true;
+            }
+            else
+            {
+                // Thunder counts as breaking the rain streak (otherwise you'd chain forever).
+                _consecutiveRainSegments = 0;
+            }
+
             OnPhaseStarted?.Invoke(currentPhase);
         }
 
         void ScheduleNextPhase()
         {
-            // Thunderstorm: only as escalation, and preferably from Rain.
-            if (_thunderQueued && (currentPhase == WeatherPhase.Rain || currentPhase == WeatherPhase.Thunderstorm))
+            // Thunderstorm: escalation-only and only from Rain.
+            if (_thunderQueued && currentPhase == WeatherPhase.Rain)
             {
                 bool trigger = thunderGuaranteedWhenQueued || _rng.NextDouble() < thunderTriggerProbability;
                 if (trigger)
@@ -184,27 +230,70 @@ namespace SCoL.Weather
                 }
             }
 
-            // Otherwise pick Clear vs Rain.
-            float wClear = Mathf.Max(0f, clearWeight);
-            float wRain = Mathf.Max(0f, rainWeight);
+            // Determine current season weights.
+            SeasonWeights w = SeasonWeights.Normalize(GetWeightsForCurrentSeason());
 
-            if (currentPhase == WeatherPhase.Rain || currentPhase == WeatherPhase.Thunderstorm)
-                wRain *= Mathf.Max(0f, rainStickiness);
+            // Apply stickiness for current phase (reduces jitter).
+            // Only affects base-roll phases (Clear/Wind/Rain/Snow).
+            float stick = Mathf.Max(0f, phaseStickiness);
+            if (stick > 0f)
+            {
+                switch (currentPhase)
+                {
+                    case WeatherPhase.Clear: w.clear *= stick; break;
+                    case WeatherPhase.Wind: w.wind *= stick; break;
+                    case WeatherPhase.Rain: w.rain *= stick; break;
+                    case WeatherPhase.Snow: w.snow *= stick; break;
+                }
+            }
 
-            // Normalize
-            float sum = wClear + wRain;
+            // Roll
+            float sum = Mathf.Max(0f, w.clear) + Mathf.Max(0f, w.wind) + Mathf.Max(0f, w.rain) + Mathf.Max(0f, w.snow);
             if (sum <= 0f)
             {
-                wClear = 1f;
-                wRain = 0f;
-                sum = 1f;
+                ForcePhase(WeatherPhase.Clear, SampleRange(clearDurationRange));
+                return;
             }
 
             double roll = _rng.NextDouble() * sum;
-            WeatherPhase next = (roll < wClear) ? WeatherPhase.Clear : WeatherPhase.Rain;
+            WeatherPhase next;
 
-            float dur = next == WeatherPhase.Clear ? SampleRange(clearDurationRange) : SampleRange(rainDurationRange);
+            double c = Mathf.Max(0f, w.clear);
+            double wi = Mathf.Max(0f, w.wind);
+            double r = Mathf.Max(0f, w.rain);
+            // snow implied
+
+            if (roll < c) next = WeatherPhase.Clear;
+            else if (roll < c + wi) next = WeatherPhase.Wind;
+            else if (roll < c + wi + r) next = WeatherPhase.Rain;
+            else next = WeatherPhase.Snow;
+
+            float dur = next switch
+            {
+                WeatherPhase.Clear => SampleRange(clearDurationRange),
+                WeatherPhase.Wind => SampleRange(windDurationRange),
+                WeatherPhase.Rain => SampleRange(rainDurationRange),
+                WeatherPhase.Snow => SampleRange(snowDurationRange),
+                _ => SampleRange(clearDurationRange)
+            };
+
             ForcePhase(next, dur);
+        }
+
+        SeasonWeights GetWeightsForCurrentSeason()
+        {
+            if (seasonSource == null)
+                return spring;
+
+            // SeasonSkyboxController defines its own Season enum. Map it to weights.
+            return seasonSource.GetCurrentSeason() switch
+            {
+                SeasonSkyboxController.Season.Spring => spring,
+                SeasonSkyboxController.Season.Summer => summer,
+                SeasonSkyboxController.Season.Autumn => autumn,
+                SeasonSkyboxController.Season.Winter => winter,
+                _ => spring
+            };
         }
 
         float SampleRange(Vector2 range)

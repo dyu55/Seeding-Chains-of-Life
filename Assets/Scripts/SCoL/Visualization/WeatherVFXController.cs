@@ -128,6 +128,12 @@ namespace SCoL.Visualization
                     var em = rainParticleSystem.emission;
                     em.rateOverTime = emissionRate * Mathf.Max(0.2f, intensity);
                 }
+                else
+                {
+                    // Ensure emission stays off in non-rain phases (Wind/Snow/Clear).
+                    var em = rainParticleSystem.emission;
+                    em.rateOverTime = 0f;
+                }
             }
         }
 
