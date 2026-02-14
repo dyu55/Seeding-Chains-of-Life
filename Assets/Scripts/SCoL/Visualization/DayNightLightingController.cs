@@ -77,6 +77,12 @@ namespace SCoL.Visualization
         [Tooltip("Loop played during Clear weather. Leave null for silence.")]
         public AudioClip clearLoop;
 
+        [Tooltip("Loop played during Wind (autumn windy weather, etc.). Leave null for silence.")]
+        public AudioClip windLoop;
+
+        [Tooltip("Loop played during Snow. Leave null for silence.")]
+        public AudioClip snowLoop;
+
         [Tooltip("Loop played during Rain.")]
         public AudioClip rainLoop;
 
@@ -326,6 +332,8 @@ namespace SCoL.Visualization
             AudioClip target = phase switch
             {
                 WeatherPhase.Clear => clearLoop,
+                WeatherPhase.Wind => windLoop,
+                WeatherPhase.Snow => snowLoop,
                 WeatherPhase.Rain => rainLoop,
                 WeatherPhase.Thunderstorm => thunderLoop,
                 _ => null
