@@ -80,6 +80,32 @@ namespace SCoL.Visualization
         [Tooltip("Particle size range.")]
         public Vector2 snowSizeRange = new Vector2(0.08f, 0.18f);
 
+        [Header("Firefly VFX (optional)")]
+        [Tooltip("Optional ParticleSystem for fireflies. If null, one will be created at runtime.")]
+        public ParticleSystem fireflyParticleSystem;
+
+        [Tooltip("Material used for the runtime-created firefly ParticleSystem renderer.")]
+        public Material fireflyMaterial;
+
+        [Tooltip("Optional: DayNightLightingController used to decide whether it's night.")]
+        public DayNightLightingController dayNightController;
+
+        [Tooltip("Consider it NIGHT when timeOfDay01 is outside this DAY range.")]
+        public Vector2 dayRange01 = new Vector2(0.23f, 0.77f);
+
+        [Tooltip("Only show fireflies at night.")]
+        public bool firefliesOnlyAtNight = true;
+
+        [Tooltip("If true, fireflies are disabled in bad weather (Rain/Thunderstorm/Snow).")]
+        public bool disableFirefliesInBadWeather = true;
+
+        [Range(0, 1000)] public int fireflyMaxParticles = 150;
+        [Range(0f, 200f)] public float fireflyEmissionRate = 12f;
+        public Vector3 fireflyBoxSize = new Vector3(18f, 6f, 18f);
+        public Vector2 fireflyLifetimeRange = new Vector2(6f, 14f);
+        public Vector2 fireflySpeedRange = new Vector2(0.15f, 0.6f);
+        public Vector2 fireflySizeRange = new Vector2(0.03f, 0.10f);
+
         [Header("Wind (optional)")]
         [Tooltip("Optional WindZone to enable/adjust during Wind/Rain/Thunder.")]
         public WindZone windZone;
@@ -112,6 +138,7 @@ namespace SCoL.Visualization
 
             EnsureRainSystem();
             EnsureSnowSystem();
+            EnsureFireflySystem();
             ApplyForPhase(weatherSystem != null ? weatherSystem.CurrentPhase : WeatherPhase.Clear, force: true);
         }
 
@@ -142,6 +169,9 @@ namespace SCoL.Visualization
 
                     if (snowParticleSystem != null)
                         snowParticleSystem.transform.position = p;
+
+                    if (fireflyParticleSystem != null)
+                        fireflyParticleSystem.transform.position = p;
                 }
             }
 
@@ -173,6 +203,14 @@ namespace SCoL.Visualization
                     var em = snowParticleSystem.emission;
                     em.rateOverTime = snowingNow ? (snowEmissionRate * Mathf.Max(0.2f, intensity)) : 0f;
                 }
+
+                if (fireflyParticleSystem != null)
+                {
+                    bool active = ShouldShowFireflies(phase);
+                    var em = fireflyParticleSystem.emission;
+                    // Fireflies don't use intensity; keep them stable.
+                    em.rateOverTime = active ? fireflyEmissionRate : 0f;
+                }
             }
         }
 
@@ -180,9 +218,11 @@ namespace SCoL.Visualization
         {
             EnsureRainSystem();
             EnsureSnowSystem();
+            EnsureFireflySystem();
 
             bool shouldRain = phase == WeatherPhase.Rain || (rainAlsoInThunderstorm && phase == WeatherPhase.Thunderstorm);
             bool shouldSnow = phase == WeatherPhase.Snow;
+            bool shouldFireflies = ShouldShowFireflies(phase);
 
             if (rainParticleSystem != null)
             {
@@ -209,6 +249,20 @@ namespace SCoL.Visualization
                 {
                     if (force || snowParticleSystem.isPlaying)
                         snowParticleSystem.Stop(withChildren: true, stopBehavior: ParticleSystemStopBehavior.StopEmitting);
+                }
+            }
+
+            if (fireflyParticleSystem != null)
+            {
+                if (shouldFireflies)
+                {
+                    if (force || !fireflyParticleSystem.isPlaying)
+                        fireflyParticleSystem.Play();
+                }
+                else
+                {
+                    if (force || fireflyParticleSystem.isPlaying)
+                        fireflyParticleSystem.Stop(withChildren: true, stopBehavior: ParticleSystemStopBehavior.StopEmitting);
                 }
             }
 
@@ -312,6 +366,100 @@ namespace SCoL.Visualization
                 renderer.sharedMaterial = snowMaterial;
 
             snowParticleSystem.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+        }
+
+        void EnsureFireflySystem()
+        {
+            if (fireflyParticleSystem != null) return;
+
+            var go = new GameObject("FireflyVFX (Runtime)");
+            go.transform.SetParent(transform, worldPositionStays: false);
+            fireflyParticleSystem = go.AddComponent<ParticleSystem>();
+
+            var main = fireflyParticleSystem.main;
+            main.loop = true;
+            main.playOnAwake = false;
+            main.simulationSpace = ParticleSystemSimulationSpace.World;
+            main.maxParticles = Mathf.Max(0, fireflyMaxParticles);
+            main.startLifetime = new ParticleSystem.MinMaxCurve(fireflyLifetimeRange.x, fireflyLifetimeRange.y);
+            main.startSpeed = new ParticleSystem.MinMaxCurve(fireflySpeedRange.x, fireflySpeedRange.y);
+            main.startSize = new ParticleSystem.MinMaxCurve(fireflySizeRange.x, fireflySizeRange.y);
+            main.startColor = new Color(1f, 0.98f, 0.65f, 1f);
+
+            var emission = fireflyParticleSystem.emission;
+            emission.enabled = true;
+            emission.rateOverTime = 0f; // driven in Update based on active state
+
+            var shape = fireflyParticleSystem.shape;
+            shape.enabled = true;
+            shape.shapeType = ParticleSystemShapeType.Box;
+            shape.scale = fireflyBoxSize;
+
+            // Gentle wander using noise.
+            var noise = fireflyParticleSystem.noise;
+            noise.enabled = true;
+            noise.strength = 0.65f;
+            noise.frequency = 0.12f;
+            noise.scrollSpeed = 0.12f;
+            noise.damping = true;
+
+            // Blinking: alpha pulse over lifetime.
+            var col = fireflyParticleSystem.colorOverLifetime;
+            col.enabled = true;
+            col.color = new ParticleSystem.MinMaxGradient(CreateFireflyBlinkGradient());
+
+            var renderer = fireflyParticleSystem.GetComponent<ParticleSystemRenderer>();
+            renderer.renderMode = ParticleSystemRenderMode.Billboard;
+            if (fireflyMaterial != null)
+                renderer.sharedMaterial = fireflyMaterial;
+
+            fireflyParticleSystem.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+        }
+
+        bool ShouldShowFireflies(WeatherPhase phase)
+        {
+            if (disableFirefliesInBadWeather)
+            {
+                if (phase == WeatherPhase.Rain || phase == WeatherPhase.Thunderstorm || phase == WeatherPhase.Snow)
+                    return false;
+            }
+
+            if (!firefliesOnlyAtNight)
+                return true;
+
+            if (dayNightController == null)
+                dayNightController = FindFirstObjectByType<DayNightLightingController>();
+
+            if (dayNightController == null)
+                return true; // fallback: allow
+
+            float t = Mathf.Repeat(dayNightController.timeOfDay01, 1f);
+            bool isDay = SeasonSkyboxController.IsWithinWrappedRange(t, dayRange01.x, dayRange01.y);
+            return !isDay;
+        }
+
+        static Gradient CreateFireflyBlinkGradient()
+        {
+            // Double-blink style by default.
+            // Color is constant; alpha pulses.
+            var g = new Gradient();
+            g.SetKeys(
+                new[]
+                {
+                    new GradientColorKey(new Color(1f, 0.98f, 0.65f), 0.00f),
+                    new GradientColorKey(new Color(1f, 0.98f, 0.65f), 1.00f),
+                },
+                new[]
+                {
+                    new GradientAlphaKey(0f, 0.00f),
+                    new GradientAlphaKey(1f, 0.22f),
+                    new GradientAlphaKey(0f, 0.34f),
+                    new GradientAlphaKey(1f, 0.48f),
+                    new GradientAlphaKey(0f, 0.62f),
+                    new GradientAlphaKey(0f, 1.00f),
+                }
+            );
+            return g;
         }
 
         void ApplyWindZone(WeatherPhase phase)
