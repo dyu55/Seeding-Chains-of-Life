@@ -12,7 +12,7 @@
       "id": "T02",
       "task": "Voxel 模型替换与挂载",
       "detail": "将新导入的 Voxel 机械爪模型挂载到 FPS 摄像机下作为屏幕空间的武器/工具视图，隐藏旧的高模。",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T03",
