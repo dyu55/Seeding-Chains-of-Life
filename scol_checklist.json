@@ -18,7 +18,7 @@
       "id": "T03",
       "task": "射线检测交互系统",
       "detail": "移除 XRGrabInteractable。编写脚本：按下鼠标左键时，从屏幕中心发射 Raycast，检测最大距离 3 米内带有 Harvestable 标签的物体。",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T04",
