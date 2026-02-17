@@ -54,7 +54,7 @@
       "id": "T09",
       "task": "VR 迁移预备",
       "detail": "在核心交互代码中使用预编译指令 (#if USE_VR) 或布尔开关，预留 XR Controller 的输入接口，确保后期回归 Quest 3 时不用重写底层逻辑。",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T10",
