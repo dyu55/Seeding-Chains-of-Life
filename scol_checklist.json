@@ -60,7 +60,7 @@
       "id": "T10",
       "task": "柏林噪声地形生成 (Perlin Terrain)",
       "detail": "编写 Procedural Generation 脚本。在场景启动时，基于 Mathf.PerlinNoise 在脚下动态生成一片 50x50 的起伏方块地形，作为动物活动的测试场地。",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T11",
