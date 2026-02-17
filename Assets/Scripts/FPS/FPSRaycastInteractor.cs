@@ -31,10 +31,21 @@ public class FPSRaycastInteractor : MonoBehaviour
             if (Physics.Raycast(ray, out var hit, maxDistance, hitMask, QueryTriggerInteraction.Ignore))
             {
                 var go = hit.collider != null ? hit.collider.gameObject : null;
-                if (go != null && go.CompareTag("Harvestable"))
+
+                // Walk up parents to find a Harvestable root (colliders are often on child meshes).
+                GameObject harvestable = null;
+                for (var t = hit.collider != null ? hit.collider.transform : null; t != null; t = t.parent)
+                {
+                    if (t.gameObject.CompareTag("Harvestable")) { harvestable = t.gameObject; break; }
+                }
+
+                if (harvestable != null)
                 {
                     if (logHits)
-                        Debug.Log($"[FPSRaycastInteractor] Harvestable hit: {go.name} (dist={hit.distance:0.00})", go);
+                        Debug.Log($"[FPSRaycastInteractor] Harvestable hit: {harvestable.name} (dist={hit.distance:0.00})", harvestable);
+
+                    // T04: voxelize/assimilate effect
+                    VoxelAssimilator.Assimilate(harvestable);
                 }
                 else
                 {
