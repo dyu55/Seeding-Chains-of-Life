@@ -28,6 +28,8 @@ namespace SCoL.Voxels
         public bool useVoxBoxTerrainMaterials = true;
         [Tooltip("If true, VoxBox materials will replace inspector-assigned terrain materials at runtime.")]
         public bool overrideAssignedTerrainMaterials = true;
+        [Tooltip("Keep original simple blue water instead of VoxBox water tile style.")]
+        public bool useOriginalWaterMaterial = true;
 
         [Header("Grass Props (decorations)")]
         // Default OFF: avoids auto-spawning legacy/placeholder props when entering Play mode.
@@ -129,6 +131,9 @@ namespace SCoL.Voxels
             stoneMat.enableInstancing = true;
             stoneMat.color = new Color(0.55f, 0.55f, 0.60f);
 
+            if (useOriginalWaterMaterial && (overrideAssignedTerrainMaterials || waterMat == null))
+                waterMat = null;
+
             if (waterMat == null) waterMat = new Material(shader) { name = "Voxel_Water" };
             waterMat.enableInstancing = true;
             waterMat.color = new Color(0.18f, 0.35f, 0.85f, 0.85f);
@@ -145,7 +150,7 @@ namespace SCoL.Voxels
                 dirtMat = LoadVoxBoxMaterialFromPrefab("Assets/VoxBox/Prefabs/Grass Tiles/Tile 5.prefab", "Voxel_Dirt_VoxBox", fallbackShader);
             if (overrideAssignedTerrainMaterials || stoneMat == null)
                 stoneMat = LoadVoxBoxMaterialFromPrefab("Assets/VoxBox/Prefabs/Tiles/Tile 7.prefab", "Voxel_Stone_VoxBox", fallbackShader);
-            if (overrideAssignedTerrainMaterials || waterMat == null)
+            if (!useOriginalWaterMaterial && (overrideAssignedTerrainMaterials || waterMat == null))
                 waterMat = LoadVoxBoxMaterialFromPrefab("Assets/VoxBox/Prefabs/Grass Tiles/Tile 8.prefab", "Voxel_Water_VoxBox", fallbackShader);
         }
 
@@ -379,7 +384,7 @@ namespace SCoL.Voxels
             mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             mr.receiveShadows = false;
 
-            var mesh = VoxelMesher.BuildChunkMesh(this, cc);
+            var mesh = VoxelMesher.BuildChunkMesh(this, cc, includeWater: true);
             mf.sharedMesh = mesh;
 
             // Determine which block types were used as submeshes, in same order as mesher (sorted).
@@ -404,7 +409,9 @@ namespace SCoL.Voxels
             if (config.generateColliders)
             {
                 var mc = go.AddComponent<MeshCollider>();
-                mc.sharedMesh = mesh;
+                // Build collider from solid blocks only, so player can enter water instead of walking on it.
+                var colliderMesh = VoxelMesher.BuildChunkMesh(this, cc, includeWater: false);
+                mc.sharedMesh = colliderMesh;
                 _chunkColliders[cc] = mc;
             }
 

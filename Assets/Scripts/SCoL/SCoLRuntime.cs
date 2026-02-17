@@ -32,6 +32,10 @@ namespace SCoL
         public bool seedInitialPlants = true;
         [Range(0f, 0.10f)] public float initialPlantDensity = 0.06f;
 
+        [Header("Tree Growth")]
+        [Tooltip("Multiplier for promotions into tree stages. 0.33 means about 2/3 fewer new trees.")]
+        [Range(0f, 1f)] public float treePromotionMultiplier = 0.33f;
+
         public GridViewMode ViewMode
         {
             get => _renderer != null ? _renderer.ViewMode : GridViewMode.Stage;
@@ -534,6 +538,7 @@ namespace SCoL
 
             // Growth progression: if neighborhood supports it and success is high
             float growChance = Mathf.Lerp(0.02f, 0.15f, cur.Success);
+            growChance *= treePromotionMultiplier;
 
             // over-crowding penalty
             if (anyPlants >= 6) growChance *= 0.35f;

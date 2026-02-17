@@ -36,7 +36,7 @@ namespace SCoL.Voxels
             new(0,0), new(1,0), new(1,1), new(0,1)
         };
 
-        public static Mesh BuildChunkMesh(VoxelWorld world, Vector2Int chunkCoord)
+        public static Mesh BuildChunkMesh(VoxelWorld world, Vector2Int chunkCoord, bool includeWater = true)
         {
             var cfg = world.Config;
             int cs = cfg.chunkSize;
@@ -61,7 +61,7 @@ namespace SCoL.Voxels
                 int wz = baseZ + lz;
 
                 var t = world.GetBlock(wx, y, wz);
-                if (t == VoxelBlockType.Air) continue;
+                if (IsAirLike(t, includeWater)) continue;
 
                 // For each face, emit if neighbor is air
                 for (int f = 0; f < 6; f++)
@@ -78,7 +78,7 @@ namespace SCoL.Voxels
                     }
 
                     var nt = world.GetBlock(nx, ny, nz);
-                    if (nt != VoxelBlockType.Air) continue;
+                    if (!IsAirLike(nt, includeWater)) continue;
 
                     if (!tris.TryGetValue(t, out var tlist))
                     {
@@ -134,6 +134,13 @@ namespace SCoL.Voxels
 
             mesh.RecalculateBounds();
             return mesh;
+        }
+
+        private static bool IsAirLike(VoxelBlockType t, bool includeWater)
+        {
+            if (t == VoxelBlockType.Air) return true;
+            if (!includeWater && t == VoxelBlockType.Water) return true;
+            return false;
         }
     }
 }

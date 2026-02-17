@@ -24,7 +24,7 @@ namespace SCoL.Visualization
         public GameObject[] largeTreePrefabs;
 
         [Header("Scale")]
-        public Vector2 smallPlantScaleRange = new Vector2(0.45f, 0.75f);
+        public Vector2 smallPlantScaleRange = new Vector2(0.28f, 0.45f);
         public Vector2 smallTreeScaleRange = new Vector2(0.85f, 1.10f);
         public Vector2 mediumTreeScaleRange = new Vector2(1.10f, 1.35f);
         public Vector2 largeTreeScaleRange = new Vector2(1.35f, 1.70f);
@@ -65,15 +65,15 @@ namespace SCoL.Visualization
             if (smallPlantPrefabs == null || smallPlantPrefabs.Length == 0)
             {
                 smallPlantPrefabs = LoadPrefabs(
-                    "Assets/VoxBox/Prefabs/Trees/Tree 1.prefab",
-                    "Assets/VoxBox/Prefabs/Trees/Tree 2.prefab");
+                    "Assets/VoxBox/Prefabs/Grass Tiles/Tile 7.prefab",
+                    "Assets/VoxBox/Prefabs/Grass Tiles/Tile 6.prefab");
             }
 
             if (smallTreePrefabs == null || smallTreePrefabs.Length == 0)
             {
                 smallTreePrefabs = LoadPrefabs(
-                    "Assets/VoxBox/Prefabs/Trees/Tree 2.prefab",
-                    "Assets/VoxBox/Prefabs/Trees/Tree 3.prefab");
+                    "Assets/VoxBox/Prefabs/Trees/Tree 1.prefab",
+                    "Assets/VoxBox/Prefabs/Trees/Tree 2.prefab");
             }
 
             if (mediumTreePrefabs == null || mediumTreePrefabs.Length == 0)
