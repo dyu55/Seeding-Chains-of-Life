@@ -17037,3 +17037,68 @@ SceneRoots:
   - {fileID: 1962930973}
   - {fileID: 825973268}
   - {fileID: 881928189}
+  - {fileID: 888800001}
+
+--- !u!1 &888800000
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 888800001}
+  - component: {fileID: 888800002}
+  m_Layer: 0
+  m_Name: VoxBoxSpawner
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &888800001
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 888800000}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 2, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_RootOrder: 999
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &888800002
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 888800000}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2706cdadfb8ae4dad98e02493c4b0631, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  spawnPrefabs:
+  - {fileID: 100100000, guid: 20448f50d45eeda408a97e8eb78a6d47, type: 3}
+  - {fileID: 100100000, guid: 852672785d05a474c8009254454cdcec, type: 3}
+  - {fileID: 100100000, guid: 3ba3079b5d96981488fa97ec1f88c032, type: 3}
+  - {fileID: 100100000, guid: 7b2797b1da82c854dbd2d87af8204f9b, type: 3}
+  - {fileID: 100100000, guid: 523ffe33a07777e498de413cdbebd9a4, type: 3}
+  count: 25
+  spawnOnStart: 1
+  radius: 25
+  randomScaleRange: {x: 0.9, y: 1.25}
+  groundMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  raycastHeight: 50
+  groundOffset: 0.02
+  harvestableTag: Harvestable
+  addColliderIfMissing: 1
+  logSpawns: 0
