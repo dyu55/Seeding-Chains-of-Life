@@ -41,6 +41,7 @@ public class FPSRaycastInteractor : MonoBehaviour
     {
         if (cameraSource == null) return;
 
+        // LMB: harvest
         if (Input.GetMouseButtonDown(0))
         {
             var ray = cameraSource.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
@@ -93,6 +94,40 @@ public class FPSRaycastInteractor : MonoBehaviour
                 if (logHits)
                     Debug.Log("[FPSRaycastInteractor] No hit");
             }
+        }
+
+        // RMB: seed (spawn)
+        if (Input.GetMouseButtonDown(1))
+        {
+            var ray = cameraSource.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
+            if (!Physics.Raycast(ray, out var hit, 50f, hitMask, QueryTriggerInteraction.Ignore))
+                return;
+
+            // treat upward-facing surfaces as ground
+            if (hit.normal.y < 0.35f)
+                return;
+
+            if (_inventory == null)
+                _inventory = FindFirstObjectByType<SCoL.Inventory.SCoLInventory>();
+            if (_inventory == null)
+                return;
+
+            if (!_inventory.TryConsume(SCoL.Inventory.SCoLItemType.Seed, 1))
+            {
+                if (logHits) Debug.Log("[FPSRaycastInteractor] No seeds to plant");
+                return;
+            }
+
+            var spawnPos = hit.point + hit.normal * 0.02f;
+            var spawnRot = Quaternion.LookRotation(Vector3.ProjectOnPlane(cameraSource.transform.forward, Vector3.up).normalized, Vector3.up);
+            var spawned = FPSSeeding.SpawnFromSeed(spawnPos, spawnRot);
+
+            // feedback
+            FPSGameFeel.VoxelBurst(hit.point, count: 14, spread: 1.0f, life: 0.8f, cubeSize: 0.055f);
+            FPSGameFeel.Shake(0.05f, 0.10f);
+
+            if (logHits && spawned != null)
+                Debug.Log($"[FPSRaycastInteractor] Planted: {spawned.name}");
         }
     }
 
