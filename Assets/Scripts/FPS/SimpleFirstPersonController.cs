@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 /// <summary>
 /// Minimal FPS controller for keyboard + mouse (no XR, no Input System dependency).
@@ -49,11 +50,15 @@ public class SimpleFirstPersonController : MonoBehaviour
     {
         if (_cc == null) return;
 
-        // Look
-        if (cameraPivot != null)
+        var mouse = Mouse.current;
+        var kb = Keyboard.current;
+
+        // Look (mouse delta)
+        if (cameraPivot != null && mouse != null)
         {
-            float mx = Input.GetAxisRaw("Mouse X") * mouseSensitivity;
-            float my = Input.GetAxisRaw("Mouse Y") * mouseSensitivity;
+            var d = mouse.delta.ReadValue();
+            float mx = d.x * mouseSensitivity * 0.02f; // scale down a bit vs legacy axes
+            float my = d.y * mouseSensitivity * 0.02f;
 
             transform.Rotate(0f, mx, 0f, Space.Self);
 
@@ -62,13 +67,22 @@ public class SimpleFirstPersonController : MonoBehaviour
             cameraPivot.localRotation = Quaternion.Euler(_pitch, 0f, 0f);
         }
 
-        // Move
-        float x = Input.GetAxisRaw("Horizontal");
-        float z = Input.GetAxisRaw("Vertical");
+        // Move (WASD / arrows)
+        float x = 0f;
+        float z = 0f;
+        if (kb != null)
+        {
+            if (kb.aKey.isPressed || kb.leftArrowKey.isPressed) x -= 1f;
+            if (kb.dKey.isPressed || kb.rightArrowKey.isPressed) x += 1f;
+            if (kb.sKey.isPressed || kb.downArrowKey.isPressed) z -= 1f;
+            if (kb.wKey.isPressed || kb.upArrowKey.isPressed) z += 1f;
+        }
+
         Vector3 move = (transform.right * x + transform.forward * z);
         if (move.sqrMagnitude > 1f) move.Normalize();
 
-        float speed = (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)) ? sprintSpeed : walkSpeed;
+        bool sprinting = kb != null && (kb.leftShiftKey.isPressed || kb.rightShiftKey.isPressed);
+        float speed = sprinting ? sprintSpeed : walkSpeed;
         _cc.Move(move * (speed * Time.deltaTime));
 
         // Ground / gravity
@@ -77,7 +91,7 @@ public class SimpleFirstPersonController : MonoBehaviour
             _velocity.y = -2f; // keep grounded
 
         // Jump
-        if (grounded && Input.GetKeyDown(KeyCode.Space))
+        if (grounded && kb != null && kb.spaceKey.wasPressedThisFrame)
         {
             // v = sqrt(h * -2g)
             _velocity.y = Mathf.Sqrt(jumpHeight * -2f * gravity);
@@ -87,7 +101,7 @@ public class SimpleFirstPersonController : MonoBehaviour
         _cc.Move(_velocity * Time.deltaTime);
 
         // Escape to unlock cursor
-        if (Input.GetKeyDown(KeyCode.Escape))
+        if (kb != null && kb.escapeKey.wasPressedThisFrame)
         {
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;

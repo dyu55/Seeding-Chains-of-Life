@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 /// <summary>
 /// T08: "Machine agency" for the voxel claw/tool view.
@@ -76,13 +77,33 @@ public class FPSMachineAgency : MonoBehaviour
 
     bool DetectPlayerActivity()
     {
-        // Mouse look or movement input cancels idle.
-        if (Mathf.Abs(Input.GetAxisRaw("Mouse X")) > 0.01f) return true;
-        if (Mathf.Abs(Input.GetAxisRaw("Mouse Y")) > 0.01f) return true;
-        if (Mathf.Abs(Input.GetAxisRaw("Horizontal")) > 0.01f) return true;
-        if (Mathf.Abs(Input.GetAxisRaw("Vertical")) > 0.01f) return true;
-        if (Input.GetMouseButtonDown(0) || Input.GetMouseButtonDown(1)) return true;
-        if (Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.LeftShift) || Input.GetKeyDown(KeyCode.RightShift)) return true;
+        // NOTE: Project uses the new Input System (Player Settings -> Active Input Handling).
+        // Don't call UnityEngine.Input (legacy) here, or Unity will throw InvalidOperationException.
+
+        // Mouse movement (look)
+        var mouse = Mouse.current;
+        if (mouse != null)
+        {
+            var d = mouse.delta.ReadValue();
+            if (Mathf.Abs(d.x) > 0.01f) return true;
+            if (Mathf.Abs(d.y) > 0.01f) return true;
+
+            if (mouse.leftButton.wasPressedThisFrame || mouse.rightButton.wasPressedThisFrame) return true;
+        }
+
+        // Keyboard movement/interaction
+        var kb = Keyboard.current;
+        if (kb != null)
+        {
+            // WASD / arrows
+            if (kb.wKey.isPressed || kb.aKey.isPressed || kb.sKey.isPressed || kb.dKey.isPressed) return true;
+            if (kb.upArrowKey.isPressed || kb.downArrowKey.isPressed || kb.leftArrowKey.isPressed || kb.rightArrowKey.isPressed) return true;
+
+            // Jump / sprint
+            if (kb.spaceKey.wasPressedThisFrame) return true;
+            if (kb.leftShiftKey.wasPressedThisFrame || kb.rightShiftKey.wasPressedThisFrame) return true;
+        }
+
         return false;
     }
 

@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 namespace SCoL.Interaction
 {
@@ -19,7 +20,8 @@ namespace SCoL.Interaction
             // Keep gameplay code calling PrimaryPressed() only.
             return false;
 #else
-            return Input.GetMouseButtonDown(0);
+            var mouse = Mouse.current;
+            return mouse != null && mouse.leftButton.wasPressedThisFrame;
 #endif
         }
 
@@ -30,7 +32,8 @@ namespace SCoL.Interaction
             // TODO (Quest 3): bind to XR controller secondary action.
             return false;
 #else
-            return Input.GetMouseButtonDown(1);
+            var mouse = Mouse.current;
+            return mouse != null && mouse.rightButton.wasPressedThisFrame;
 #endif
         }
 
