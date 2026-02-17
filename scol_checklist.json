@@ -30,7 +30,7 @@
       "id": "T05",
       "task": "基因提取与 UI 背包 (Harvest & Inventory)",
       "detail": "成功抓取特定物体后，使其消失并在背包中生成 Voxel Seed。在屏幕中心添加准星，对准可交互物体时改变状态。",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T06",
