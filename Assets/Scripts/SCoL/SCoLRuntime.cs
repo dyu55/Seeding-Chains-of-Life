@@ -23,6 +23,10 @@ namespace SCoL
         private VoxelWorld _voxelWorld;
         private PlantVoxelRenderer _plantRenderer;
 
+        [Header("Rendering (Optional)")]
+        [Tooltip("Legacy placeholder: renders small plants as cubes. Turn OFF if you want a clean scene to populate with imported models.")]
+        public bool enablePlantVoxelRenderer = false;
+
         public GridViewMode ViewMode
         {
             get => _renderer != null ? _renderer.ViewMode : GridViewMode.Stage;
@@ -108,16 +112,20 @@ namespace SCoL
             }
 
             // --- Plant renderer (flowers as cubes, placed on voxel surface) ---
-            _plantRenderer = FindFirstObjectByType<PlantVoxelRenderer>();
-            if (_plantRenderer == null)
+            // Default OFF: keep the scene clean so you can populate it with imported models.
+            if (enablePlantVoxelRenderer)
             {
-                var pgo = new GameObject("PlantVoxelRenderer");
-                pgo.transform.SetParent(transform, worldPositionStays: true);
-                _plantRenderer = pgo.AddComponent<PlantVoxelRenderer>();
+                _plantRenderer = FindFirstObjectByType<PlantVoxelRenderer>();
+                if (_plantRenderer == null)
+                {
+                    var pgo = new GameObject("PlantVoxelRenderer");
+                    pgo.transform.SetParent(transform, worldPositionStays: true);
+                    _plantRenderer = pgo.AddComponent<PlantVoxelRenderer>();
+                }
+                _plantRenderer.runtime = this;
+                _plantRenderer.voxelWorld = _voxelWorld;
+                _plantRenderer.RenderNow();
             }
-            _plantRenderer.runtime = this;
-            _plantRenderer.voxelWorld = _voxelWorld;
-            _plantRenderer.RenderNow();
 
             EnsureHUD();
         }
@@ -142,7 +150,8 @@ namespace SCoL
                 _tickTimer = 0f;
                 Tick();
                 _renderer?.Render(Grid);
-                _plantRenderer?.RenderNow();
+                if (enablePlantVoxelRenderer)
+                    _plantRenderer?.RenderNow();
             }
         }
 

@@ -21,7 +21,9 @@ namespace SCoL.Voxels
         public Material waterMat;
 
         [Header("Grass Props (decorations)")]
-        public bool enableGrassProps = true;
+        // Default OFF: avoids auto-spawning legacy/placeholder props when entering Play mode.
+        // You can re-enable in inspector if desired.
+        public bool enableGrassProps = false;
         [Range(0f, 1f)] public float grassPropDensity = 0.20f;
         public int grassPropsMaxPerChunk = 256;
         [Tooltip("Extra perf guardrail: only render grass props within this many chunks from the camera.")]
@@ -30,7 +32,9 @@ namespace SCoL.Voxels
         public Material grassPropMaterial;
 
         [Header("Flora Props (flowers/trees)")]
-        public bool enableFloraProps = true;
+        // Default OFF: avoids auto-spawning legacy/placeholder flora when entering Play mode.
+        // You can re-enable in inspector if desired.
+        public bool enableFloraProps = false;
         [Tooltip("Extra perf guardrail: only render flora props (flowers/trees) within this many chunks from the camera.")]
         public int floraPropsDistanceChunks = 2;
         [Range(0f, 1f)] public float flowerDensity = 0.02f;
