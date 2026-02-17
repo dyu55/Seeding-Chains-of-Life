@@ -41,10 +41,12 @@ public class FPSRaycastInteractor : MonoBehaviour
     {
         if (cameraSource == null) return;
 
-        // LMB: harvest
-        if (Input.GetMouseButtonDown(0))
+        // Primary: harvest
+        if (SCoL.Interaction.SCoLInteractionInput.PrimaryPressed())
         {
-            var ray = cameraSource.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
+            if (!SCoL.Interaction.SCoLInteractionInput.TryGetAimRay(cameraSource, out var ray))
+                return;
+
             if (Physics.Raycast(ray, out var hit, maxDistance, hitMask, QueryTriggerInteraction.Ignore))
             {
                 var go = hit.collider != null ? hit.collider.gameObject : null;
@@ -96,10 +98,12 @@ public class FPSRaycastInteractor : MonoBehaviour
             }
         }
 
-        // RMB: seed (spawn)
-        if (Input.GetMouseButtonDown(1))
+        // Secondary: seed (spawn)
+        if (SCoL.Interaction.SCoLInteractionInput.SecondaryPressed())
         {
-            var ray = cameraSource.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
+            if (!SCoL.Interaction.SCoLInteractionInput.TryGetAimRay(cameraSource, out var ray))
+                return;
+
             if (!Physics.Raycast(ray, out var hit, 50f, hitMask, QueryTriggerInteraction.Ignore))
                 return;
 
