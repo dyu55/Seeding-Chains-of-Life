@@ -63,7 +63,8 @@ namespace SCoL.Voxels
                 var t = world.GetBlock(wx, y, wz);
                 if (IsAirLike(t, includeWater)) continue;
 
-                // For each face, emit if neighbor is air
+                // For each face, emit if the boundary is visible.
+                // Water uses a different rule than solid voxels so underwater shells are rendered.
                 for (int f = 0; f < 6; f++)
                 {
                     int nx = wx, ny = y, nz = wz;
@@ -78,7 +79,7 @@ namespace SCoL.Voxels
                     }
 
                     var nt = world.GetBlock(nx, ny, nz);
-                    if (!IsAirLike(nt, includeWater)) continue;
+                    if (!ShouldEmitFace(t, nt, includeWater)) continue;
 
                     if (!tris.TryGetValue(t, out var tlist))
                     {
@@ -141,6 +142,17 @@ namespace SCoL.Voxels
             if (t == VoxelBlockType.Air) return true;
             if (!includeWater && t == VoxelBlockType.Water) return true;
             return false;
+        }
+
+        private static bool ShouldEmitFace(VoxelBlockType self, VoxelBlockType neighbor, bool includeWater)
+        {
+            if (self == VoxelBlockType.Water)
+            {
+                if (!includeWater) return false;
+                return neighbor != VoxelBlockType.Water;
+            }
+
+            return IsAirLike(neighbor, includeWater);
         }
     }
 }

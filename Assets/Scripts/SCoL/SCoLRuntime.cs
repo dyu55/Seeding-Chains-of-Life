@@ -30,7 +30,7 @@ namespace SCoL
         [Header("Initial Ecology")]
         [Tooltip("Seed an initial set of plants so cellular automata has a starting population.")]
         public bool seedInitialPlants = true;
-        [Range(0f, 0.10f)] public float initialPlantDensity = 0.06f;
+        [Range(0f, 0.10f)] public float initialPlantDensity = 0.02f;
 
         [Header("Tree Growth")]
         [Tooltip("Multiplier for promotions into tree stages. 0.33 means about 2/3 fewer new trees.")]
@@ -82,13 +82,10 @@ namespace SCoL
         {
             Config = config;
 
-            // Treat the provided origin as the *center* of the world/grid.
-            // EcosystemGrid expects Origin to be the bottom-left corner in world space.
-            Vector3 gridOrigin = worldCenter - new Vector3(config.width * config.cellSize * 0.5f, 0f, config.height * config.cellSize * 0.5f);
-            // Keep ground at y=0 so XR rigs/pickups don't spawn below terrain.
-            gridOrigin.y = 0f;
-
-            Grid = new EcosystemGrid(config.width, config.height, config.cellSize, gridOrigin);
+            // Fallback grid setup when voxel world is unavailable.
+            // EcosystemGrid expects bottom-left world origin.
+            Vector3 fallbackGridOrigin = worldCenter - new Vector3(config.width * config.cellSize * 0.5f, 0f, config.height * config.cellSize * 0.5f);
+            fallbackGridOrigin.y = 0f;
 
             int seed = config.useFixedSeed ? config.seed : Environment.TickCount;
             _rng = new System.Random(seed);
@@ -103,12 +100,29 @@ namespace SCoL
             if (_voxelWorld == null)
             {
                 var wgo = new GameObject("VoxelWorld");
-                wgo.transform.position = gridOrigin; // align voxel (0,0,0) to grid origin
+                wgo.transform.position = fallbackGridOrigin;
                 _voxelWorld = wgo.AddComponent<VoxelWorld>();
                 // user can assign a VoxelWorldConfig in-scene later; defaults are fine for prototype.
             }
             _voxelWorld.useTransformAsOrigin = true;
             _voxelWorld.InitIfNeeded();
+
+            // Bind cellular automata to voxel columns so plants can populate the whole map.
+            int gridWidth = config.width;
+            int gridHeight = config.height;
+            float gridCellSize = config.cellSize;
+            Vector3 gridOrigin = fallbackGridOrigin;
+
+            if (_voxelWorld != null && _voxelWorld.Config != null)
+            {
+                gridWidth = _voxelWorld.Config.worldWidth;
+                gridHeight = _voxelWorld.Config.worldDepth;
+                gridCellSize = 1f;
+                gridOrigin = _voxelWorld.OriginWorld;
+                gridOrigin.y = 0f;
+            }
+
+            Grid = new EcosystemGrid(gridWidth, gridHeight, gridCellSize, gridOrigin);
 
             if (seedInitialPlants)
                 SeedInitialPlants();

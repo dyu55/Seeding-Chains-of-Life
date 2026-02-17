@@ -521,13 +521,15 @@ namespace SCoL.Voxels
                 var t = GetBlock(wx, y, wz);
                 if (t == VoxelBlockType.Air) continue;
 
-                // if any neighbor is air, it's surface and will render
-                if (GetBlock(wx + 1, y, wz) == VoxelBlockType.Air ||
-                    GetBlock(wx - 1, y, wz) == VoxelBlockType.Air ||
-                    GetBlock(wx, y + 1, wz) == VoxelBlockType.Air ||
-                    GetBlock(wx, y - 1, wz) == VoxelBlockType.Air ||
-                    GetBlock(wx, y, wz + 1) == VoxelBlockType.Air ||
-                    GetBlock(wx, y, wz - 1) == VoxelBlockType.Air)
+                bool visible =
+                    WouldRenderFace(t, GetBlock(wx + 1, y, wz)) ||
+                    WouldRenderFace(t, GetBlock(wx - 1, y, wz)) ||
+                    WouldRenderFace(t, GetBlock(wx, y + 1, wz)) ||
+                    WouldRenderFace(t, GetBlock(wx, y - 1, wz)) ||
+                    WouldRenderFace(t, GetBlock(wx, y, wz + 1)) ||
+                    WouldRenderFace(t, GetBlock(wx, y, wz - 1));
+
+                if (visible)
                 {
                     used.Add(t);
                 }
@@ -535,6 +537,14 @@ namespace SCoL.Voxels
 
             var list = new List<VoxelBlockType>(used);
             return list;
+        }
+
+        private static bool WouldRenderFace(VoxelBlockType self, VoxelBlockType neighbor)
+        {
+            if (self == VoxelBlockType.Water)
+                return neighbor != VoxelBlockType.Water;
+
+            return neighbor == VoxelBlockType.Air;
         }
 
         private Material MaterialFor(VoxelBlockType t)

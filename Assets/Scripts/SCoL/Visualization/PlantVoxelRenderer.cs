@@ -386,7 +386,7 @@ namespace SCoL.Visualization
                 }
 
                 var plantGO = active.go;
-                float yaw = Hash01(idx * 834927 + (int)stage * 97) * 360f;
+                float yaw = (PositiveHash(idx * 834927 + (int)stage * 97) % 4) * 90f;
                 float scale = ScaleFor(stage, idx);
                 float targetY;
                 Vector3 targetPos;

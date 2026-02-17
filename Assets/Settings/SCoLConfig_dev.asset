@@ -21,7 +21,7 @@ MonoBehaviour:
   heatDiffuse: 0.1
   seedSuccessBase: 0.75
   stompDamage: 0.1
-  stochasticSproutChance: 0.36
+  stochasticSproutChance: 0.12
   useStochasticSprouting: 1
   enablePlantLifecycle: 1
   plantLifetimeSeconds: 260
