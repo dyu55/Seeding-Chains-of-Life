@@ -24,7 +24,7 @@
       "id": "T04",
       "task": "方块化 (Voxelize) 同化算法",
       "detail": "当射线击中目标时，通过代码将目标的 localScale 强制对齐到 0.5 的整数倍，并动态替换为基础的 Voxel 材质，模拟被同化的效果。",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T05",
