@@ -9,6 +9,15 @@ using UnityEngine;
 [DisallowMultipleComponent]
 public class FPSBoidAgent : MonoBehaviour
 {
+    public enum BoidRole
+    {
+        Prey = 0,
+        Predator = 1
+    }
+
+    [Header("Role")]
+    public BoidRole role = BoidRole.Prey;
+
     [Header("Neighborhood")]
     public float neighborRadius = 3.5f;
     public float separationRadius = 1.0f;
@@ -23,6 +32,16 @@ public class FPSBoidAgent : MonoBehaviour
     public float maxForce = 6.0f;
     public float drag = 1.0f;
 
+    [Header("Player Avoidance (Prey)")]
+    public float playerFleeDistance = 5f;
+    public float playerFleeWeight = 2.2f;
+
+    [Header("Predator/Prey")]
+    public float predatorChaseRadius = 10f;
+    public float predatorChaseWeight = 1.8f;
+    public float preyFleePredatorRadius = 7f;
+    public float preyFleePredatorWeight = 2.4f;
+
     [Header("Bounds")]
     public bool useBounds = true;
     public Vector3 boundsCenter;
@@ -34,6 +53,8 @@ public class FPSBoidAgent : MonoBehaviour
 
     [HideInInspector] public Vector3 velocity;
 
+    Camera _playerCam;
+
     void Start()
     {
         // random initial velocity
@@ -43,6 +64,12 @@ public class FPSBoidAgent : MonoBehaviour
 
         if (useBounds && boundsCenter == default)
             boundsCenter = transform.position;
+
+        _playerCam = Camera.main;
+
+        // predators are a bit faster by default
+        if (role == BoidRole.Predator)
+            maxSpeed *= 1.25f;
     }
 
     void Update()
@@ -127,6 +154,45 @@ public class FPSBoidAgent : MonoBehaviour
             accel += SteerTowards(toCenter) * cohesionWeight;
         }
 
+        // Player avoidance / chase
+        var cam = _playerCam != null ? _playerCam : Camera.main;
+        if (cam != null)
+        {
+            float dToPlayer = Vector3.Distance(transform.position, cam.transform.position);
+
+            if (role == BoidRole.Prey)
+            {
+                if (dToPlayer < playerFleeDistance)
+                {
+                    var away = (transform.position - cam.transform.position);
+                    away.y = 0f;
+                    accel += SteerTowards(away) * playerFleeWeight;
+                }
+            }
+        }
+
+        // Predator/prey dynamics (simple)
+        if (role == BoidRole.Predator)
+        {
+            var target = FindNearestRole(BoidRole.Prey, predatorChaseRadius);
+            if (target != null)
+            {
+                var to = (target.position - transform.position);
+                to.y = 0f;
+                accel += SteerTowards(to) * predatorChaseWeight;
+            }
+        }
+        else // Prey
+        {
+            var threat = FindNearestRole(BoidRole.Predator, preyFleePredatorRadius);
+            if (threat != null)
+            {
+                var away = (transform.position - threat.position);
+                away.y = 0f;
+                accel += SteerTowards(away) * preyFleePredatorWeight;
+            }
+        }
+
         if (useBounds)
         {
             var b = new Bounds(boundsCenter, boundsSize);
@@ -154,6 +220,30 @@ public class FPSBoidAgent : MonoBehaviour
         steer.y = 0f;
         if (steer.magnitude > maxForce) steer = steer.normalized * maxForce;
         return steer;
+    }
+
+    Transform FindNearestRole(BoidRole wanted, float radius)
+    {
+        var cols = Physics.OverlapSphere(transform.position, radius, ~0, QueryTriggerInteraction.Ignore);
+        Transform best = null;
+        float bestD = float.PositiveInfinity;
+
+        foreach (var c in cols)
+        {
+            if (c == null) continue;
+            var other = c.GetComponentInParent<FPSBoidAgent>();
+            if (other == null || other == this) continue;
+            if (other.role != wanted) continue;
+
+            float d = Vector3.Distance(transform.position, other.transform.position);
+            if (d < bestD)
+            {
+                bestD = d;
+                best = other.transform;
+            }
+        }
+
+        return best;
     }
 
     void DrawBounds()

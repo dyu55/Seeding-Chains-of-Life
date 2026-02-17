@@ -76,8 +76,13 @@ public static class FPSSeeding
         SpawnCube(root.transform, new Vector3(0.09f, 0.03f, -0.06f), new Vector3(0.06f, 0.06f, 0.06f), mat);
         SpawnCube(root.transform, new Vector3(0.09f, 0.03f, 0.06f), new Vector3(0.06f, 0.06f, 0.06f), mat);
 
-        // Simple boids agent (core flocking)
-        root.AddComponent<FPSBoidAgent>();
+        // Boids agent (core flocking + predator/prey)
+        var boid = root.AddComponent<FPSBoidAgent>();
+        boid.role = (Random.value < 0.18f) ? FPSBoidAgent.BoidRole.Predator : FPSBoidAgent.BoidRole.Prey;
+
+        // Tint predators slightly red for readability
+        if (boid.role == FPSBoidAgent.BoidRole.Predator)
+            TintAll(root, new Color(0.85f, 0.35f, 0.35f, 1f));
 
         return root;
     }
@@ -95,6 +100,19 @@ public static class FPSSeeding
 
         // no collision for visuals; keep root collision decisions separate
         Object.Destroy(cube.GetComponent<Collider>());
+    }
+
+    static void TintAll(GameObject root, Color c)
+    {
+        var rs = root.GetComponentsInChildren<Renderer>(includeInactive: true);
+        foreach (var r in rs)
+        {
+            if (r == null) continue;
+            var m = r.sharedMaterial;
+            if (m == null) continue;
+            if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", c);
+            if (m.HasProperty("_Color")) m.SetColor("_Color", c);
+        }
     }
 }
 
