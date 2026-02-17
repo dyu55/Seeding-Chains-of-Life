@@ -63,6 +63,10 @@ public class FPSRaycastInteractor : MonoBehaviour
                     // T04: voxelize/assimilate effect
                     VoxelAssimilator.Assimilate(harvestable);
 
+                    // T06: game feel (burst + shake)
+                    FPSGameFeel.VoxelBurst(hit.point);
+                    FPSGameFeel.Shake();
+
                     // T05: harvest -> add Voxel Seed to inventory and remove object
                     if (harvestable.GetComponent<FPSHarvestedMarker>() == null)
                     {
