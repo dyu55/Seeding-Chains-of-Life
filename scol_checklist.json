@@ -66,7 +66,7 @@
       "id": "T11",
       "task": "Boids 动物群集算法核心",
       "detail": "为 Voxel 动物预制体实现 Craig Reynolds 的群集算法：分离、对齐和凝聚，用向量力学替代原有的简单 CA 算法。",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T12",
