@@ -76,8 +76,8 @@ public static class FPSSeeding
         SpawnCube(root.transform, new Vector3(0.09f, 0.03f, -0.06f), new Vector3(0.06f, 0.06f, 0.06f), mat);
         SpawnCube(root.transform, new Vector3(0.09f, 0.03f, 0.06f), new Vector3(0.06f, 0.06f, 0.06f), mat);
 
-        // Simple bob / look around
-        root.AddComponent<FPSSeedAnimalIdle>();
+        // Simple boids agent (core flocking)
+        root.AddComponent<FPSBoidAgent>();
 
         return root;
     }
