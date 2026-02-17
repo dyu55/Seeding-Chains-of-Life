@@ -12,13 +12,29 @@ public class FPSRaycastInteractor : MonoBehaviour
     public float maxDistance = 3f;
     public LayerMask hitMask = ~0;
 
+    [Header("Harvest")]
+    public bool destroyOnHarvest = true;
+    [Tooltip("Small delay so the voxelize material swap can be seen before the object disappears.")]
+    public float destroyDelaySeconds = 0.06f;
+
     [Header("Debug")]
     public bool logHits = true;
+
+    SCoL.Inventory.SCoLInventory _inventory;
 
     void Awake()
     {
         if (cameraSource == null)
             cameraSource = Camera.main;
+
+        _inventory = FindFirstObjectByType<SCoL.Inventory.SCoLInventory>();
+        if (_inventory == null)
+        {
+            // Create a minimal runtime inventory if the scene doesn't include one.
+            var invGO = new GameObject("SCoLInventory (Runtime)");
+            DontDestroyOnLoad(invGO);
+            _inventory = invGO.AddComponent<SCoL.Inventory.SCoLInventory>();
+        }
     }
 
     void Update()
@@ -46,6 +62,21 @@ public class FPSRaycastInteractor : MonoBehaviour
 
                     // T04: voxelize/assimilate effect
                     VoxelAssimilator.Assimilate(harvestable);
+
+                    // T05: harvest -> add Voxel Seed to inventory and remove object
+                    if (harvestable.GetComponent<FPSHarvestedMarker>() == null)
+                    {
+                        harvestable.AddComponent<FPSHarvestedMarker>();
+                        _inventory.Add(SCoL.Inventory.SCoLItemType.Seed, 1);
+
+                        if (destroyOnHarvest)
+                        {
+                            // Hide immediately, destroy shortly after.
+                            SetRenderersEnabled(harvestable, false);
+                            SetCollidersEnabled(harvestable, false);
+                            StartCoroutine(DestroyLater(harvestable, destroyDelaySeconds));
+                        }
+                    }
                 }
                 else
                 {
@@ -60,6 +91,28 @@ public class FPSRaycastInteractor : MonoBehaviour
             }
         }
     }
+
+    System.Collections.IEnumerator DestroyLater(GameObject go, float delay)
+    {
+        if (delay > 0f)
+            yield return new WaitForSeconds(delay);
+        if (go != null)
+            Destroy(go);
+    }
+
+    static void SetRenderersEnabled(GameObject go, bool enabled)
+    {
+        var rs = go.GetComponentsInChildren<Renderer>(includeInactive: true);
+        foreach (var r in rs) if (r != null) r.enabled = enabled;
+    }
+
+    static void SetCollidersEnabled(GameObject go, bool enabled)
+    {
+        var cs = go.GetComponentsInChildren<Collider>(includeInactive: true);
+        foreach (var c in cs) if (c != null) c.enabled = enabled;
+    }
+
+    sealed class FPSHarvestedMarker : MonoBehaviour { }
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void EnsureExists()
