@@ -1,5 +1,8 @@
 using UnityEngine;
+
+#if USE_VR
 using UnityEngine.XR.Interaction.Toolkit;
+#endif
 
 namespace SCoL.Inventory
 {
@@ -16,11 +19,19 @@ namespace SCoL.Inventory
     {
         public SCoLInventory inventory;
 
+#if USE_VR
         private UnityEngine.XR.Interaction.Toolkit.Interactables.XRBaseInteractable _interactable;
+#endif
         private SCoLPickup _pickup;
 
         private void Awake()
         {
+            // FPS-only build: do NOT add XRGrabInteractable.
+            // (Pickup collection will be handled by the FPS raycast interaction path.)
+#if !USE_VR
+            enabled = false;
+            return;
+#else
             _pickup = GetComponent<SCoLPickup>();
             if (inventory == null)
                 inventory = FindFirstObjectByType<SCoLInventory>();
@@ -29,13 +40,14 @@ namespace SCoL.Inventory
             _interactable = GetComponent<UnityEngine.XR.Interaction.Toolkit.Interactables.XRBaseInteractable>();
             if (_interactable == null)
             {
-                // Grab interactable gives best default behavior with Starter Assets
                 _interactable = gameObject.AddComponent<UnityEngine.XR.Interaction.Toolkit.Interactables.XRGrabInteractable>();
             }
 
             _interactable.selectEntered.AddListener(OnSelectEntered);
+#endif
         }
 
+#if USE_VR
         private void OnDestroy()
         {
             if (_interactable != null)
@@ -51,5 +63,6 @@ namespace SCoL.Inventory
             inventory.Add(_pickup.type, _pickup.amount);
             Destroy(gameObject);
         }
+#endif
     }
 }
