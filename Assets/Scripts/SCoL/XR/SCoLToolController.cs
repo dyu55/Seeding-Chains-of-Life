@@ -54,6 +54,13 @@ namespace SCoL.XR
         public Tool currentTool = Tool.Seed;
         public float waterAmount = 0.35f;
 
+        [Header("Mode")]
+        [Tooltip("If enabled, this controller only processes input when XR devices/simulator are present.")]
+        public bool onlyRunWhenXRInputPresent = true;
+
+        [Tooltip("Editor fallback: allow mouse-triggered tool use even when XR input is not active.")]
+        public bool allowMouseFallbackWithoutXR = false;
+
         [Header("Debug")]
         public bool logXRInput = false;
         [Min(0.1f)] public float logIntervalSeconds = 1.0f;
@@ -102,6 +109,16 @@ namespace SCoL.XR
 
         private void Update()
         {
+            bool xrInputPresent = IsAnyXRInputPresent();
+            if (onlyRunWhenXRInputPresent && !xrInputPresent && !allowMouseFallbackWithoutXR)
+            {
+                // Avoid stale edge-detection states when controller input is absent.
+                _prevLeftPrimary = false;
+                _prevLeftSecondary = false;
+                _prevRightTrigger = false;
+                return;
+            }
+
 #if ENABLE_INPUT_SYSTEM
             // Always allow keyboard tool switching (works even if simulator input isn't configured)
             if (Keyboard.current != null)
@@ -124,7 +141,8 @@ namespace SCoL.XR
 
 #if ENABLE_INPUT_SYSTEM
             // Mouse: Left click = use tool/apply at hit point (if not a pickup)
-            if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
+            if ((xrInputPresent || allowMouseFallbackWithoutXR) &&
+                Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
             {
                 if (fallbackCamera == null) fallbackCamera = Camera.main;
                 if (fallbackCamera != null)
@@ -451,6 +469,20 @@ namespace SCoL.XR
             if (device.TryGetFeatureValue(UnityEngine.XR.CommonUsages.grip, out float v))
                 return v >= threshold;
             return false;
+        }
+
+        private bool IsAnyXRInputPresent()
+        {
+            var leftXR = InputDevices.GetDeviceAtXRNode(XRNode.LeftHand);
+            var rightXR = InputDevices.GetDeviceAtXRNode(XRNode.RightHand);
+            bool legacyXR = leftXR.isValid || rightXR.isValid;
+
+#if ENABLE_INPUT_SYSTEM
+            bool inputSystemXR = FindXRControllerWithUsage("LeftHand") != null || FindXRControllerWithUsage("RightHand") != null;
+            return legacyXR || inputSystemXR;
+#else
+            return legacyXR;
+#endif
         }
     }
 }

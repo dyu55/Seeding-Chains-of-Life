@@ -24,8 +24,13 @@ namespace SCoL
         private PlantVoxelRenderer _plantRenderer;
 
         [Header("Rendering (Optional)")]
-        [Tooltip("Legacy placeholder: renders small plants as cubes. Turn OFF if you want a clean scene to populate with imported models.")]
-        public bool enablePlantVoxelRenderer = false;
+        [Tooltip("Render CA plant states using PlantVoxelRenderer (VoxBox prefabs / fallbacks).")]
+        public bool enablePlantVoxelRenderer = true;
+
+        [Header("Initial Ecology")]
+        [Tooltip("Seed an initial set of plants so cellular automata has a starting population.")]
+        public bool seedInitialPlants = true;
+        [Range(0f, 0.10f)] public float initialPlantDensity = 0.06f;
 
         public GridViewMode ViewMode
         {
@@ -100,6 +105,9 @@ namespace SCoL
             }
             _voxelWorld.useTransformAsOrigin = true;
             _voxelWorld.InitIfNeeded();
+
+            if (seedInitialPlants)
+                SeedInitialPlants();
 
             // Snap XR rig to ground after voxel world exists.
             StartCoroutine(SnapRigToGroundNextFrame());
@@ -398,6 +406,17 @@ namespace SCoL
                 return;
             }
 
+            // Terrain hard rule: plants cannot exist in submerged columns.
+            if (cur.HasPlant && !IsPlantableColumn(x, y))
+            {
+                n.PlantStage = PlantStage.Empty;
+                n.PlantAgeSeconds = 0f;
+                n.IsOnFire = false;
+                n.FireFuel = 0f;
+                n.Success = Mathf.Clamp01(cur.Success - 0.05f);
+                return;
+            }
+
             // Basic water/sun ranges for plants
             bool waterOk = cur.Water >= 0.25f && cur.Water <= 0.85f;
             bool sunOk = cur.Sunlight >= 0.45f && cur.Sunlight <= 0.95f;
@@ -408,6 +427,9 @@ namespace SCoL
 
             if (cur.PlantStage == PlantStage.Empty)
             {
+                if (!IsPlantableColumn(x, y))
+                    return;
+
                 // Birth: stochastic sprouting (less "grid-perfect" than strict Life rules).
                 // We bias toward sprouting near existing plants and under decent conditions.
                 if (Config.useStochasticSprouting)
@@ -426,9 +448,6 @@ namespace SCoL
                         // - can climb up to +5 blocks relative to a neighboring flower source
                         if (_voxelWorld != null)
                         {
-                            if (!_voxelWorld.IsGrassSurface(x, y))
-                                return;
-
                             int targetH = _voxelWorld.GetSurfaceY(x, y);
                             bool hasReachableSource = false;
 
@@ -442,6 +461,7 @@ namespace SCoL
 
                                 var nb = Grid.Get(nx, ny);
                                 if (nb.PlantStage != PlantStage.SmallPlant) continue;
+                                if (!IsPlantableColumn(nx, ny)) continue;
 
                                 int sourceH = _voxelWorld.GetSurfaceY(nx, ny);
                                 if (targetH <= sourceH + 5)
@@ -468,7 +488,7 @@ namespace SCoL
                 }
 
                 // Strict CA birth (classic Life-style)
-                if (smallPlants == 3 && waterOk && sunOk && heatOk)
+                if (smallPlants == 3 && waterOk && sunOk && heatOk && IsPlantableColumn(x, y))
                 {
                     n.PlantStage = PlantStage.SmallPlant;
                     n.PlantAgeSeconds = 0f;
@@ -552,8 +572,8 @@ namespace SCoL
 
             var c = Grid.Get(x, y);
 
-            // Only plant flowers on grass surface in voxel world.
-            if (_voxelWorld != null && !_voxelWorld.IsGrassSurface(x, y))
+            // Terrain hard rule: only dry grass columns are valid.
+            if (!IsPlantableColumn(x, y))
                 return;
 
             // Allow planting on empty OR burnt/scorched tiles.
@@ -570,6 +590,7 @@ namespace SCoL
             OverlayFire = true;
 
             _renderer?.Render(Grid);
+            _plantRenderer?.RenderNow();
         }
 
         public void AddWaterAt(Vector3 world, float amount = 0.25f)
@@ -587,6 +608,7 @@ namespace SCoL
             OverlayFire = true;
 
             _renderer?.Render(Grid);
+            _plantRenderer?.RenderNow();
         }
 
         public void IgniteAt(Vector3 world, float fuel = 0.8f)
@@ -602,6 +624,7 @@ namespace SCoL
             StartCoroutine(FireSpreadSimple.Spread(this, x, y, maxDistance: 3, secondsPerStep: 1f));
 
             _renderer?.Render(Grid);
+            _plantRenderer?.RenderNow();
         }
 
         public void StompAt(Vector3 world, float damage = -1f)
@@ -610,6 +633,7 @@ namespace SCoL
             if (damage < 0f) damage = Config.stompDamage;
             var c = Grid.Get(x, y);
             c.Durability = Mathf.Clamp01(c.Durability - damage);
+            _plantRenderer?.RenderNow();
         }
 
         private System.Collections.IEnumerator SnapRigToGroundNextFrame()
@@ -651,6 +675,82 @@ namespace SCoL
             var c = Grid.Get(x, y);
             c.IsOnFire = true;
             c.FireFuel = Mathf.Clamp01(Mathf.Max(c.FireFuel, fuel));
+        }
+
+        private bool IsPlantableColumn(int x, int z)
+        {
+            if (_voxelWorld == null || _voxelWorld.Config == null)
+                return true;
+
+            if (!_voxelWorld.IsGrassSurface(x, z))
+                return false;
+
+            int surfaceY = _voxelWorld.GetSurfaceY(x, z);
+            if (surfaceY < _voxelWorld.Config.seaLevel)
+                return false;
+
+            int aboveY = surfaceY + 1;
+            if (aboveY < _voxelWorld.Config.worldHeight && _voxelWorld.GetBlock(x, aboveY, z) == VoxelBlockType.Water)
+                return false;
+
+            return true;
+        }
+
+        private void SeedInitialPlants()
+        {
+            if (Grid == null || Config == null) return;
+
+            bool seededAny = false;
+            float density = Mathf.Clamp01(initialPlantDensity);
+
+            for (int y = 0; y < Grid.Height; y++)
+            {
+                for (int x = 0; x < Grid.Width; x++)
+                {
+                    if (_rng.NextDouble() > density)
+                        continue;
+
+                    if (!IsPlantableColumn(x, y))
+                        continue;
+
+                    var c = Grid.Get(x, y);
+                    c.PlantStage = PlantStage.SmallPlant;
+                    c.PlantAgeSeconds = 0f;
+                    c.Durability = 1f;
+                    c.Success = Mathf.Clamp01(0.45f + (float)_rng.NextDouble() * 0.40f);
+                    c.Water = Mathf.Clamp01(c.Water + 0.10f);
+                    seededAny = true;
+                }
+            }
+
+            if (seededAny) return;
+
+            // Ensure at least one seed exists so stochastic CA can spread.
+            int cx = Grid.Width / 2;
+            int cy = Grid.Height / 2;
+            int maxR = Mathf.Max(Grid.Width, Grid.Height);
+
+            for (int r = 0; r < maxR; r++)
+            {
+                for (int oy = -r; oy <= r; oy++)
+                {
+                    for (int ox = -r; ox <= r; ox++)
+                    {
+                        int x = cx + ox;
+                        int y = cy + oy;
+                        if (!Grid.InBounds(x, y)) continue;
+                        if (!IsPlantableColumn(x, y)) continue;
+
+                        var c = Grid.Get(x, y);
+                        c.PlantStage = PlantStage.SmallPlant;
+                        c.PlantAgeSeconds = 0f;
+                        c.Durability = 1f;
+                        c.Success = 0.65f;
+                        c.Water = Mathf.Clamp01(c.Water + 0.15f);
+                        return;
+                    }
+                }
+            }
         }
     }
 }

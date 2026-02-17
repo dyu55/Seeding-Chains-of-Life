@@ -39,8 +39,11 @@ public class VoxBoxSpawner : MonoBehaviour
 
     [Header("Debug")]
     public bool logSpawns;
+    [Tooltip("Log warnings when a prefab slot contains an invalid/non-GameObject reference.")]
+    public bool warnOnInvalidPrefabRefs = false;
 
     readonly List<GameObject> _spawned = new();
+    readonly HashSet<int> _invalidPrefabIds = new();
 
     void Start()
     {
@@ -68,7 +71,9 @@ public class VoxBoxSpawner : MonoBehaviour
                 continue;
 
             var rot = Quaternion.Euler(0f, UnityEngine.Random.Range(0f, 360f), 0f);
-            var go = Instantiate(prefab, pos, rot);
+            var go = TryInstantiatePrefab(prefab, pos, rot);
+            if (go == null)
+                continue;
 
             // tag for harvest logic (raycast interactor walks parents looking for this)
             TryTag(go);
@@ -106,10 +111,40 @@ public class VoxBoxSpawner : MonoBehaviour
         for (int tries = 0; tries < 8; tries++)
         {
             var p = spawnPrefabs[UnityEngine.Random.Range(0, spawnPrefabs.Length)];
-            if (p != null) return p;
+            if (p == null) continue;
+            if (_invalidPrefabIds.Contains(p.GetInstanceID())) continue;
+            return p;
         }
 
         return null;
+    }
+
+    GameObject TryInstantiatePrefab(GameObject prefab, Vector3 position, Quaternion rotation)
+    {
+        if (prefab == null) return null;
+
+        try
+        {
+            // Use non-generic Instantiate to avoid InvalidCastException from bad serialized refs.
+            var obj = Instantiate((UnityEngine.Object)prefab, position, rotation);
+            if (obj is GameObject go)
+                return go;
+
+            if (obj != null)
+                Destroy(obj);
+
+            _invalidPrefabIds.Add(prefab.GetInstanceID());
+            if (warnOnInvalidPrefabRefs)
+                Debug.LogWarning($"[VoxBoxSpawner] Skipped non-GameObject prefab reference: '{prefab.name}'.", this);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _invalidPrefabIds.Add(prefab.GetInstanceID());
+            if (warnOnInvalidPrefabRefs)
+                Debug.LogWarning($"[VoxBoxSpawner] Failed to instantiate '{prefab.name}': {ex.GetType().Name} - {ex.Message}", this);
+            return null;
+        }
     }
 
     bool TryPickPointOnGround(out Vector3 pos)

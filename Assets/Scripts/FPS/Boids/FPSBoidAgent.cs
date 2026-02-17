@@ -1,4 +1,5 @@
 using UnityEngine;
+using System.Collections.Generic;
 
 /// <summary>
 /// T11: Craig Reynolds boids core agent.
@@ -53,7 +54,20 @@ public class FPSBoidAgent : MonoBehaviour
 
     [HideInInspector] public Vector3 velocity;
 
+    static readonly List<FPSBoidAgent> ActiveAgents = new List<FPSBoidAgent>(128);
+
     Camera _playerCam;
+
+    void OnEnable()
+    {
+        if (!ActiveAgents.Contains(this))
+            ActiveAgents.Add(this);
+    }
+
+    void OnDisable()
+    {
+        ActiveAgents.Remove(this);
+    }
 
     void Start()
     {
@@ -101,22 +115,27 @@ public class FPSBoidAgent : MonoBehaviour
 
     Vector3 ComputeAcceleration()
     {
-        var neighbors = Physics.OverlapSphere(transform.position, neighborRadius, ~0, QueryTriggerInteraction.Ignore);
-
         Vector3 separation = Vector3.zero;
         Vector3 alignment = Vector3.zero;
         Vector3 cohesionCenter = Vector3.zero;
         int count = 0;
         int sepCount = 0;
 
-        foreach (var c in neighbors)
+        Vector3 myPos = transform.position;
+        float neighborRadiusSqr = neighborRadius * neighborRadius;
+        float separationRadiusSqr = separationRadius * separationRadius;
+
+        // Iterate active boids directly instead of doing Physics.OverlapSphere each frame.
+        // This is faster and doesn't depend on spawned animals having colliders.
+        for (int i = 0; i < ActiveAgents.Count; i++)
         {
-            if (c == null) continue;
-            var other = c.GetComponentInParent<FPSBoidAgent>();
+            var other = ActiveAgents[i];
             if (other == null || other == this) continue;
 
-            float d = Vector3.Distance(transform.position, other.transform.position);
-            if (d <= 0.0001f) continue;
+            Vector3 toOther = other.transform.position - myPos;
+            toOther.y = 0f;
+            float dSqr = toOther.sqrMagnitude;
+            if (dSqr <= 0.000001f || dSqr > neighborRadiusSqr) continue;
 
             // Alignment + cohesion
             alignment += other.velocity;
@@ -124,9 +143,9 @@ public class FPSBoidAgent : MonoBehaviour
             count++;
 
             // Separation (stronger at close distances)
-            if (d < separationRadius)
+            if (dSqr < separationRadiusSqr)
             {
-                separation += (transform.position - other.transform.position) / (d * d);
+                separation += (-toOther) / dSqr;
                 sepCount++;
             }
         }
@@ -224,18 +243,21 @@ public class FPSBoidAgent : MonoBehaviour
 
     Transform FindNearestRole(BoidRole wanted, float radius)
     {
-        var cols = Physics.OverlapSphere(transform.position, radius, ~0, QueryTriggerInteraction.Ignore);
         Transform best = null;
         float bestD = float.PositiveInfinity;
+        float radiusSqr = radius * radius;
+        Vector3 myPos = transform.position;
 
-        foreach (var c in cols)
+        for (int i = 0; i < ActiveAgents.Count; i++)
         {
-            if (c == null) continue;
-            var other = c.GetComponentInParent<FPSBoidAgent>();
+            var other = ActiveAgents[i];
             if (other == null || other == this) continue;
             if (other.role != wanted) continue;
 
-            float d = Vector3.Distance(transform.position, other.transform.position);
+            float dSqr = (other.transform.position - myPos).sqrMagnitude;
+            if (dSqr > radiusSqr) continue;
+
+            float d = Mathf.Sqrt(dSqr);
             if (d < bestD)
             {
                 bestD = d;

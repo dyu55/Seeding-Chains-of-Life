@@ -1,4 +1,5 @@
 using UnityEngine;
+using System.Collections.Generic;
 
 /// <summary>
 /// T07: Seeding loop for FPS.
@@ -9,7 +10,11 @@ using UnityEngine;
 /// </summary>
 public static class FPSSeeding
 {
+    const string HarvestableTag = "Harvestable";
+    const int MaxRuntimeSeedSpawns = 120;
+
     static Material _voxelMat;
+    static readonly Queue<GameObject> _spawnHistory = new Queue<GameObject>(MaxRuntimeSeedSpawns + 8);
 
     static Material GetVoxelMat()
     {
@@ -56,6 +61,7 @@ public static class FPSSeeding
             SpawnCube(root.transform, p, s, mat);
         }
 
+        FinalizeSpawn(root);
         return root;
     }
 
@@ -84,6 +90,7 @@ public static class FPSSeeding
         if (boid.role == FPSBoidAgent.BoidRole.Predator)
             TintAll(root, new Color(0.85f, 0.35f, 0.35f, 1f));
 
+        FinalizeSpawn(root);
         return root;
     }
 
@@ -112,6 +119,68 @@ public static class FPSSeeding
             if (m == null) continue;
             if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", c);
             if (m.HasProperty("_Color")) m.SetColor("_Color", c);
+        }
+    }
+
+    static void FinalizeSpawn(GameObject root)
+    {
+        if (root == null) return;
+
+        TrySetHarvestableTag(root);
+        EnsureRootCollider(root);
+        RegisterSpawn(root);
+    }
+
+    static void TrySetHarvestableTag(GameObject go)
+    {
+        if (go == null) return;
+        try
+        {
+            go.tag = HarvestableTag;
+        }
+        catch (UnityException)
+        {
+            // Tag not defined in TagManager; keep gameplay running without hard failure.
+        }
+    }
+
+    static void EnsureRootCollider(GameObject root)
+    {
+        if (root == null) return;
+        if (root.GetComponentInChildren<Collider>() != null) return;
+
+        float worldRadius = 0.25f;
+        var renderers = root.GetComponentsInChildren<Renderer>(includeInactive: true);
+        Vector3 rootPos = root.transform.position;
+
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            var r = renderers[i];
+            if (r == null) continue;
+            var b = r.bounds;
+            float extent = b.extents.magnitude;
+            float candidate = Vector3.Distance(rootPos, b.center) + extent;
+            if (candidate > worldRadius) worldRadius = candidate;
+        }
+
+        float lossyMax = Mathf.Max(Mathf.Abs(root.transform.lossyScale.x), Mathf.Abs(root.transform.lossyScale.y), Mathf.Abs(root.transform.lossyScale.z));
+        if (lossyMax < 0.0001f) lossyMax = 1f;
+
+        var sc = root.AddComponent<SphereCollider>();
+        sc.radius = Mathf.Clamp(worldRadius / lossyMax, 0.12f, 1.5f);
+        sc.center = Vector3.zero;
+    }
+
+    static void RegisterSpawn(GameObject spawned)
+    {
+        if (spawned == null) return;
+
+        _spawnHistory.Enqueue(spawned);
+        while (_spawnHistory.Count > MaxRuntimeSeedSpawns)
+        {
+            var old = _spawnHistory.Dequeue();
+            if (old != null)
+                Object.Destroy(old);
         }
     }
 }

@@ -33,6 +33,9 @@ namespace SCoL.XR
         [Tooltip("Only run in Play Mode.")]
         public bool onlyInPlayMode = true;
 
+        [Tooltip("If false, fail silently when the XR rig prefab cannot be resolved (useful for FPS-only scenes).")]
+        public bool warnIfRigMissing = false;
+
         private static bool s_spawned;
 
         private void Awake()
@@ -83,11 +86,14 @@ namespace SCoL.XR
 
             if (prefab == null)
             {
-                Debug.LogError(
-                    "EnsureStarterXRRig: Could not resolve XR rig prefab. " +
-                    "Assign 'rigPrefab' in the inspector, or import XRI Starter Assets, " +
-                    $"or update 'rigPrefabPath' (currently '{rigPrefabPath}'), " +
-                    $"or place the prefab under Resources as '{rigPrefabResourcesName}'.");
+                if (warnIfRigMissing)
+                {
+                    Debug.LogWarning(
+                        "EnsureStarterXRRig: Could not resolve XR rig prefab. " +
+                        "Assign 'rigPrefab' in the inspector, or import XRI Starter Assets, " +
+                        $"or update 'rigPrefabPath' (currently '{rigPrefabPath}'), " +
+                        $"or place the prefab under Resources as '{rigPrefabResourcesName}'.");
+                }
                 return;
             }
 

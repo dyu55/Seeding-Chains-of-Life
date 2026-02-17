@@ -52,9 +52,10 @@ public class SimpleFirstPersonController : MonoBehaviour
 
         var mouse = Mouse.current;
         var kb = Keyboard.current;
+        bool cursorLocked = Cursor.lockState == CursorLockMode.Locked;
 
         // Look (mouse delta)
-        if (cameraPivot != null && mouse != null)
+        if (cameraPivot != null && mouse != null && cursorLocked)
         {
             var d = mouse.delta.ReadValue();
             float mx = d.x * mouseSensitivity * 0.02f; // scale down a bit vs legacy axes
@@ -105,6 +106,13 @@ public class SimpleFirstPersonController : MonoBehaviour
         {
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
+        }
+
+        // Re-lock on left click so players can quickly get back to controlling the camera.
+        if (lockCursor && !cursorLocked && mouse != null && mouse.leftButton.wasPressedThisFrame)
+        {
+            Cursor.lockState = CursorLockMode.Locked;
+            Cursor.visible = false;
         }
     }
 }

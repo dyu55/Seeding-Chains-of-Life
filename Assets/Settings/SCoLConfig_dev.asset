@@ -21,6 +21,10 @@ MonoBehaviour:
   heatDiffuse: 0.1
   seedSuccessBase: 0.75
   stompDamage: 0.1
+  stochasticSproutChance: 0.36
+  useStochasticSprouting: 1
+  enablePlantLifecycle: 1
+  plantLifetimeSeconds: 260
   fireHeatPerTick: 0.25
   fireFuelBurnPerTick: 0.12
   fireSpreadChance: 0.2
@@ -30,3 +34,7 @@ MonoBehaviour:
   cloudySunPenalty: 0.15
   generateGroundPlane: 1
   spawnCameraRigHint: 0
+  useFixedSeed: 1
+  seed: 12345
+  enableSimulationTick: 1
+  enableLegacyTileRenderer: 0

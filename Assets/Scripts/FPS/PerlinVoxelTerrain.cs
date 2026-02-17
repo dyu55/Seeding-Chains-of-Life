@@ -115,6 +115,7 @@ public class PerlinVoxelTerrain : MonoBehaviour
     static void EnsureExists()
     {
         if (FindFirstObjectByType<PerlinVoxelTerrain>() != null) return;
+        if (FindFirstObjectByType<SCoL.Voxels.VoxelWorld>() != null) return;
         var go = new GameObject("PerlinVoxelTerrainGenerator (Runtime)");
         DontDestroyOnLoad(go);
         go.AddComponent<PerlinVoxelTerrain>();

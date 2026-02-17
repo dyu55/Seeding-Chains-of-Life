@@ -2,6 +2,9 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using Unity.XR.CoreUtils;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 namespace SCoL.Voxels
 {
@@ -19,6 +22,12 @@ namespace SCoL.Voxels
         public Material dirtMat;
         public Material stoneMat;
         public Material waterMat;
+
+        [Header("VoxBox Terrain Look")]
+        [Tooltip("Use materials extracted from VoxBox tile prefabs for Grass/Dirt/Stone/Water.")]
+        public bool useVoxBoxTerrainMaterials = true;
+        [Tooltip("If true, VoxBox materials will replace inspector-assigned terrain materials at runtime.")]
+        public bool overrideAssignedTerrainMaterials = true;
 
         [Header("Grass Props (decorations)")]
         // Default OFF: avoids auto-spawning legacy/placeholder props when entering Play mode.
@@ -106,6 +115,8 @@ namespace SCoL.Voxels
             Shader shader = Shader.Find("Universal Render Pipeline/Lit");
             if (shader == null) shader = Shader.Find("Standard");
 
+            TryApplyVoxBoxTerrainMaterials(shader);
+
             if (grassMat == null) grassMat = new Material(shader) { name = "Voxel_Grass" };
             grassMat.enableInstancing = true;
             ApplyGrassTextureIfAvailable(grassMat);
@@ -121,6 +132,46 @@ namespace SCoL.Voxels
             if (waterMat == null) waterMat = new Material(shader) { name = "Voxel_Water" };
             waterMat.enableInstancing = true;
             waterMat.color = new Color(0.18f, 0.35f, 0.85f, 0.85f);
+        }
+
+        private void TryApplyVoxBoxTerrainMaterials(Shader fallbackShader)
+        {
+            if (!useVoxBoxTerrainMaterials) return;
+
+            // Replace only if requested or currently unset.
+            if (overrideAssignedTerrainMaterials || grassMat == null)
+                grassMat = LoadVoxBoxMaterialFromPrefab("Assets/VoxBox/Prefabs/Grass Tiles/Tile 6.prefab", "Voxel_Grass_VoxBox", fallbackShader);
+            if (overrideAssignedTerrainMaterials || dirtMat == null)
+                dirtMat = LoadVoxBoxMaterialFromPrefab("Assets/VoxBox/Prefabs/Grass Tiles/Tile 5.prefab", "Voxel_Dirt_VoxBox", fallbackShader);
+            if (overrideAssignedTerrainMaterials || stoneMat == null)
+                stoneMat = LoadVoxBoxMaterialFromPrefab("Assets/VoxBox/Prefabs/Tiles/Tile 7.prefab", "Voxel_Stone_VoxBox", fallbackShader);
+            if (overrideAssignedTerrainMaterials || waterMat == null)
+                waterMat = LoadVoxBoxMaterialFromPrefab("Assets/VoxBox/Prefabs/Grass Tiles/Tile 8.prefab", "Voxel_Water_VoxBox", fallbackShader);
+        }
+
+        private static Material LoadVoxBoxMaterialFromPrefab(string prefabPath, string runtimeName, Shader fallbackShader)
+        {
+#if UNITY_EDITOR
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
+            if (prefab != null)
+            {
+                var renderers = prefab.GetComponentsInChildren<Renderer>(true);
+                for (int i = 0; i < renderers.Length; i++)
+                {
+                    var src = renderers[i] != null ? renderers[i].sharedMaterial : null;
+                    if (src == null) continue;
+
+                    var mat = new Material(src);
+                    mat.name = runtimeName;
+                    mat.enableInstancing = true;
+                    return mat;
+                }
+            }
+#endif
+
+            var fallback = new Material(fallbackShader) { name = runtimeName };
+            fallback.enableInstancing = true;
+            return fallback;
         }
 
         private void EnsureGrassPropAssets()
