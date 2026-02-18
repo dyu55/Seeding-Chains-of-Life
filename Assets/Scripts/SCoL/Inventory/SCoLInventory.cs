@@ -12,6 +12,7 @@ namespace SCoL.Inventory
         public int seeds = 0;
         public int water = 0;
         public int fire = 0;
+        public int plants = 0;
 
         public int Get(SCoLItemType type)
         {
@@ -20,6 +21,7 @@ namespace SCoL.Inventory
                 SCoLItemType.Seed => seeds,
                 SCoLItemType.Water => water,
                 SCoLItemType.Fire => fire,
+                SCoLItemType.Plant => plants,
                 _ => 0
             };
         }
@@ -37,6 +39,9 @@ namespace SCoL.Inventory
                     break;
                 case SCoLItemType.Fire:
                     fire += amount;
+                    break;
+                case SCoLItemType.Plant:
+                    plants += amount;
                     break;
             }
         }
@@ -57,6 +62,10 @@ namespace SCoL.Inventory
                 case SCoLItemType.Fire:
                     if (fire < amount) return false;
                     fire -= amount;
+                    return true;
+                case SCoLItemType.Plant:
+                    if (plants < amount) return false;
+                    plants -= amount;
                     return true;
             }
             return false;

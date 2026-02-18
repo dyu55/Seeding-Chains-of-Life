@@ -63,7 +63,7 @@ namespace SCoL.Visualization
 
         [Header("Control Labels")]
         public string controlsVR = "VR: A/X = next tool | B/Y = prev tool | Right Trigger = apply | Aim at ball = auto-pickup";
-        public string controlsDesktop = "Desktop: 1/2/3 tool | LMB apply | V view | F fire overlay | H toggle HUD";
+        public string controlsDesktop = "Desktop: 1/2/3/4 tool | LMB apply | V view | F fire overlay | H toggle HUD";
 
         [Header("Inventory")]
         public bool showInventory = true;
@@ -201,7 +201,7 @@ namespace SCoL.Visualization
                 _invText.enabled = visible && showInventory && _inventory != null;
                 if (showInventory && _inventory != null)
                 {
-                    _invText.text = $"Seed: {_inventory.seeds}\nWater: {_inventory.water}\nFire: {_inventory.fire}";
+                    _invText.text = $"Seed: {_inventory.seeds}\nWater: {_inventory.water}\nFire: {_inventory.fire}\nPlant: {_inventory.plants}";
                 }
             }
 

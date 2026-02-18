@@ -360,6 +360,76 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &571384965
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 571384967}
+  - component: {fileID: 571384966}
+  m_Layer: 0
+  m_Name: VoxBoxAnimalSchoolSpawner
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &571384966
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 571384965}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9d3d21df8df74f53b6fc087e678f1270, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::VoxBoxAnimalSchoolSpawner
+  voxelWorld: {fileID: 0}
+  animalPrefabs:
+  - {fileID: 3632003745339279683, guid: ce8121766023134429b1dbdcd2cba052, type: 3}
+  animalCount: 18
+  spawnOnStart: 1
+  maxSpawnAttemptsPerAnimal: 8
+  groundOffset: 0.02
+  raycastHeight: 120
+  randomScaleRange: {x: 0.3, y: 0.5}
+  groundMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  configureBoidBoundsFromWorld: 1
+  boundsPadding: 4
+  boidBaseSpeed: 2.6
+  boidNeighborRadius: 4
+  tagAsHarvestable: 1
+  harvestableTag: Harvestable
+  animalsEatMaturePlants: 1
+  eatPlantRange: 2.8
+  eatCheckIntervalSeconds: 0.4
+  eatCooldownSeconds: 2.2
+  eatHeadTouchDistance: 0.25
+  eatHoldSeconds: 2
+  eatAction: 1
+  logSpawnInfo: 0
+--- !u!4 &571384967
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 571384965}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 53.68455, y: -42.46374, z: 130.1845}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &825973265
 GameObject:
   m_ObjectHideFlags: 0
@@ -10338,6 +10408,7 @@ MonoBehaviour:
   seeds: 30
   water: 30
   fire: 30
+  plants: 30
 --- !u!1 &980379203
 GameObject:
   m_ObjectHideFlags: 0
@@ -16943,6 +17014,13 @@ MonoBehaviour:
   fireCanDestroyPlants: 0
   fireDestroyChance: 0.5
   fireDestroyDelaySeconds: 0.25
+  animalsFollowWhenPlantToolSelected: 1
+  plantFollowRadius: 8
+  plantFollowWeight: 3
+  plantFeedConsumesInventory: 1
+  feedJumpHeight: 0.35
+  feedReactionDuration: 1.2
+  feedJumpCount: 3
 --- !u!114 &9000000007
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -16986,3 +17064,4 @@ SceneRoots:
   - {fileID: 825973268}
   - {fileID: 881928189}
   - {fileID: 888800001}
+  - {fileID: 571384967}

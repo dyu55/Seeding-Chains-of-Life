@@ -15,7 +15,8 @@ public class FPSRaycastInteractor : MonoBehaviour
     {
         Seed,
         Water,
-        Fire
+        Fire,
+        Plant
     }
 
     public Camera cameraSource;
@@ -56,6 +57,15 @@ public class FPSRaycastInteractor : MonoBehaviour
     [Range(0f, 1f)] public float fireDestroyChance = 0.5f;
     [Min(0f)] public float fireDestroyDelaySeconds = 0.25f;
 
+    [Header("Plant Tool / Animal Feed")]
+    public bool animalsFollowWhenPlantToolSelected = true;
+    [Min(0.1f)] public float plantFollowRadius = 8f;
+    [Min(0f)] public float plantFollowWeight = 3f;
+    public bool plantFeedConsumesInventory = true;
+    [Min(0.05f)] public float feedJumpHeight = 0.35f;
+    [Min(0.2f)] public float feedReactionDuration = 1.2f;
+    [Min(1)] public int feedJumpCount = 3;
+
     SCoL.Inventory.SCoLInventory _inventory;
     Material _waterSpreadMat;
     Material _fireSpreadMat;
@@ -83,6 +93,7 @@ public class FPSRaycastInteractor : MonoBehaviour
     {
         if (cameraSource == null) return;
         HandleToolSwitchInput();
+        UpdatePlantAttractor();
 
         // Primary: harvest
         if (SCoL.Interaction.SCoLInteractionInput.PrimaryPressed())
@@ -150,10 +161,6 @@ public class FPSRaycastInteractor : MonoBehaviour
             if (!Physics.Raycast(ray, out var hit, 50f, hitMask, QueryTriggerInteraction.Ignore))
                 return;
 
-            // treat upward-facing surfaces as ground
-            if (hit.normal.y < 0.35f)
-                return;
-
             if (_inventory == null)
                 _inventory = FindFirstObjectByType<SCoL.Inventory.SCoLInventory>();
             if (_inventory == null)
@@ -163,6 +170,10 @@ public class FPSRaycastInteractor : MonoBehaviour
             {
                 case ApplyTool.Seed:
                 {
+                    // treat upward-facing surfaces as ground
+                    if (hit.normal.y < 0.35f)
+                        return;
+
                     if (!_inventory.TryConsume(SCoL.Inventory.SCoLItemType.Seed, 1))
                     {
                         if (logHits) Debug.Log("[FPSRaycastInteractor] No seeds to plant");
@@ -184,6 +195,10 @@ public class FPSRaycastInteractor : MonoBehaviour
 
                 case ApplyTool.Water:
                 {
+                    // treat upward-facing surfaces as ground
+                    if (hit.normal.y < 0.35f)
+                        return;
+
                     if (!_inventory.TryConsume(SCoL.Inventory.SCoLItemType.Water, 1))
                     {
                         if (logHits) Debug.Log("[FPSRaycastInteractor] No water to place");
@@ -196,6 +211,10 @@ public class FPSRaycastInteractor : MonoBehaviour
 
                 case ApplyTool.Fire:
                 {
+                    // treat upward-facing surfaces as ground
+                    if (hit.normal.y < 0.35f)
+                        return;
+
                     if (!_inventory.TryConsume(SCoL.Inventory.SCoLItemType.Fire, 1))
                     {
                         if (logHits) Debug.Log("[FPSRaycastInteractor] No fire to place");
@@ -206,8 +225,41 @@ public class FPSRaycastInteractor : MonoBehaviour
                     StartCoroutine(SpawnTransientSpread(hit.point, hit.normal, GetFireSpreadMat(), true, false));
                     break;
                 }
+
+                case ApplyTool.Plant:
+                {
+                    var animal = hit.collider != null ? hit.collider.GetComponentInParent<FPSBoidAgent>() : null;
+                    if (animal == null)
+                    {
+                        if (logHits) Debug.Log("[FPSRaycastInteractor] Plant feed requires targeting an animal (FPSBoidAgent).");
+                        return;
+                    }
+
+                    if (plantFeedConsumesInventory && !_inventory.TryConsume(SCoL.Inventory.SCoLItemType.Plant, 1))
+                    {
+                        if (logHits) Debug.Log("[FPSRaycastInteractor] No plant items to feed");
+                        return;
+                    }
+
+                    animal.FeedWithPlant(feedJumpHeight, feedReactionDuration, feedJumpCount);
+                    FPSGameFeel.VoxelBurst(hit.point, count: 10, spread: 0.8f, life: 0.6f, cubeSize: 0.045f);
+                    FPSGameFeel.Shake(0.04f, 0.08f);
+                    if (logHits) Debug.Log($"[FPSRaycastInteractor] Fed animal: {animal.name}", animal);
+                    break;
+                }
             }
         }
+    }
+
+    void UpdatePlantAttractor()
+    {
+        bool enabled = animalsFollowWhenPlantToolSelected && currentTool == ApplyTool.Plant;
+        FPSBoidAgent.SetPlantAttractor(
+            enabled ? cameraSource.transform : null,
+            enabled,
+            plantFollowRadius,
+            plantFollowWeight
+        );
     }
 
     void RefreshGrowthSetup()
@@ -238,10 +290,12 @@ public class FPSRaycastInteractor : MonoBehaviour
         if (kb.digit1Key.wasPressedThisFrame || kb.numpad1Key.wasPressedThisFrame) currentTool = ApplyTool.Seed;
         if (kb.digit2Key.wasPressedThisFrame || kb.numpad2Key.wasPressedThisFrame) currentTool = ApplyTool.Water;
         if (kb.digit3Key.wasPressedThisFrame || kb.numpad3Key.wasPressedThisFrame) currentTool = ApplyTool.Fire;
+        if (kb.digit4Key.wasPressedThisFrame || kb.numpad4Key.wasPressedThisFrame) currentTool = ApplyTool.Plant;
 #else
         if (Input.GetKeyDown(KeyCode.Alpha1)) currentTool = ApplyTool.Seed;
         if (Input.GetKeyDown(KeyCode.Alpha2)) currentTool = ApplyTool.Water;
         if (Input.GetKeyDown(KeyCode.Alpha3)) currentTool = ApplyTool.Fire;
+        if (Input.GetKeyDown(KeyCode.Alpha4)) currentTool = ApplyTool.Plant;
 #endif
     }
 

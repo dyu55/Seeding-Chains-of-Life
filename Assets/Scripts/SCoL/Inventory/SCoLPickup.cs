@@ -14,6 +14,7 @@ namespace SCoL.Inventory
         public Color colorSeed = new Color(0.15f, 0.95f, 0.2f);
         public Color colorWater = new Color(0.2f, 0.55f, 1f);
         public Color colorFire = new Color(0.95f, 0.15f, 0.1f);
+        public Color colorPlant = new Color(0.45f, 1f, 0.35f);
 
         private void Reset()
         {
@@ -36,6 +37,7 @@ namespace SCoL.Inventory
                     SCoLItemType.Seed => colorSeed,
                     SCoLItemType.Water => colorWater,
                     SCoLItemType.Fire => colorFire,
+                    SCoLItemType.Plant => colorPlant,
                     _ => Color.white
                 };
             }

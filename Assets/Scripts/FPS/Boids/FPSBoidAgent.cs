@@ -16,6 +16,12 @@ public class FPSBoidAgent : MonoBehaviour
         Predator = 1
     }
 
+    public enum PlantEatAction
+    {
+        RemovePlant = 0,
+        ResetToSprout = 1
+    }
+
     [Header("Role")]
     public BoidRole role = BoidRole.Prey;
 
@@ -27,11 +33,24 @@ public class FPSBoidAgent : MonoBehaviour
     public float separationWeight = 1.6f;
     public float alignmentWeight = 1.0f;
     public float cohesionWeight = 1.0f;
+    public float wanderWeight = 1.2f;
 
     [Header("Motion")]
     public float maxSpeed = 2.8f;
     public float maxForce = 6.0f;
     public float drag = 1.0f;
+
+    [Header("Wander")]
+    public bool useWander = true;
+    [Min(0.05f)] public float wanderRetargetSeconds = 1.2f;
+    [Min(0f)] public float wanderJitter = 0.35f;
+
+    [Header("Ground Constraint")]
+    public bool constrainToGround = false;
+    public LayerMask groundMask = ~0;
+    [Min(0.1f)] public float groundRaycastHeight = 10f;
+    [Min(0f)] public float groundOffset = 0.02f;
+    [Min(1f)] public float groundSnapSpeed = 16f;
 
     [Header("Player Avoidance (Prey)")]
     public float playerFleeDistance = 5f;
@@ -52,11 +71,37 @@ public class FPSBoidAgent : MonoBehaviour
     [Header("Debug")]
     public bool drawDebug = false;
 
+    [Header("Plant Eating")]
+    public bool canEatMaturePlants = false;
+    [Min(0.1f)] public float eatPlantRange = 1.15f;
+    [Min(0.1f)] public float eatCheckIntervalSeconds = 0.4f;
+    [Min(0f)] public float eatCooldownSeconds = 2.2f;
+    [Min(0.05f)] public float eatHeadTouchDistance = 0.25f;
+    [Min(0.1f)] public float eatHoldSeconds = 2f;
+    public Vector3 eatHeadLocalOffset = new Vector3(0f, 0.22f, 0.28f);
+    [Min(0f)] public float eatApproachWeight = 3.2f;
+    public PlantEatAction eatAction = PlantEatAction.ResetToSprout;
+
     [HideInInspector] public Vector3 velocity;
 
     static readonly List<FPSBoidAgent> ActiveAgents = new List<FPSBoidAgent>(128);
+    static Transform _plantAttractor;
+    static bool _plantAttractorEnabled;
+    static float _plantAttractorRadius = 8f;
+    static float _plantAttractorWeight = 3f;
 
     Camera _playerCam;
+    float _jumpOffsetY;
+    float _feedReactionTimer;
+    float _feedReactionDuration = 1.2f;
+    float _feedReactionJumpHeight = 0.35f;
+    int _feedReactionJumpCount = 3;
+    Vector3 _wanderDir;
+    float _nextWanderRetargetAt;
+    float _nextEatCheckAt;
+    float _nextEatAllowedAt;
+    FPSSeedGrowth _eatTarget;
+    float _eatHoldTimer;
 
     void OnEnable()
     {
@@ -84,10 +129,26 @@ public class FPSBoidAgent : MonoBehaviour
         // predators are a bit faster by default
         if (role == BoidRole.Predator)
             maxSpeed *= 1.25f;
+
+        _wanderDir = Random.insideUnitSphere;
+        _wanderDir.y = 0f;
+        if (_wanderDir.sqrMagnitude < 0.0001f)
+            _wanderDir = Vector3.forward;
+        _wanderDir.Normalize();
+        _nextWanderRetargetAt = Time.time + Random.Range(0.05f, wanderRetargetSeconds);
     }
 
     void Update()
     {
+        // Remove previous frame jump offset before boid integration.
+        if (_jumpOffsetY != 0f)
+        {
+            var p0 = transform.position;
+            p0.y -= _jumpOffsetY;
+            transform.position = p0;
+            _jumpOffsetY = 0f;
+        }
+
         var accel = ComputeAcceleration();
 
         velocity += accel * Time.deltaTime;
@@ -100,6 +161,27 @@ public class FPSBoidAgent : MonoBehaviour
         if (sp > maxSpeed) velocity = velocity / sp * maxSpeed;
 
         transform.position += velocity * Time.deltaTime;
+
+        // Feed reaction: 3 jump pulses.
+        if (_feedReactionTimer > 0f)
+        {
+            _feedReactionTimer -= Time.deltaTime;
+            float elapsed = Mathf.Clamp(_feedReactionDuration - _feedReactionTimer, 0f, _feedReactionDuration);
+            float t = _feedReactionDuration <= 0.0001f ? 1f : Mathf.Clamp01(elapsed / _feedReactionDuration);
+            float wave = Mathf.Sin(t * Mathf.PI * 2f * Mathf.Max(1, _feedReactionJumpCount));
+            if (wave < 0f) wave = 0f;
+            _jumpOffsetY = wave * _feedReactionJumpHeight;
+
+            var p1 = transform.position;
+            p1.y += _jumpOffsetY;
+            transform.position = p1;
+        }
+
+        if (constrainToGround)
+            SnapToGround();
+
+        if (canEatMaturePlants)
+            UpdateEatProgress();
 
         // face direction
         if (velocity.sqrMagnitude > 0.01f)
@@ -175,19 +257,44 @@ public class FPSBoidAgent : MonoBehaviour
 
         // Player avoidance / chase
         var cam = _playerCam != null ? _playerCam : Camera.main;
+        bool hasPlantAttractor = _plantAttractorEnabled && _plantAttractor != null;
         if (cam != null)
         {
             float dToPlayer = Vector3.Distance(transform.position, cam.transform.position);
 
             if (role == BoidRole.Prey)
             {
-                if (dToPlayer < playerFleeDistance)
+                if (!hasPlantAttractor && dToPlayer < playerFleeDistance)
                 {
                     var away = (transform.position - cam.transform.position);
                     away.y = 0f;
                     accel += SteerTowards(away) * playerFleeWeight;
                 }
             }
+        }
+
+        // Plant lure: when player equips Plant tool, nearby animals follow.
+        if (hasPlantAttractor)
+        {
+            var toAttractor = (_plantAttractor.position - transform.position);
+            toAttractor.y = 0f;
+            float d = toAttractor.magnitude;
+            if (d <= Mathf.Max(0.1f, _plantAttractorRadius))
+                accel += SteerTowards(toAttractor) * Mathf.Max(0f, _plantAttractorWeight);
+        }
+        else if (canEatMaturePlants && TryEnsureEatTarget())
+        {
+            var targetPos = GetEatTargetPoint(_eatTarget);
+            var headPos = GetHeadWorldPosition();
+            var toTarget = targetPos - headPos;
+            toTarget.y = 0f;
+            if (toTarget.sqrMagnitude > 0.0001f)
+                accel += SteerTowards(toTarget) * Mathf.Max(0f, eatApproachWeight);
+        }
+        else if (useWander)
+        {
+            RetargetWanderIfNeeded();
+            accel += SteerTowards(_wanderDir) * Mathf.Max(0f, wanderWeight);
         }
 
         // Predator/prey dynamics (simple)
@@ -228,6 +335,201 @@ public class FPSBoidAgent : MonoBehaviour
             accel = accel.normalized * maxForce;
 
         return accel;
+    }
+
+    public static void SetPlantAttractor(Transform target, bool enabled, float radius, float weight)
+    {
+        _plantAttractor = target;
+        _plantAttractorEnabled = enabled && target != null;
+        _plantAttractorRadius = Mathf.Max(0.1f, radius);
+        _plantAttractorWeight = Mathf.Max(0f, weight);
+    }
+
+    public void FeedWithPlant(float jumpHeight, float reactionDurationSeconds, int jumps = 3)
+    {
+        _feedReactionJumpHeight = Mathf.Max(0.05f, jumpHeight);
+        _feedReactionDuration = Mathf.Max(0.2f, reactionDurationSeconds);
+        _feedReactionJumpCount = Mathf.Max(1, jumps);
+        _feedReactionTimer = _feedReactionDuration;
+    }
+
+    void RetargetWanderIfNeeded()
+    {
+        if (Time.time < _nextWanderRetargetAt)
+            return;
+
+        _nextWanderRetargetAt = Time.time + Mathf.Max(0.05f, wanderRetargetSeconds);
+        Vector3 j = new Vector3(
+            Random.Range(-wanderJitter, wanderJitter),
+            0f,
+            Random.Range(-wanderJitter, wanderJitter)
+        );
+        _wanderDir += j;
+        _wanderDir.y = 0f;
+        if (_wanderDir.sqrMagnitude < 0.0001f)
+            _wanderDir = Random.insideUnitSphere;
+        _wanderDir.y = 0f;
+        _wanderDir.Normalize();
+    }
+
+    void SnapToGround()
+    {
+        Vector3 p = transform.position;
+        Vector3 origin = new Vector3(p.x, p.y + Mathf.Max(0.1f, groundRaycastHeight), p.z);
+        float dist = Mathf.Max(0.2f, groundRaycastHeight * 2f);
+
+        var hits = Physics.RaycastAll(origin, Vector3.down, dist, groundMask, QueryTriggerInteraction.Ignore);
+        if (hits == null || hits.Length == 0)
+            return;
+
+        System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+        for (int i = 0; i < hits.Length; i++)
+        {
+            var hit = hits[i];
+            if (hit.collider == null)
+                continue;
+
+            var t = hit.collider.transform;
+            if (t == transform || t.IsChildOf(transform))
+                continue;
+            var otherBoid = hit.collider.GetComponentInParent<FPSBoidAgent>();
+            if (otherBoid != null)
+                continue;
+
+            float targetY = hit.point.y + groundOffset + _jumpOffsetY;
+            p.y = Mathf.Lerp(p.y, targetY, Mathf.Clamp01(groundSnapSpeed * Time.deltaTime));
+            transform.position = p;
+            return;
+        }
+    }
+
+    bool TryEnsureEatTarget()
+    {
+        if (_eatTarget != null && IsValidEatTarget(_eatTarget))
+            return true;
+
+        _eatTarget = null;
+        _eatHoldTimer = 0f;
+
+        if (Time.time < _nextEatCheckAt)
+            return false;
+        _nextEatCheckAt = Time.time + Mathf.Max(0.1f, eatCheckIntervalSeconds);
+
+        if (Time.time < _nextEatAllowedAt || !canEatMaturePlants)
+            return false;
+
+        float range = Mathf.Max(0.1f, eatPlantRange);
+        var hits = Physics.OverlapSphere(transform.position, range, ~0, QueryTriggerInteraction.Collide);
+        if (hits == null || hits.Length == 0)
+            return false;
+
+        FPSSeedGrowth best = null;
+        float bestD = float.PositiveInfinity;
+        var seen = new HashSet<FPSSeedGrowth>();
+
+        for (int i = 0; i < hits.Length; i++)
+        {
+            var c = hits[i];
+            if (c == null) continue;
+
+            var g = c.GetComponentInParent<FPSSeedGrowth>();
+            if (g == null || !seen.Add(g))
+                continue;
+            if (!g.IsMature || g.IsBurned)
+                continue;
+
+            float d = (g.transform.position - transform.position).sqrMagnitude;
+            if (d < bestD)
+            {
+                bestD = d;
+                best = g;
+            }
+        }
+
+        if (best == null)
+            return false;
+
+        _eatTarget = best;
+        _eatHoldTimer = 0f;
+        return true;
+    }
+
+    void UpdateEatProgress()
+    {
+        if (!TryEnsureEatTarget())
+            return;
+
+        if (_eatTarget == null || !IsValidEatTarget(_eatTarget))
+        {
+            _eatTarget = null;
+            _eatHoldTimer = 0f;
+            return;
+        }
+
+        Vector3 headPos = GetHeadWorldPosition();
+        Vector3 targetPos = GetEatTargetPoint(_eatTarget);
+        float touchDist = Vector3.Distance(headPos, targetPos);
+        if (touchDist <= Mathf.Max(0.05f, eatHeadTouchDistance))
+        {
+            // Hold "eating" position for a short duration before applying result.
+            _eatHoldTimer += Time.deltaTime;
+            velocity = Vector3.Lerp(velocity, Vector3.zero, 10f * Time.deltaTime);
+
+            if (_eatHoldTimer >= Mathf.Max(0.1f, eatHoldSeconds) && Time.time >= _nextEatAllowedAt)
+            {
+                if (eatAction == PlantEatAction.RemovePlant)
+                    Destroy(_eatTarget.gameObject);
+                else
+                    _eatTarget.ResetToSprout(clearBurn: true);
+
+                _nextEatAllowedAt = Time.time + Mathf.Max(0f, eatCooldownSeconds);
+                _eatTarget = null;
+                _eatHoldTimer = 0f;
+            }
+        }
+        else
+        {
+            // Lost contact: reset hold timer and keep approaching.
+            _eatHoldTimer = 0f;
+        }
+    }
+
+    bool IsValidEatTarget(FPSSeedGrowth g)
+    {
+        return g != null && g.isActiveAndEnabled && g.IsMature && !g.IsBurned;
+    }
+
+    Vector3 GetHeadWorldPosition()
+    {
+        return transform.TransformPoint(eatHeadLocalOffset);
+    }
+
+    Vector3 GetEatTargetPoint(FPSSeedGrowth g)
+    {
+        if (g == null) return transform.position;
+        Vector3 from = GetHeadWorldPosition();
+        var cols = g.GetComponentsInChildren<Collider>(includeInactive: true);
+        if (cols != null && cols.Length > 0)
+        {
+            bool has = false;
+            Vector3 best = g.transform.position;
+            float bestSq = float.PositiveInfinity;
+            for (int i = 0; i < cols.Length; i++)
+            {
+                var c = cols[i];
+                if (c == null) continue;
+                Vector3 p = c.ClosestPoint(from);
+                float d = (p - from).sqrMagnitude;
+                if (!has || d < bestSq)
+                {
+                    has = true;
+                    bestSq = d;
+                    best = p;
+                }
+            }
+            if (has) return best;
+        }
+        return g.transform.position;
     }
 
     Vector3 SteerTowards(Vector3 desired)

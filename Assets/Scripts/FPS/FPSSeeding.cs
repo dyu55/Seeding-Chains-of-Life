@@ -267,6 +267,9 @@ public sealed class FPSSeedGrowth : MonoBehaviour
         BuildStage(_stage);
     }
 
+    public bool IsMature => _stage >= 3;
+    public bool IsBurned => _burned;
+
     public void SetStagePrefabs(GameObject sprout, GameObject small, GameObject medium, GameObject mature)
     {
         sproutPrefab = sprout;
@@ -289,6 +292,16 @@ public sealed class FPSSeedGrowth : MonoBehaviour
 
         if (destroyOnFire && Random.value <= Mathf.Clamp01(destroyChance))
             StartCoroutine(DestroyAfterDelay(Mathf.Max(0f, destroyDelaySeconds)));
+    }
+
+    public void ResetToSprout(bool clearBurn = true)
+    {
+        _stage = 0;
+        _stageTimer = 0f;
+        _waterBoostSeconds = 0f;
+        if (clearBurn)
+            _burned = false;
+        BuildStage(_stage);
     }
 
     void Update()

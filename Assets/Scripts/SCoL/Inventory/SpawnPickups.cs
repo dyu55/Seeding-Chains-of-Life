@@ -10,6 +10,7 @@ namespace SCoL.Inventory
         public int seedCount = 6;
         public int waterCount = 6;
         public int fireCount = 3;
+        public int plantCount = 6;
 
         [Header("Placement")]
         public bool scatterAcrossGrid = true;
@@ -37,6 +38,7 @@ namespace SCoL.Inventory
             Spawn(SCoLItemType.Seed, seedCount, 0f);
             Spawn(SCoLItemType.Water, waterCount, 1.5f);
             Spawn(SCoLItemType.Fire, fireCount, 3.0f);
+            Spawn(SCoLItemType.Plant, plantCount, 4.5f);
         }
 
         private void Spawn(SCoLItemType type, int count, float angleOffset)

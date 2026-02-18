@@ -71,7 +71,7 @@ namespace SCoL.Visualization
 
             var inv = FindFirstObjectByType<SCoL.Inventory.SCoLInventory>();
             if (inv != null)
-                sb.AppendLine($"Inventory: Seed={inv.seeds}  Water={inv.water}  Fire={inv.fire}");
+                sb.AppendLine($"Inventory: Seed={inv.seeds}  Water={inv.water}  Fire={inv.fire}  Plant={inv.plants}");
 
             sb.AppendLine($"Season: {runtime.CurrentSeason}   Weather: {runtime.CurrentWeather}");
             sb.AppendLine($"View: {runtime.ViewMode}   FireOverlay: {(runtime.OverlayFire ? "ON" : "OFF")}");
@@ -102,7 +102,7 @@ namespace SCoL.Visualization
             sb.AppendLine();
             sb.AppendLine("Controls:");
             sb.AppendLine("- View: V cycle | F toggle fire overlay | 0/4/5/6/7/8 set mode");
-            sb.AppendLine("- Tool (Editor): 1/2/3 select | LMB apply");
+            sb.AppendLine("- Tool (Editor): 1/2/3/4 select | LMB apply");
 
             // Top-left debug panel
             var bg = new Color(0f, 0f, 0f, 0.55f);
@@ -117,7 +117,7 @@ namespace SCoL.Visualization
             var inv2 = FindFirstObjectByType<SCoL.Inventory.SCoLInventory>();
             if (inv2 != null)
             {
-                string invText = $"Seeds: {inv2.seeds}   Water: {inv2.water}   Fire: {inv2.fire}";
+                string invText = $"Seeds: {inv2.seeds}   Water: {inv2.water}   Fire: {inv2.fire}   Plant: {inv2.plants}";
                 var style2 = new GUIStyle(_style) { fontSize = 20 };
 
                 // centered bottom
