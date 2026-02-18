@@ -1,0 +1,134 @@
+file,vertices,faces,triangles_estimate
+Assets/Models/Modeling/_Incoming/Daisy/base.obj,175388,351044,351044
+Assets/Models/Modeling/_Incoming/Desert Terrain/Dessert Terrain.obj,489460,978928,978928
+Assets/Models/Modeling/_Incoming/Grass/grassV1.obj,659,573,1145
+Assets/Models/Modeling/_Incoming/Terrain 1/Terrain 1.obj,249973,499942,499942
+Assets/Models/Modeling/_Incoming/Tree 1 Growth/Tree Growth.obj,468945,938046,938046
+Assets/Models/Modeling/_Incoming/Tulip/Tests(DO NOT USE).obj,162633,325350,325350
+Assets/Models/Modeling/_Incoming/grass patch 1/grass3.obj,493591,987395,987395
+Assets/Models/Modeling/_Incoming/grass patch low poly/tripo_convert_cb595927-be5f-4853-8a13-d5735ba4871c.obj,659,573,1145
+Assets/Models/Modeling/_Incoming/grass1.obj,105201,79998,79998
+Assets/Models/Modeling/_Incoming/grass2.obj,464676,930418,930418
+Assets/Models/Modeling/_Incoming/rose/rose.obj,249954,499904,499904
+Assets/VoxBox/Models/Alphabet/A/A.obj,504,336,336
+Assets/VoxBox/Models/Alphabet/B/B.obj,576,388,388
+Assets/VoxBox/Models/Alphabet/C/C.obj,408,268,268
+Assets/VoxBox/Models/Alphabet/D/D.obj,288,192,192
+Assets/VoxBox/Models/Alphabet/E/E.obj,168,108,108
+Assets/VoxBox/Models/Alphabet/F/F.obj,144,92,92
+Assets/VoxBox/Models/Alphabet/G/G.obj,144,92,92
+Assets/VoxBox/Models/Alphabet/H/H.obj,120,76,76
+Assets/VoxBox/Models/Alphabet/I/I.obj,72,44,44
+Assets/VoxBox/Models/Alphabet/J/J.obj,72,44,44
+Assets/VoxBox/Models/Alphabet/K/K.obj,528,348,348
+Assets/VoxBox/Models/Alphabet/L/L.obj,96,60,60
+Assets/VoxBox/Models/Alphabet/M/M.obj,420,276,276
+Assets/VoxBox/Models/Alphabet/N/N.obj,456,300,300
+Assets/VoxBox/Models/Alphabet/O/O.obj,672,448,448
+Assets/VoxBox/Models/Alphabet/P/P.obj,120,80,80
+Assets/VoxBox/Models/Alphabet/Q/Q.obj,984,656,656
+Assets/VoxBox/Models/Alphabet/R/R.obj,411,274,274
+Assets/VoxBox/Models/Alphabet/S/S.obj,312,204,204
+Assets/VoxBox/Models/Alphabet/T/T.obj,144,92,92
+Assets/VoxBox/Models/Alphabet/U/U.obj,120,76,76
+Assets/VoxBox/Models/Alphabet/V/V.obj,480,316,316
+Assets/VoxBox/Models/Alphabet/W/W.obj,552,364,364
+Assets/VoxBox/Models/Alphabet/X/X.obj,1272,844,844
+Assets/VoxBox/Models/Alphabet/Y/Y.obj,600,396,396
+Assets/VoxBox/Models/Alphabet/Z/Z.obj,444,292,292
+Assets/VoxBox/Models/Animals/Bear/Bear.obj,977,1164,1164
+Assets/VoxBox/Models/Animals/Bison/Bison.obj,834,724,724
+Assets/VoxBox/Models/Animals/Cat/Cat.obj,1048,1220,1220
+Assets/VoxBox/Models/Animals/Cheetah/Cheetah.obj,1162,1596,1596
+Assets/VoxBox/Models/Animals/Deer/Deer.obj,1580,1868,1868
+Assets/VoxBox/Models/Animals/Dog/Dog.obj,962,1204,1204
+Assets/VoxBox/Models/Animals/Elephant/Elephant.obj,1160,1424,1424
+Assets/VoxBox/Models/Animals/Fox/Fox.obj,634,520,520
+Assets/VoxBox/Models/Animals/Giraffe/Giraffe.obj,714,802,802
+Assets/VoxBox/Models/Animals/Horse/Horse.obj,644,620,620
+Assets/VoxBox/Models/Animals/Lion/Lion.obj,2072,1444,1444
+Assets/VoxBox/Models/Animals/Rabbit/Rabbit.obj,3392,2672,2672
+Assets/VoxBox/Models/Animals/Tiger/Tiger.obj,1184,1188,1188
+Assets/VoxBox/Models/Birds/Bird/Bird.obj,712,488,488
+Assets/VoxBox/Models/Birds/Duck/Duck.obj,408,280,280
+Assets/VoxBox/Models/Birds/Owl/Owl.obj,1398,1240,1240
+Assets/VoxBox/Models/Birds/Penguin/Penguin.obj,316,236,236
+Assets/VoxBox/Models/Birds/Toucan/Toucan.obj,554,376,376
+Assets/VoxBox/Models/Bullets & Bomb/Bomb/Bomb.obj,13553,9526,9526
+Assets/VoxBox/Models/Bullets & Bomb/Bullet1/B1.obj,1828,1324,1324
+Assets/VoxBox/Models/Bullets & Bomb/Bullet2/B2.obj,2104,1668,1668
+Assets/VoxBox/Models/Bullets & Bomb/Bullet3/B3.obj,2454,1756,1756
+Assets/VoxBox/Models/Childrens/Kid1/Kid1.obj,497,378,378
+Assets/VoxBox/Models/Childrens/Kid2/Kid2.obj,610,446,446
+Assets/VoxBox/Models/Childrens/Kid3/Kid3.obj,2036,1366,1366
+Assets/VoxBox/Models/Childrens/Kid4/Kid4.obj,1066,742,742
+Assets/VoxBox/Models/Clouds/Cloud1/Cloud1.obj,19253,12808,12808
+Assets/VoxBox/Models/Clouds/Cloud2/Cloud2.obj,16398,10918,10918
+Assets/VoxBox/Models/Clouds/Cloud3/Cloud3.obj,13205,8794,8794
+Assets/VoxBox/Models/Coins/Coin1/Coin1.obj,2408,1452,1452
+Assets/VoxBox/Models/Coins/Coin2/Coin2.obj,840,556,556
+Assets/VoxBox/Models/Coins/Coin3/Coin3.obj,2688,1788,1788
+Assets/VoxBox/Models/Coins/Coin4/Coin4.obj,864,588,588
+Assets/VoxBox/Models/Grass Tiles/Tile1/Tile1.obj,867,770,770
+Assets/VoxBox/Models/Grass Tiles/Tile2/Tile2.obj,1429,968,968
+Assets/VoxBox/Models/Grass Tiles/Tile3/Tile3.obj,172,244,244
+Assets/VoxBox/Models/Grass Tiles/Tile4/Tile4.obj,206,314,314
+Assets/VoxBox/Models/Grass Tiles/Tile5/Tile5.obj,252,448,448
+Assets/VoxBox/Models/Grass Tiles/Tile6/Tile6.obj,306,312,312
+Assets/VoxBox/Models/Grass Tiles/Tile7/Tile7.obj,653,680,680
+Assets/VoxBox/Models/Grass Tiles/Tile8/Tile8.obj,739,492,492
+Assets/VoxBox/Models/Numbers/0/0.obj,48,32,32
+Assets/VoxBox/Models/Numbers/1/1.obj,36,20,20
+Assets/VoxBox/Models/Numbers/2/2.obj,72,44,44
+Assets/VoxBox/Models/Numbers/3/3.obj,72,44,44
+Assets/VoxBox/Models/Numbers/4/4.obj,60,36,36
+Assets/VoxBox/Models/Numbers/5/5.obj,72,44,44
+Assets/VoxBox/Models/Numbers/6/6.obj,72,48,48
+Assets/VoxBox/Models/Numbers/7/7.obj,36,20,20
+Assets/VoxBox/Models/Numbers/8/8.obj,144,100,100
+Assets/VoxBox/Models/Numbers/9/9.obj,72,48,48
+Assets/VoxBox/Models/Power Ups/Bottle/Bottle.obj,514,344,344
+Assets/VoxBox/Models/Power Ups/Flash/FLASH.obj,648,428,428
+Assets/VoxBox/Models/Power Ups/Key/Key.obj,324,216,216
+Assets/VoxBox/Models/Power Ups/Magnet/Magnet.obj,408,276,276
+Assets/VoxBox/Models/Power Ups/Shield/Shield.obj,1164,772,772
+Assets/VoxBox/Models/Sea Creatures/Crab/Crab.obj,1076,728,728
+Assets/VoxBox/Models/Sea Creatures/Crocodile/Crocodile.obj,1616,1096,1096
+Assets/VoxBox/Models/Sea Creatures/Fish/Fish.obj,989,826,826
+Assets/VoxBox/Models/Sea Creatures/Frog/Frog.obj,952,1016,1016
+Assets/VoxBox/Models/Sea Creatures/Shark/Shark.obj,530,368,368
+Assets/VoxBox/Models/Sea Creatures/Turtle/Turtle.obj,918,696,696
+Assets/VoxBox/Models/Tiles/Tile1/Tile1.obj,192,220,220
+Assets/VoxBox/Models/Tiles/Tile2/Tile2.obj,568,380,380
+Assets/VoxBox/Models/Tiles/Tile3/Tile3.obj,312,324,324
+Assets/VoxBox/Models/Tiles/Tile4/Tile4.obj,1008,652,652
+Assets/VoxBox/Models/Tiles/Tile5/Tile5.obj,178,220,220
+Assets/VoxBox/Models/Tiles/Tile6/Tile6.obj,256,196,196
+Assets/VoxBox/Models/Tiles/Tile7/Tile7.obj,96,100,100
+Assets/VoxBox/Models/Trees/Tree1/Tree1.obj,208,128,128
+Assets/VoxBox/Models/Trees/Tree2/Tree2.obj,2256,1488,1488
+Assets/VoxBox/Models/Trees/Tree3/Tree3.obj,2826,1880,1880
+Assets/VoxBox/Models/Trees/Tree4/Tree4.obj,1487,982,982
+Assets/VoxBox/Models/Trees/Tree5/Tree5.obj,684,452,452
+Assets/VoxBox/Models/Vehicles/Bike/Bike.obj,1878,1468,1468
+Assets/VoxBox/Models/Vehicles/Car1/Car1.obj,980,648,648
+Assets/VoxBox/Models/Vehicles/Car2/Car2.obj,772,596,596
+Assets/VoxBox/Models/Vehicles/Car3/Car3.obj,856,668,668
+Assets/VoxBox/Models/Vehicles/Car4/Car4.obj,1384,912,912
+Assets/VoxBox/Models/Weapons/Arrows/Arrow.obj,716,436,436
+Assets/VoxBox/Models/Weapons/Axe/Axe.obj,324,212,212
+Assets/VoxBox/Models/Weapons/Bow/Bow.obj,700,488,488
+Assets/VoxBox/Models/Weapons/Gun1/Gun1.obj,822,876,876
+Assets/VoxBox/Models/Weapons/Gun2/Gun2.obj,792,556,556
+Assets/VoxBox/Models/Weapons/Gun3/Gun3.obj,536,404,404
+Assets/VoxBox/Models/Weapons/Gun4/Gun4.obj,320,336,336
+Assets/VoxBox/Models/Weapons/Gun5/Gun5.obj,952,928,928
+Assets/VoxBox/Models/Weapons/Gun6/Gun6.obj,1148,976,976
+Assets/VoxBox/Models/Weapons/Gun7/Gun7.obj,710,676,676
+Assets/VoxBox/Models/Weapons/Knife/Knife.obj,569,430,430
+Assets/VoxBox/Models/Weapons/Sword/Sword.obj,728,560,560
+Assets/VoxBox/Models/Wooden Objects/Wooden Barrel/WoodenBarrel.obj,2661,1794,1794
+Assets/VoxBox/Models/Wooden Objects/Wooden Box/WoodenBox.obj,496,340,340
+Assets/VoxBox/Models/Wooden Objects/Wooden Chest/WoodenChest.obj,1809,1598,1598
+Assets/VoxBox/Models/Wooden Objects/Wooden Lamps/WoodenLamp.obj,1582,1044,1044
+Assets/VoxBox/Models/Wooden Objects/Wooden Pillar/WoodenPillar.obj,2110,1682,1682

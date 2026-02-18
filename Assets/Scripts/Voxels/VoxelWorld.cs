@@ -83,7 +83,12 @@ namespace SCoL.Voxels
         {
             if (config == null)
             {
-                Debug.LogWarning("VoxelWorld: missing config (VoxelWorldConfig). Using defaults.");
+                config = Resources.Load<VoxelWorldConfig>("Voxels/VoxelWorldConfig_Default");
+            }
+
+            if (config == null)
+            {
+                Debug.LogWarning("VoxelWorld: missing config (VoxelWorldConfig). Using runtime defaults.");
                 config = ScriptableObject.CreateInstance<VoxelWorldConfig>();
             }
 

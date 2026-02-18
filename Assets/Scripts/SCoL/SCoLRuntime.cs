@@ -78,6 +78,27 @@ namespace SCoL
                 return;
         }
 
+        private void EnsureUnderwaterEffect()
+        {
+            if (_voxelWorld == null)
+                return;
+
+            var cams = FindObjectsByType<Camera>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            for (int i = 0; i < cams.Length; i++)
+            {
+                var cam = cams[i];
+                if (cam == null) continue;
+                if (!cam.CompareTag("MainCamera")) continue;
+
+                var fx = cam.GetComponent<SCoLUnderwaterEffect>();
+                if (fx == null)
+                    fx = cam.gameObject.AddComponent<SCoLUnderwaterEffect>();
+
+                fx.voxelWorld = _voxelWorld;
+                fx.targetCamera = cam;
+            }
+        }
+
         public void Init(SCoLConfig config, Vector3 worldCenter)
         {
             Config = config;
@@ -154,6 +175,7 @@ namespace SCoL
             }
 
             EnsureHUD();
+            EnsureUnderwaterEffect();
         }
 
         private void Update()

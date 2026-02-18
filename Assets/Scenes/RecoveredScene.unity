@@ -10139,11 +10139,11 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   spawnPrefabs:
-  - {fileID: 100100000, guid: 20448f50d45eeda408a97e8eb78a6d47, type: 3}
-  - {fileID: 100100000, guid: 852672785d05a474c8009254454cdcec, type: 3}
-  - {fileID: 100100000, guid: 3ba3079b5d96981488fa97ec1f88c032, type: 3}
-  - {fileID: 100100000, guid: 7b2797b1da82c854dbd2d87af8204f9b, type: 3}
-  - {fileID: 100100000, guid: 523ffe33a07777e498de413cdbebd9a4, type: 3}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
+  - {fileID: 0}
   count: 25
   spawnOnStart: 1
   radius: 25
@@ -10155,8 +10155,8 @@ MonoBehaviour:
   groundOffset: 0.02
   harvestableTag: Harvestable
   addColliderIfMissing: 1
-  logSpawns: 0
-  warnOnInvalidPrefabRefs: 0
+  logSpawns: 1
+  warnOnInvalidPrefabRefs: 1
 --- !u!1 &900100000
 GameObject:
   m_ObjectHideFlags: 0
@@ -10335,9 +10335,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7dc1456e96b64cde8ca18ec152d15549, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  seeds: 2
-  water: 2
-  fire: 1
+  seeds: 30
+  water: 30
+  fire: 30
 --- !u!1 &980379203
 GameObject:
   m_ObjectHideFlags: 0
@@ -16923,6 +16923,26 @@ MonoBehaviour:
   destroyOnHarvest: 1
   destroyDelaySeconds: 0.06
   logHits: 0
+  currentTool: 0
+  spreadLayers: 3
+  spreadLayerIntervalSeconds: 1
+  lingerAfterSpreadSeconds: 0.05
+  spreadCellSize: 1
+  blockScale: 1
+  blockThickness: 0.06
+  surfaceProbeHeight: 10
+  surfaceOffset: 0.01
+  waterSpreadColor: {r: 0.18, g: 0.45, b: 0.95, a: 0.95}
+  fireSpreadColor: {r: 0.95, g: 0.18, b: 0.14, a: 0.95}
+  useImportedPlantStageModels: 1
+  sproutStagePrefab: {fileID: 0}
+  smallStagePrefab: {fileID: 0}
+  mediumStagePrefab: {fileID: 0}
+  matureStagePrefab: {fileID: 0}
+  waterBoostSecondsPerTile: 3
+  fireCanDestroyPlants: 0
+  fireDestroyChance: 0.5
+  fireDestroyDelaySeconds: 0.25
 --- !u!114 &9000000007
 MonoBehaviour:
   m_ObjectHideFlags: 0
