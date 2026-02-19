@@ -16,7 +16,7 @@ public class VoxBoxFishSchool : MonoBehaviour
     [Header("Spawn")]
     [Min(1)] public int fishCount = 24;
     [Min(1)] public int waterSampleStep = 3;
-    public Vector2 spawnScaleRange = new Vector2(0.90f, 1.30f);
+    public Vector2 spawnScaleRange = new Vector2(0.45f, 0.75f);
     [Tooltip("Offset (in blocks) from sea level. Keep values negative to stay below surface.")]
     public Vector2 spawnYOffsetFromSea = new Vector2(-0.85f, -0.25f);
     public bool spawnOnStart = true;

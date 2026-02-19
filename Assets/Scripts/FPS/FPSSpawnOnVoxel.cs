@@ -1,5 +1,6 @@
 using System.Collections;
 using UnityEngine;
+using SCoL.Voxels;
 
 /// <summary>
 /// Ensures FPS player starts on top of voxel terrain instead of fallback platforms.
@@ -43,6 +44,10 @@ public class FPSSpawnOnVoxel : MonoBehaviour
     {
         point = default;
 
+        var voxelWorld = FindFirstObjectByType<VoxelWorld>();
+        if (voxelWorld != null && voxelWorld.Config != null)
+            return TryFindDryLandSpawnPoint(voxelWorld, out point);
+
         Vector3 center = transform.position;
         var runtime = FindFirstObjectByType<SCoL.SCoLRuntime>();
         if (runtime != null)
@@ -73,6 +78,43 @@ public class FPSSpawnOnVoxel : MonoBehaviour
         return false;
     }
 
+    bool TryFindDryLandSpawnPoint(VoxelWorld voxelWorld, out Vector3 point)
+    {
+        point = default;
+        var cfg = voxelWorld.Config;
+        int width = cfg.worldWidth;
+        int depth = cfg.worldDepth;
+        if (width <= 0 || depth <= 0) return false;
+
+        int step = Mathf.Max(1, Mathf.RoundToInt(searchStep));
+        // Hard rule: start searching from map center so spawn remains stable after world-size changes.
+        int cx = width / 2;
+        int cz = depth / 2;
+
+        int maxRingByConfig = Mathf.CeilToInt(Mathf.Max(width, depth) / (2f * step));
+        int maxRing = Mathf.Max(Mathf.Max(0, searchRings), maxRingByConfig);
+
+        for (int ring = 0; ring <= maxRing; ring++)
+        {
+            int radius = ring * step;
+            int samples = ring == 0 ? 1 : ring * 8;
+            for (int i = 0; i < samples; i++)
+            {
+                Vector2 dir = ring == 0 ? Vector2.zero : DirectionOnCircle(i / (float)samples);
+                int x = cx + Mathf.RoundToInt(dir.x * radius);
+                int z = cz + Mathf.RoundToInt(dir.y * radius);
+                if (!IsDryLandColumn(voxelWorld, x, z))
+                    continue;
+
+                int y = voxelWorld.GetSurfaceY(x, z);
+                point = voxelWorld.OriginWorld + new Vector3(x + 0.5f, y + 1f, z + 0.5f);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     static Vector2 DirectionOnCircle(float t)
     {
         float a = t * Mathf.PI * 2f;
@@ -94,6 +136,27 @@ public class FPSSpawnOnVoxel : MonoBehaviour
         return false;
     }
 
+    static bool IsDryLandColumn(VoxelWorld voxelWorld, int x, int z)
+    {
+        if (voxelWorld == null || voxelWorld.Config == null)
+            return false;
+        if (x < 0 || z < 0 || x >= voxelWorld.Config.worldWidth || z >= voxelWorld.Config.worldDepth)
+            return false;
+        if (!voxelWorld.IsGrassSurface(x, z))
+            return false;
+
+        int surfaceY = voxelWorld.GetSurfaceY(x, z);
+        if (surfaceY < voxelWorld.Config.seaLevel)
+            return false;
+
+        int aboveY = surfaceY + 1;
+        if (aboveY < voxelWorld.Config.worldHeight &&
+            voxelWorld.GetBlock(x, aboveY, z) == VoxelBlockType.Water)
+            return false;
+
+        return true;
+    }
+
     void Teleport(Vector3 worldPos)
     {
         if (_cc != null)
@@ -108,4 +171,3 @@ public class FPSSpawnOnVoxel : MonoBehaviour
         transform.position = worldPos;
     }
 }
-

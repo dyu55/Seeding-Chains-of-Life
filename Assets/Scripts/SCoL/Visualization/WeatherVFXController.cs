@@ -1,5 +1,6 @@
 using UnityEngine;
 using SCoL.Weather;
+using SCoL.Voxels;
 
 namespace SCoL.Visualization
 {
@@ -23,9 +24,20 @@ namespace SCoL.Visualization
 
         [Tooltip("Optional explicit target to follow (recommended for XR). If null, uses Camera.main.")]
         public Transform followTarget;
+        [Tooltip("If true, prefer Camera.main as follow target at runtime.")]
+        public bool preferMainCameraAtRuntime = true;
+        public VoxelWorld voxelWorld;
 
         [Tooltip("Vertical offset above camera for precipitation volumes.")]
         public float heightOffset = 2.0f;
+
+        [Header("Auto Fit")]
+        [Tooltip("Scale weather volumes based on voxel world size (reference world size = 100).")]
+        public bool autoScaleToVoxelWorld = true;
+        [Min(1f)] public float referenceWorldSize = 100f;
+        [Min(1f)] public float maxAutoScale = 3f;
+        [Tooltip("If true, increase rain/snow emission when auto-scaling up to keep density similar.")]
+        public bool scaleEmissionWithAutoScale = true;
 
         [Header("Rain VFX")]
         [Tooltip("Optional ParticleSystem. If null, one will be created at runtime.")]
@@ -122,6 +134,11 @@ namespace SCoL.Visualization
 
         WeatherPhase _lastPhase;
         bool _hasLast;
+        bool _capturedBaseVolumes;
+        Vector3 _rainBoxSizeBase;
+        Vector3 _snowBoxSizeBase;
+        Vector3 _fireflyBoxSizeBase;
+        float _autoScale = 1f;
 
         void Reset()
         {
@@ -135,10 +152,16 @@ namespace SCoL.Visualization
 
             if (weatherSystem == null)
                 weatherSystem = FindFirstObjectByType<WeatherSystem>();
+            if (voxelWorld == null)
+                voxelWorld = FindFirstObjectByType<VoxelWorld>();
+
+            CaptureBaseVolumeSettingsIfNeeded();
+            RefreshAutoScaleFromWorld();
 
             EnsureRainSystem();
             EnsureSnowSystem();
             EnsureFireflySystem();
+            ApplyScaledVolumeSettings();
             ApplyForPhase(weatherSystem != null ? weatherSystem.CurrentPhase : WeatherPhase.Clear, force: true);
         }
 
@@ -148,12 +171,22 @@ namespace SCoL.Visualization
 
             if (weatherSystem == null)
                 weatherSystem = FindFirstObjectByType<WeatherSystem>();
+            if (voxelWorld == null)
+                voxelWorld = FindFirstObjectByType<VoxelWorld>();
+
+            CaptureBaseVolumeSettingsIfNeeded();
+            RefreshAutoScaleFromWorld();
+            ApplyScaledVolumeSettings();
 
             // Follow camera/target
             if (followMainCamera)
             {
                 Transform target = followTarget;
-                if (target == null)
+                if (preferMainCameraAtRuntime && Camera.main != null)
+                {
+                    target = Camera.main.transform;
+                }
+                else if (target == null)
                 {
                     var cam = Camera.main;
                     target = cam != null ? cam.transform : null;
@@ -189,19 +222,20 @@ namespace SCoL.Visualization
             if (weatherSystem != null)
             {
                 float intensity = Mathf.Clamp01(weatherSystem.Intensity01);
+                float emissionScale = scaleEmissionWithAutoScale ? _autoScale : 1f;
 
                 if (rainParticleSystem != null)
                 {
                     bool rainingNow = phase == WeatherPhase.Rain || (rainAlsoInThunderstorm && phase == WeatherPhase.Thunderstorm);
                     var em = rainParticleSystem.emission;
-                    em.rateOverTime = rainingNow ? (rainEmissionRate * Mathf.Max(0.2f, intensity)) : 0f;
+                    em.rateOverTime = rainingNow ? (rainEmissionRate * emissionScale * Mathf.Max(0.2f, intensity)) : 0f;
                 }
 
                 if (snowParticleSystem != null)
                 {
                     bool snowingNow = phase == WeatherPhase.Snow;
                     var em = snowParticleSystem.emission;
-                    em.rateOverTime = snowingNow ? (snowEmissionRate * Mathf.Max(0.2f, intensity)) : 0f;
+                    em.rateOverTime = snowingNow ? (snowEmissionRate * emissionScale * Mathf.Max(0.2f, intensity)) : 0f;
                 }
 
                 if (fireflyParticleSystem != null)
@@ -211,6 +245,51 @@ namespace SCoL.Visualization
                     // Fireflies don't use intensity; keep them stable.
                     em.rateOverTime = active ? fireflyEmissionRate : 0f;
                 }
+            }
+        }
+
+        void CaptureBaseVolumeSettingsIfNeeded()
+        {
+            if (_capturedBaseVolumes) return;
+            _capturedBaseVolumes = true;
+            _rainBoxSizeBase = rainBoxSize;
+            _snowBoxSizeBase = snowBoxSize;
+            _fireflyBoxSizeBase = fireflyBoxSize;
+        }
+
+        void RefreshAutoScaleFromWorld()
+        {
+            _autoScale = 1f;
+            if (!autoScaleToVoxelWorld) return;
+            if (voxelWorld == null || voxelWorld.Config == null) return;
+
+            float span = Mathf.Max(voxelWorld.Config.worldWidth, voxelWorld.Config.worldDepth);
+            float refSize = Mathf.Max(1f, referenceWorldSize);
+            float s = span / refSize;
+            _autoScale = Mathf.Clamp(s, 1f, Mathf.Max(1f, maxAutoScale));
+        }
+
+        void ApplyScaledVolumeSettings()
+        {
+            float s = Mathf.Max(0.1f, _autoScale);
+            Vector3 rainScaled = _rainBoxSizeBase * s;
+            Vector3 snowScaled = _snowBoxSizeBase * s;
+            Vector3 fireflyScaled = _fireflyBoxSizeBase * s;
+
+            if (rainParticleSystem != null)
+            {
+                var shape = rainParticleSystem.shape;
+                shape.scale = rainScaled;
+            }
+            if (snowParticleSystem != null)
+            {
+                var shape = snowParticleSystem.shape;
+                shape.scale = snowScaled;
+            }
+            if (fireflyParticleSystem != null)
+            {
+                var shape = fireflyParticleSystem.shape;
+                shape.scale = fireflyScaled;
             }
         }
 

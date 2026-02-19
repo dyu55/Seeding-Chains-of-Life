@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
+using SCoL.Voxels;
 
 /// <summary>
 /// Minimal FPS controller for keyboard + mouse (no XR, no Input System dependency).
@@ -27,14 +28,34 @@ public class SimpleFirstPersonController : MonoBehaviour
     [Header("Options")]
     public bool lockCursor = true;
 
+    [Header("Underwater View")]
+    public bool enableUnderwaterView = true;
+    [Min(0f)] public float waterlinePadding = 0.05f;
+    [Min(0f)] public float underwaterFogDensity = 0.055f;
+    [Min(5f)] public float underwaterFarClip = 28f;
+    public Color underwaterFogColor = new Color(0.18f, 0.46f, 0.62f, 1f);
+
     CharacterController _cc;
     float _pitch;
     Vector3 _velocity;
+    Camera _playerCamera;
+    VoxelWorld _voxelWorld;
+
+    bool _underwaterActive;
+    bool _savedRenderState;
+    bool _savedFog;
+    FogMode _savedFogMode;
+    Color _savedFogColor;
+    float _savedFogDensity;
+    float _savedFogStartDistance;
+    float _savedFogEndDistance;
+    float _savedFarClip;
 
     void Awake()
     {
         _cc = GetComponent<CharacterController>();
         if (cameraPivot == null && Camera.main != null) cameraPivot = Camera.main.transform;
+        _playerCamera = cameraPivot != null ? cameraPivot.GetComponent<Camera>() : Camera.main;
     }
 
     void OnEnable()
@@ -114,5 +135,109 @@ public class SimpleFirstPersonController : MonoBehaviour
             Cursor.lockState = CursorLockMode.Locked;
             Cursor.visible = false;
         }
+    }
+
+    void LateUpdate()
+    {
+        UpdateUnderwaterView();
+    }
+
+    void OnDisable()
+    {
+        RestoreRenderSettings();
+    }
+
+    void UpdateUnderwaterView()
+    {
+        if (!enableUnderwaterView)
+        {
+            RestoreRenderSettings();
+            return;
+        }
+
+        if (_voxelWorld == null)
+            _voxelWorld = FindFirstObjectByType<VoxelWorld>();
+
+        if (_voxelWorld == null || _voxelWorld.Config == null)
+        {
+            RestoreRenderSettings();
+            return;
+        }
+
+        if (_playerCamera == null)
+            _playerCamera = cameraPivot != null ? cameraPivot.GetComponent<Camera>() : Camera.main;
+
+        Vector3 samplePos = cameraPivot != null ? cameraPivot.position : transform.position + Vector3.up * 1.6f;
+        bool isUnderwater = IsUnderwater(samplePos);
+
+        if (isUnderwater)
+            ApplyUnderwaterState();
+        else
+            RestoreRenderSettings();
+    }
+
+    bool IsUnderwater(Vector3 worldPos)
+    {
+        if (!_voxelWorld.TryWorldToColumn(worldPos, out int x, out int z))
+            return false;
+
+        int localY = Mathf.Clamp(
+            Mathf.FloorToInt(worldPos.y - _voxelWorld.OriginWorld.y),
+            0,
+            _voxelWorld.Config.worldHeight - 1);
+
+        if (_voxelWorld.GetBlock(x, localY, z) == VoxelBlockType.Water)
+            return true;
+
+        int sea = _voxelWorld.Config.seaLevel;
+        if (_voxelWorld.GetBlock(x, sea, z) != VoxelBlockType.Water)
+            return false;
+
+        float seaSurfaceY = _voxelWorld.OriginWorld.y + sea + 1f - Mathf.Max(0f, waterlinePadding);
+        return worldPos.y < seaSurfaceY;
+    }
+
+    void ApplyUnderwaterState()
+    {
+        if (!_savedRenderState)
+        {
+            _savedFog = RenderSettings.fog;
+            _savedFogMode = RenderSettings.fogMode;
+            _savedFogColor = RenderSettings.fogColor;
+            _savedFogDensity = RenderSettings.fogDensity;
+            _savedFogStartDistance = RenderSettings.fogStartDistance;
+            _savedFogEndDistance = RenderSettings.fogEndDistance;
+            _savedFarClip = _playerCamera != null ? _playerCamera.farClipPlane : 1000f;
+            _savedRenderState = true;
+        }
+
+        _underwaterActive = true;
+        RenderSettings.fog = true;
+        RenderSettings.fogMode = FogMode.ExponentialSquared;
+        RenderSettings.fogColor = underwaterFogColor;
+        RenderSettings.fogDensity = Mathf.Max(0f, underwaterFogDensity);
+
+        if (_playerCamera != null)
+            _playerCamera.farClipPlane = Mathf.Min(_savedFarClip, Mathf.Max(5f, underwaterFarClip));
+    }
+
+    void RestoreRenderSettings()
+    {
+        if (!_underwaterActive || !_savedRenderState)
+            return;
+
+        _underwaterActive = false;
+
+        RenderSettings.fog = _savedFog;
+        RenderSettings.fogMode = _savedFogMode;
+        RenderSettings.fogColor = _savedFogColor;
+        RenderSettings.fogDensity = _savedFogDensity;
+        RenderSettings.fogStartDistance = _savedFogStartDistance;
+        RenderSettings.fogEndDistance = _savedFogEndDistance;
+
+        if (_playerCamera != null)
+            _playerCamera.farClipPlane = _savedFarClip;
+
+        _savedRenderState = false;
     }
 }

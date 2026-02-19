@@ -61,6 +61,17 @@ namespace SCoL.Voxels
         public Mesh treeMesh;
         public Material treeMaterial;
 
+        [Header("World Boundary")]
+        [Tooltip("Create 4 border walls around the voxel map to prevent leaving the world.")]
+        public bool enableWorldBoundary = true;
+        [Min(0.5f)] public float boundaryThickness = 2f;
+        [Min(2f)] public float boundaryHeight = 64f;
+        [Tooltip("Bottom Y of the boundary walls relative to voxel origin.")]
+        public float boundaryBottomOffset = -2f;
+        [Tooltip("If true, render boundary walls. If false, keep colliders only.")]
+        public bool showBoundaryWalls = false;
+        public Material boundaryWallMaterial;
+
         [Tooltip("If true, world (0,0,0) is placed at this transform position.")]
         public bool useTransformAsOrigin = true;
 
@@ -74,6 +85,7 @@ namespace SCoL.Voxels
         private readonly Dictionary<Vector2Int, MeshCollider> _chunkColliders = new();
         private readonly Dictionary<Vector2Int, GrassPropChunk> _chunkGrassProps = new();
         private readonly Dictionary<Vector2Int, FloraPropChunk> _chunkFloraProps = new();
+        private GameObject _boundaryRoot;
 
         private float _streamT;
 
@@ -142,6 +154,13 @@ namespace SCoL.Voxels
             if (waterMat == null) waterMat = new Material(shader) { name = "Voxel_Water" };
             waterMat.enableInstancing = true;
             waterMat.color = new Color(0.18f, 0.35f, 0.85f, 0.85f);
+
+            if (showBoundaryWalls && boundaryWallMaterial == null)
+            {
+                boundaryWallMaterial = new Material(shader) { name = "Voxel_BoundaryWall" };
+                boundaryWallMaterial.enableInstancing = true;
+                boundaryWallMaterial.color = new Color(0.85f, 0.25f, 0.20f, 0.30f);
+            }
         }
 
         private void TryApplyVoxBoxTerrainMaterials(Shader fallbackShader)
@@ -309,6 +328,8 @@ namespace SCoL.Voxels
                 FillChunkTerrain(chunk);
                 BuildChunkGO(cc);
             }
+
+            BuildWorldBoundary();
         }
 
         private void ClearWorldObjects()
@@ -323,6 +344,9 @@ namespace SCoL.Voxels
             _chunkColliders.Clear();
             _chunkGrassProps.Clear();
             _chunkFloraProps.Clear();
+            if (_boundaryRoot != null)
+                Destroy(_boundaryRoot);
+            _boundaryRoot = null;
         }
 
         private float Noise(float x, float z)
@@ -506,6 +530,85 @@ namespace SCoL.Voxels
                 fp.Rebuild(_seed);
                 _chunkFloraProps[cc] = fp;
             }
+        }
+
+        private void BuildWorldBoundary()
+        {
+            if (!enableWorldBoundary || config == null)
+                return;
+
+            if (_boundaryRoot != null)
+                Destroy(_boundaryRoot);
+
+            _boundaryRoot = new GameObject("WorldBoundary");
+            _boundaryRoot.transform.SetParent(transform, worldPositionStays: true);
+            _boundaryRoot.transform.position = OriginWorld;
+
+            float t = Mathf.Max(0.5f, boundaryThickness);
+            float h = Mathf.Max(2f, boundaryHeight);
+            float yBottom = boundaryBottomOffset;
+            float yCenter = yBottom + h * 0.5f;
+            float w = Mathf.Max(1f, config.worldWidth);
+            float d = Mathf.Max(1f, config.worldDepth);
+
+            CreateBoundaryWall("West",  new Vector3(-t * 0.5f, yCenter, d * 0.5f), new Vector3(t, h, d + t * 2f));
+            CreateBoundaryWall("East",  new Vector3(w + t * 0.5f, yCenter, d * 0.5f), new Vector3(t, h, d + t * 2f));
+            CreateBoundaryWall("South", new Vector3(w * 0.5f, yCenter, -t * 0.5f), new Vector3(w + t * 2f, h, t));
+            CreateBoundaryWall("North", new Vector3(w * 0.5f, yCenter, d + t * 0.5f), new Vector3(w + t * 2f, h, t));
+        }
+
+        private void CreateBoundaryWall(string name, Vector3 localCenter, Vector3 localSize)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(_boundaryRoot.transform, worldPositionStays: false);
+            go.transform.localPosition = localCenter;
+            go.transform.localRotation = Quaternion.identity;
+
+            var collider = go.AddComponent<BoxCollider>();
+            collider.size = localSize;
+            collider.isTrigger = false;
+
+            if (!showBoundaryWalls)
+                return;
+
+            var mf = go.AddComponent<MeshFilter>();
+            var mr = go.AddComponent<MeshRenderer>();
+            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            mr.receiveShadows = false;
+            mr.sharedMaterial = boundaryWallMaterial != null ? boundaryWallMaterial : stoneMat;
+
+            var mesh = new Mesh { name = $"BoundaryWall_{name}" };
+            BuildBoxMesh(mesh, localSize);
+            mf.sharedMesh = mesh;
+        }
+
+        private static void BuildBoxMesh(Mesh mesh, Vector3 size)
+        {
+            var hx = size.x * 0.5f;
+            var hy = size.y * 0.5f;
+            var hz = size.z * 0.5f;
+
+            var verts = new[]
+            {
+                new Vector3(-hx, -hy, -hz), new Vector3(hx, -hy, -hz), new Vector3(hx, hy, -hz), new Vector3(-hx, hy, -hz),
+                new Vector3(-hx, -hy, hz),  new Vector3(hx, -hy, hz),  new Vector3(hx, hy, hz),  new Vector3(-hx, hy, hz)
+            };
+
+            var tris = new[]
+            {
+                0,2,1, 0,3,2, // back
+                4,5,6, 4,6,7, // front
+                0,1,5, 0,5,4, // bottom
+                3,7,6, 3,6,2, // top
+                1,2,6, 1,6,5, // right
+                0,4,7, 0,7,3  // left
+            };
+
+            mesh.Clear();
+            mesh.vertices = verts;
+            mesh.triangles = tris;
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
         }
 
         private List<VoxelBlockType> GetUsedTypesInChunk(Vector2Int cc)

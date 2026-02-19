@@ -508,7 +508,26 @@ public class FPSRaycastInteractor : MonoBehaviour
             {
                 var c = cols[i];
                 if (c == null) continue;
-                Vector3 p = c.ClosestPoint(from);
+
+                // Physics.ClosestPoint only supports primitive colliders and convex MeshCollider.
+                if (c is MeshCollider mc && !mc.convex)
+                    continue;
+                if (!(c is BoxCollider) &&
+                    !(c is SphereCollider) &&
+                    !(c is CapsuleCollider) &&
+                    !(c is MeshCollider))
+                    continue;
+
+                Vector3 p;
+                try
+                {
+                    p = c.ClosestPoint(from);
+                }
+                catch (System.Exception)
+                {
+                    continue;
+                }
+
                 float d = (p - from).sqrMagnitude;
                 if (!has || d < bestSq)
                 {

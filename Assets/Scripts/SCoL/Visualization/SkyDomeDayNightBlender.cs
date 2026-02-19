@@ -1,4 +1,5 @@
 using UnityEngine;
+using SCoL.Voxels;
 
 namespace SCoL.Visualization
 {
@@ -35,11 +36,24 @@ namespace SCoL.Visualization
         [Header("Dome")]
         public Transform followTarget;
 
+        [Tooltip("Prefer following Camera.main at runtime (useful when switching between XR/FPS cameras).")]
+        public bool preferMainCameraAtRuntime = true;
+
         [Tooltip("Log warnings when textures/materials are missing.")]
         public bool logWarnings = true;
 
-        [Tooltip("Big enough to cover the whole world. Keep far clip < dome radius.")]
+        [Tooltip("Big enough to cover the whole world. Keep far clip > dome radius.")]
         [Min(10f)] public float domeRadius = 200f;
+
+        [Tooltip("If enabled, compute dome radius automatically from VoxelWorld size.")]
+        public bool autoFitToVoxelWorld = true;
+        public VoxelWorld voxelWorld;
+        [Min(10f)] public float minAutoDomeRadius = 220f;
+        [Min(0f)] public float autoRadiusPadding = 36f;
+        [Tooltip("If enabled, automatically raise Camera.main far clip when world gets larger.")]
+        public bool autoRaiseCameraFarClip = true;
+        [Min(100f)] public float minCameraFarClip = 1200f;
+        [Min(1f)] public float farClipPadding = 80f;
 
         [Tooltip("Render queue for the dome materials. Lower renders earlier.")]
         public int renderQueue = 1000;
@@ -63,6 +77,8 @@ namespace SCoL.Visualization
 
             if (followTarget == null && Camera.main != null)
                 followTarget = Camera.main.transform;
+            if (voxelWorld == null)
+                voxelWorld = FindFirstObjectByType<VoxelWorld>();
 
             EnsureDomes();
             RefreshTextures(force: true);
@@ -70,6 +86,10 @@ namespace SCoL.Visualization
 
         void LateUpdate()
         {
+            if (preferMainCameraAtRuntime && Camera.main != null)
+                followTarget = Camera.main.transform;
+
+            UpdateAutoDomeRadius();
             EnsureDomes();
 
             if (followTarget != null)
@@ -80,6 +100,39 @@ namespace SCoL.Visualization
 
             RefreshTextures(force: false);
             ApplyBlend();
+        }
+
+        void UpdateAutoDomeRadius()
+        {
+            if (!autoFitToVoxelWorld)
+                return;
+
+            if (voxelWorld == null)
+                voxelWorld = FindFirstObjectByType<VoxelWorld>();
+            if (voxelWorld == null || voxelWorld.Config == null)
+                return;
+
+            var cfg = voxelWorld.Config;
+            float halfW = cfg.worldWidth * 0.5f;
+            float halfD = cfg.worldDepth * 0.5f;
+            float h = Mathf.Max(cfg.worldHeight, cfg.seaLevel + 8f);
+            float autoR = Mathf.Sqrt(halfW * halfW + halfD * halfD + h * h) + Mathf.Max(0f, autoRadiusPadding);
+
+            var cam = Camera.main;
+            if (cam != null)
+            {
+                if (autoRaiseCameraFarClip)
+                {
+                    float desiredFar = Mathf.Max(minCameraFarClip, autoR + Mathf.Max(1f, farClipPadding));
+                    if (cam.farClipPlane < desiredFar)
+                        cam.farClipPlane = desiredFar;
+                }
+
+                // Dome must stay inside far clip so it is actually visible.
+                float maxByClip = cam.farClipPlane * 0.95f;
+                autoR = Mathf.Min(autoR, maxByClip);
+            }
+            domeRadius = Mathf.Max(10f, Mathf.Max(minAutoDomeRadius, autoR));
         }
 
         void EnsureDomes()

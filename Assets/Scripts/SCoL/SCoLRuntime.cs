@@ -694,10 +694,15 @@ namespace SCoL
             if (xrOrigin == null)
                 yield break;
 
-            // Convert current rig position into a voxel column; clamp to bounds so we never spawn outside the world.
-            Vector3 local = xrOrigin.transform.position - _voxelWorld.OriginWorld;
-            int x = Mathf.Clamp(Mathf.FloorToInt(local.x), 0, _voxelWorld.Config.worldWidth - 1);
-            int z = Mathf.Clamp(Mathf.FloorToInt(local.z), 0, _voxelWorld.Config.worldDepth - 1);
+            int x = _voxelWorld.Config.worldWidth / 2;
+            int z = _voxelWorld.Config.worldDepth / 2;
+
+            // Prefer center-land spawn; fall back to center column if none is found.
+            if (!TryFindNearestPlantableColumnAround(x, z, out x, out z))
+            {
+                x = Mathf.Clamp(x, 0, _voxelWorld.Config.worldWidth - 1);
+                z = Mathf.Clamp(z, 0, _voxelWorld.Config.worldDepth - 1);
+            }
 
             int surfaceY = _voxelWorld.GetSurfaceY(x, z);
 
@@ -709,6 +714,62 @@ namespace SCoL
 
             // Ensure the chunk under the player is active and collidable even with streaming.
             _voxelWorld.ForceEnableChunksAtWorld(snapped, renderRadiusChunks: 1, colliderRadiusChunks: 1);
+        }
+
+        private bool TryFindNearestPlantableColumnAround(int centerX, int centerZ, out int bestX, out int bestZ)
+        {
+            bestX = centerX;
+            bestZ = centerZ;
+
+            if (_voxelWorld == null || _voxelWorld.Config == null)
+                return false;
+
+            int w = _voxelWorld.Config.worldWidth;
+            int d = _voxelWorld.Config.worldDepth;
+            int maxR = Mathf.Max(w, d);
+            centerX = Mathf.Clamp(centerX, 0, w - 1);
+            centerZ = Mathf.Clamp(centerZ, 0, d - 1);
+
+            if (IsPlantableColumn(centerX, centerZ))
+            {
+                bestX = centerX;
+                bestZ = centerZ;
+                return true;
+            }
+
+            for (int r = 1; r < maxR; r++)
+            {
+                bool found = false;
+                float bestSq = float.PositiveInfinity;
+
+                for (int dz = -r; dz <= r; dz++)
+                for (int dx = -r; dx <= r; dx++)
+                {
+                    if (Mathf.Abs(dx) != r && Mathf.Abs(dz) != r)
+                        continue;
+
+                    int x = centerX + dx;
+                    int z = centerZ + dz;
+                    if (x < 0 || z < 0 || x >= w || z >= d)
+                        continue;
+                    if (!IsPlantableColumn(x, z))
+                        continue;
+
+                    float sq = dx * dx + dz * dz;
+                    if (sq < bestSq)
+                    {
+                        bestSq = sq;
+                        bestX = x;
+                        bestZ = z;
+                        found = true;
+                    }
+                }
+
+                if (found)
+                    return true;
+            }
+
+            return false;
         }
 
         private void IgniteCell(int x, int y, float fuel)

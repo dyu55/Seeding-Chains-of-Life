@@ -136,6 +136,10 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
         boid.constrainToGround = true;
         boid.groundMask = groundMask;
         boid.groundOffset = groundOffset;
+        boid.voxelWorld = voxelWorld;
+        boid.avoidWaterColumns = true;
+        boid.waterAvoidWeight = 3.4f;
+        boid.waterSearchRadius = 6;
         boid.canEatMaturePlants = animalsEatMaturePlants;
         boid.eatPlantRange = eatPlantRange;
         boid.eatCheckIntervalSeconds = eatCheckIntervalSeconds;
@@ -160,15 +164,11 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
         {
             int x = Random.Range(0, voxelWorld.Config.worldWidth);
             int z = Random.Range(0, voxelWorld.Config.worldDepth);
+            if (!IsDryLandColumn(x, z))
+                return false;
 
-            Vector3 origin = voxelWorld.OriginWorld + new Vector3(x + 0.5f, raycastHeight, z + 0.5f);
-            if (Physics.Raycast(origin, Vector3.down, out var hit, raycastHeight * 2f, groundMask, QueryTriggerInteraction.Ignore))
-            {
-                pos = hit.point + Vector3.up * groundOffset;
-                return true;
-            }
-
-            pos = voxelWorld.OriginWorld + new Vector3(x + 0.5f, voxelWorld.Config.seaLevel + 1f, z + 0.5f);
+            int ySurface = voxelWorld.GetSurfaceY(x, z);
+            pos = voxelWorld.OriginWorld + new Vector3(x + 0.5f, ySurface + 1f + groundOffset, z + 0.5f);
             return true;
         }
 
@@ -182,6 +182,27 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
         }
 
         pos = transform.position + new Vector3(r.x, 0f, r.y);
+        return true;
+    }
+
+    bool IsDryLandColumn(int x, int z)
+    {
+        if (voxelWorld == null || voxelWorld.Config == null)
+            return false;
+        if (x < 0 || z < 0 || x >= voxelWorld.Config.worldWidth || z >= voxelWorld.Config.worldDepth)
+            return false;
+        if (!voxelWorld.IsGrassSurface(x, z))
+            return false;
+
+        int surfaceY = voxelWorld.GetSurfaceY(x, z);
+        if (surfaceY < voxelWorld.Config.seaLevel)
+            return false;
+
+        int aboveY = surfaceY + 1;
+        if (aboveY < voxelWorld.Config.worldHeight &&
+            voxelWorld.GetBlock(x, aboveY, z) == VoxelBlockType.Water)
+            return false;
+
         return true;
     }
 

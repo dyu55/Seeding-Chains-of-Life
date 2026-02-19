@@ -1,5 +1,6 @@
 using UnityEngine;
 using System.Collections.Generic;
+using SCoL.Voxels;
 
 /// <summary>
 /// T11: Craig Reynolds boids core agent.
@@ -71,6 +72,12 @@ public class FPSBoidAgent : MonoBehaviour
     [Header("Debug")]
     public bool drawDebug = false;
 
+    [Header("Water Avoidance (Land Animals)")]
+    public VoxelWorld voxelWorld;
+    public bool avoidWaterColumns = false;
+    [Min(0f)] public float waterAvoidWeight = 3.2f;
+    [Range(1, 12)] public int waterSearchRadius = 5;
+
     [Header("Plant Eating")]
     public bool canEatMaturePlants = false;
     [Min(0.1f)] public float eatPlantRange = 1.15f;
@@ -125,6 +132,8 @@ public class FPSBoidAgent : MonoBehaviour
             boundsCenter = transform.position;
 
         _playerCam = Camera.main;
+        if (voxelWorld == null)
+            voxelWorld = FindFirstObjectByType<VoxelWorld>();
 
         // predators are a bit faster by default
         if (role == BoidRole.Predator)
@@ -330,6 +339,30 @@ public class FPSBoidAgent : MonoBehaviour
             }
         }
 
+        if (avoidWaterColumns && voxelWorld != null && voxelWorld.Config != null)
+        {
+            bool currentlyInWater = IsWaterColumnAtWorld(transform.position);
+            Vector3 planarVel = new Vector3(velocity.x, 0f, velocity.z);
+            bool headingIntoWater = false;
+
+            if (planarVel.sqrMagnitude > 0.04f)
+            {
+                Vector3 ahead = transform.position + planarVel.normalized * Mathf.Max(0.5f, neighborRadius * 0.65f);
+                headingIntoWater = IsWaterColumnAtWorld(ahead);
+            }
+
+            if (currentlyInWater || headingIntoWater)
+            {
+                if (TryFindNearestDryColumnWorld(transform.position, out var dryTarget))
+                {
+                    var toDry = dryTarget - transform.position;
+                    toDry.y = 0f;
+                    float w = currentlyInWater ? waterAvoidWeight : waterAvoidWeight * 0.75f;
+                    accel += SteerTowards(toDry) * Mathf.Max(0f, w);
+                }
+            }
+        }
+
         // clamp
         if (accel.magnitude > maxForce)
             accel = accel.normalized * maxForce;
@@ -518,7 +551,25 @@ public class FPSBoidAgent : MonoBehaviour
             {
                 var c = cols[i];
                 if (c == null) continue;
-                Vector3 p = c.ClosestPoint(from);
+
+                if (c is MeshCollider mc && !mc.convex)
+                    continue;
+                if (!(c is BoxCollider) &&
+                    !(c is SphereCollider) &&
+                    !(c is CapsuleCollider) &&
+                    !(c is MeshCollider))
+                    continue;
+
+                Vector3 p;
+                try
+                {
+                    p = c.ClosestPoint(from);
+                }
+                catch (System.Exception)
+                {
+                    continue;
+                }
+
                 float d = (p - from).sqrMagnitude;
                 if (!has || d < bestSq)
                 {
@@ -530,6 +581,100 @@ public class FPSBoidAgent : MonoBehaviour
             if (has) return best;
         }
         return g.transform.position;
+    }
+
+    bool IsWaterColumnAtWorld(Vector3 worldPos)
+    {
+        if (voxelWorld == null || voxelWorld.Config == null)
+            return false;
+
+        if (!voxelWorld.TryWorldToColumn(worldPos, out int x, out int z))
+            return true;
+
+        int sea = voxelWorld.Config.seaLevel;
+        if (voxelWorld.GetBlock(x, sea, z) == VoxelBlockType.Water)
+            return true;
+
+        int surfaceY = voxelWorld.GetSurfaceY(x, z);
+        if (surfaceY < sea)
+            return true;
+
+        int aboveY = surfaceY + 1;
+        if (aboveY < voxelWorld.Config.worldHeight &&
+            voxelWorld.GetBlock(x, aboveY, z) == VoxelBlockType.Water)
+            return true;
+
+        return false;
+    }
+
+    bool IsDryLandColumn(int x, int z)
+    {
+        if (voxelWorld == null || voxelWorld.Config == null)
+            return false;
+        if (x < 0 || z < 0 || x >= voxelWorld.Config.worldWidth || z >= voxelWorld.Config.worldDepth)
+            return false;
+        if (!voxelWorld.IsGrassSurface(x, z))
+            return false;
+
+        int surfaceY = voxelWorld.GetSurfaceY(x, z);
+        if (surfaceY < voxelWorld.Config.seaLevel)
+            return false;
+
+        int aboveY = surfaceY + 1;
+        if (aboveY < voxelWorld.Config.worldHeight &&
+            voxelWorld.GetBlock(x, aboveY, z) == VoxelBlockType.Water)
+            return false;
+
+        return true;
+    }
+
+    bool TryFindNearestDryColumnWorld(Vector3 fromWorld, out Vector3 dryWorld)
+    {
+        dryWorld = fromWorld;
+        if (voxelWorld == null || voxelWorld.Config == null)
+            return false;
+        if (!voxelWorld.TryWorldToColumn(fromWorld, out int cx, out int cz))
+            return false;
+
+        int bestX = -1;
+        int bestZ = -1;
+        float bestSq = float.PositiveInfinity;
+        int maxR = Mathf.Max(1, waterSearchRadius);
+
+        for (int r = 1; r <= maxR; r++)
+        {
+            bool foundThisRing = false;
+            for (int dz = -r; dz <= r; dz++)
+            for (int dx = -r; dx <= r; dx++)
+            {
+                if (Mathf.Abs(dx) != r && Mathf.Abs(dz) != r)
+                    continue;
+
+                int x = cx + dx;
+                int z = cz + dz;
+                if (!IsDryLandColumn(x, z))
+                    continue;
+
+                float sq = dx * dx + dz * dz;
+                if (sq < bestSq)
+                {
+                    bestSq = sq;
+                    bestX = x;
+                    bestZ = z;
+                    foundThisRing = true;
+                }
+            }
+
+            if (foundThisRing)
+                break;
+        }
+
+        if (bestX < 0 || bestZ < 0)
+            return false;
+
+        int y = voxelWorld.GetSurfaceY(bestX, bestZ);
+        dryWorld = voxelWorld.OriginWorld + new Vector3(bestX + 0.5f, y + 1f, bestZ + 0.5f);
+        return true;
     }
 
     Vector3 SteerTowards(Vector3 desired)

@@ -12,8 +12,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7d156b152b3ee48cb9e642b9fe9e0ebf, type: 3}
   m_Name: VoxelWorldConfig_Default
   m_EditorClassIdentifier: Assembly-CSharp::SCoL.Voxels.VoxelWorldConfig
-  worldWidth: 100
-  worldDepth: 100
+  worldWidth: 200
+  worldDepth: 200
   worldHeight: 40
   chunkSize: 16
   seaLevel: 18
