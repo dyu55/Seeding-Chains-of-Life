@@ -20,6 +20,16 @@ namespace SCoL.Inventory
         public bool discoveredFire = false;
         public bool discoveredPlant = false;
 
+        private void Awake()
+        {
+            SyncDiscoveryFromCounts();
+        }
+
+        private void OnValidate()
+        {
+            SyncDiscoveryFromCounts();
+        }
+
         public int Get(SCoLItemType type)
         {
             return type switch
@@ -138,6 +148,14 @@ namespace SCoL.Inventory
                 SCoLItemType.Plant => "Used to feed animals.",
                 _ => "You have not discovered this item yet."
             };
+        }
+
+        private void SyncDiscoveryFromCounts()
+        {
+            if (seeds > 0) discoveredSeed = true;
+            if (water > 0) discoveredWater = true;
+            if (fire > 0) discoveredFire = true;
+            if (plants > 0) discoveredPlant = true;
         }
     }
 }
