@@ -2,6 +2,7 @@ using UnityEngine;
 using SCoL;
 using SCoL.Inventory;
 using SCoL.Visualization;
+using SCoL.XR;
 
 public enum FPSAimTargetKind
 {
@@ -10,7 +11,8 @@ public enum FPSAimTargetKind
     Harvestable = 2,
     LegacyPlant = 3,
     CAPlant = 4,
-    Animal = 5
+    Animal = 5,
+    Grabbable = 6
 }
 
 public struct FPSAimTargetInfo
@@ -21,6 +23,7 @@ public struct FPSAimTargetInfo
     public SCoLPickup pickup;
     public FPSSeedGrowth legacyPlant;
     public FPSBoidAgent animal;
+    public SCoLGrabbable grabbable;
     public int cellX;
     public int cellY;
 
@@ -32,7 +35,8 @@ public struct FPSAimTargetInfo
                 || kind == FPSAimTargetKind.Harvestable
                 || kind == FPSAimTargetKind.LegacyPlant
                 || kind == FPSAimTargetKind.CAPlant
-                || kind == FPSAimTargetKind.Animal;
+                || kind == FPSAimTargetKind.Animal
+                || kind == FPSAimTargetKind.Grabbable;
         }
     }
 }
@@ -85,6 +89,15 @@ public static class FPSAimTargeting
                 info.kind = FPSAimTargetKind.Animal;
                 info.animal = animal;
                 info.root = animal.transform;
+                return true;
+            }
+
+            var grabbable = t.GetComponentInParent<SCoLGrabbable>();
+            if (grabbable != null)
+            {
+                info.kind = FPSAimTargetKind.Grabbable;
+                info.grabbable = grabbable;
+                info.root = grabbable.transform;
                 return true;
             }
 

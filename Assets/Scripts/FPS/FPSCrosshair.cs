@@ -71,7 +71,10 @@ public class FPSCrosshair : MonoBehaviour
     {
         if (!target.HasActionableTarget)
         {
-            SetTargetInfo(string.Empty, string.Empty);
+            if (TryGetHeldItemInfo(out string heldTitle, out string heldDetail))
+                SetTargetInfo(heldTitle, heldDetail);
+            else
+                SetTargetInfo(string.Empty, string.Empty);
             return;
         }
 
@@ -122,6 +125,22 @@ public class FPSCrosshair : MonoBehaviour
                 break;
             }
 
+            case FPSAimTargetKind.Grabbable:
+            {
+                var p = target.root != null ? target.root.GetComponentInParent<SCoLPickup>() : null;
+                if (p != null && _inventory != null)
+                {
+                    title = "Item: " + _inventory.GetItemDisplayName(p.type, unknownIfUndiscovered: true);
+                    detail = _inventory.GetItemDescription(p.type, unknownIfUndiscovered: true) + "  [LMB collect]";
+                }
+                else
+                {
+                    title = "Item: Unknown item";
+                    detail = "You have not discovered this item yet.  [Grab]";
+                }
+                break;
+            }
+
             default:
                 title = string.Empty;
                 detail = string.Empty;
@@ -129,6 +148,42 @@ public class FPSCrosshair : MonoBehaviour
         }
 
         SetTargetInfo(title, detail);
+    }
+
+    bool TryGetHeldItemInfo(out string title, out string detail)
+    {
+        title = string.Empty;
+        detail = string.Empty;
+        if (_interactor == null || _inventory == null)
+            return false;
+
+        SCoLItemType itemType;
+        string actionHint;
+        switch (_interactor.currentTool)
+        {
+            case FPSRaycastInteractor.ApplyTool.Seed:
+                itemType = SCoLItemType.Seed;
+                actionHint = "RMB plant";
+                break;
+            case FPSRaycastInteractor.ApplyTool.Water:
+                itemType = SCoLItemType.Water;
+                actionHint = "RMB apply water";
+                break;
+            case FPSRaycastInteractor.ApplyTool.Fire:
+                itemType = SCoLItemType.Fire;
+                actionHint = "RMB ignite";
+                break;
+            case FPSRaycastInteractor.ApplyTool.Plant:
+                itemType = SCoLItemType.Plant;
+                actionHint = "RMB feed animal";
+                break;
+            default:
+                return false;
+        }
+
+        title = "Held: " + _inventory.GetItemDisplayName(itemType, unknownIfUndiscovered: true);
+        detail = _inventory.GetItemDescription(itemType, unknownIfUndiscovered: true) + $"  [{actionHint}]";
+        return true;
     }
 
     void SetTargetInfo(string title, string detail)

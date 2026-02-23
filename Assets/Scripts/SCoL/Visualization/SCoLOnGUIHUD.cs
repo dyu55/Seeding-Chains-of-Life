@@ -68,10 +68,24 @@ namespace SCoL.Visualization
             var tool = FindFirstObjectByType<SCoL.XR.SCoLToolController>();
             if (tool != null)
                 sb.AppendLine($"Tool: {tool.currentTool} (L primary/secondary to cycle)");
+            else
+            {
+                var fpsTool = FindFirstObjectByType<FPSRaycastInteractor>();
+                if (fpsTool != null)
+                    sb.AppendLine($"Tool: {fpsTool.currentTool}");
+            }
 
             var inv = FindFirstObjectByType<SCoL.Inventory.SCoLInventory>();
             if (inv != null)
+            {
                 sb.AppendLine($"Inventory: Seed={inv.seeds}  Water={inv.water}  Fire={inv.fire}  Plant={inv.plants}");
+
+                if (TryGetCurrentToolItemType(tool, out var currentItem))
+                {
+                    sb.AppendLine($"Item: {inv.GetItemDisplayName(currentItem, unknownIfUndiscovered: true)}");
+                    sb.AppendLine(inv.GetItemDescription(currentItem, unknownIfUndiscovered: true));
+                }
+            }
 
             sb.AppendLine($"Season: {runtime.CurrentSeason}   Weather: {runtime.CurrentWeather}");
             sb.AppendLine($"View: {runtime.ViewMode}   FireOverlay: {(runtime.OverlayFire ? "ON" : "OFF")}");
@@ -79,6 +93,13 @@ namespace SCoL.Visualization
             if (TryGetAimRay(out var ray) && Physics.Raycast(ray, out var hit, rayLength, hitLayers, QueryTriggerInteraction.Ignore))
             {
                 sb.AppendLine($"Hit: {hit.collider.gameObject.name} @ ({hit.point.x:0.00},{hit.point.y:0.00},{hit.point.z:0.00})");
+
+                var pickup = hit.collider != null ? hit.collider.GetComponentInParent<SCoL.Inventory.SCoLPickup>() : null;
+                if (pickup != null && inv != null)
+                {
+                    sb.AppendLine($"Aim Item: {inv.GetItemDisplayName(pickup.type, unknownIfUndiscovered: true)}");
+                    sb.AppendLine(inv.GetItemDescription(pickup.type, unknownIfUndiscovered: true));
+                }
 
                 if (runtime.TryWorldToCell(hit.point, out int cx, out int cy))
                 {
@@ -159,6 +180,48 @@ namespace SCoL.Visualization
             var l = InputDevices.GetDeviceAtXRNode(XRNode.LeftHand);
             var r = InputDevices.GetDeviceAtXRNode(XRNode.RightHand);
             return l.isValid || r.isValid;
+        }
+
+        private bool TryGetCurrentToolItemType(SCoL.XR.SCoLToolController tool, out SCoL.Inventory.SCoLItemType itemType)
+        {
+            if (tool != null)
+            {
+                switch (tool.currentTool)
+                {
+                    case SCoL.XR.SCoLToolController.Tool.Seed:
+                        itemType = SCoL.Inventory.SCoLItemType.Seed;
+                        return true;
+                    case SCoL.XR.SCoLToolController.Tool.Water:
+                        itemType = SCoL.Inventory.SCoLItemType.Water;
+                        return true;
+                    case SCoL.XR.SCoLToolController.Tool.Fire:
+                        itemType = SCoL.Inventory.SCoLItemType.Fire;
+                        return true;
+                }
+            }
+
+            var fpsTool = FindFirstObjectByType<FPSRaycastInteractor>();
+            if (fpsTool != null)
+            {
+                switch (fpsTool.currentTool)
+                {
+                    case FPSRaycastInteractor.ApplyTool.Seed:
+                        itemType = SCoL.Inventory.SCoLItemType.Seed;
+                        return true;
+                    case FPSRaycastInteractor.ApplyTool.Water:
+                        itemType = SCoL.Inventory.SCoLItemType.Water;
+                        return true;
+                    case FPSRaycastInteractor.ApplyTool.Fire:
+                        itemType = SCoL.Inventory.SCoLItemType.Fire;
+                        return true;
+                    case FPSRaycastInteractor.ApplyTool.Plant:
+                        itemType = SCoL.Inventory.SCoLItemType.Plant;
+                        return true;
+                }
+            }
+
+            itemType = default;
+            return false;
         }
     }
 }

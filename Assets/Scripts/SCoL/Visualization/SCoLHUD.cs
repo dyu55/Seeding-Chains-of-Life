@@ -89,6 +89,7 @@ namespace SCoL.Visualization
         private SCoL.XR.SCoLToolController _toolController;
         private SCoL.XR.SCoLXRInteractor _xrInteractor;
         private SCoL.Inventory.SCoLInventory _inventory;
+        private FPSRaycastInteractor _fpsInteractor;
 
         private void Awake()
         {
@@ -99,6 +100,7 @@ namespace SCoL.Visualization
             _toolController = FindFirstObjectByType<SCoL.XR.SCoLToolController>();
             _xrInteractor = FindFirstObjectByType<SCoL.XR.SCoLXRInteractor>();
             _inventory = FindFirstObjectByType<SCoL.Inventory.SCoLInventory>();
+            _fpsInteractor = FindFirstObjectByType<FPSRaycastInteractor>();
 
             CreateCanvasIfMissing();
         }
@@ -139,6 +141,8 @@ namespace SCoL.Visualization
                 _xrInteractor = FindFirstObjectByType<SCoL.XR.SCoLXRInteractor>();
             if (_inventory == null)
                 _inventory = FindFirstObjectByType<SCoL.Inventory.SCoLInventory>();
+            if (_fpsInteractor == null)
+                _fpsInteractor = FindFirstObjectByType<FPSRaycastInteractor>();
 
             if (_cam == null) _cam = Camera.main;
 
@@ -150,10 +154,18 @@ namespace SCoL.Visualization
             // Tool (prefer inventory-backed controller if present)
             if (showTool)
             {
-                if (_toolController != null)
+                if (_fpsInteractor != null)
+                    _sb.AppendLine($"Tool: {_fpsInteractor.currentTool}");
+                else if (_toolController != null)
                     _sb.AppendLine($"Tool: {_toolController.currentTool}");
                 else if (_xrInteractor != null)
                     _sb.AppendLine($"Tool: {_xrInteractor.currentTool}");
+
+                if (_inventory != null && TryGetCurrentToolItemType(out var currentItem))
+                {
+                    _sb.AppendLine($"Item: {_inventory.GetItemDisplayName(currentItem, unknownIfUndiscovered: true)}");
+                    _sb.AppendLine(_inventory.GetItemDescription(currentItem, unknownIfUndiscovered: true));
+                }
             }
 
             if (showSeasonWeather)
@@ -167,6 +179,13 @@ namespace SCoL.Visualization
             {
                 if (TryGetAimRay(out var ray) && Physics.Raycast(ray, out var hit, rayLength, hitLayers, QueryTriggerInteraction.Ignore))
                 {
+                    var pickup = hit.collider != null ? hit.collider.GetComponentInParent<SCoL.Inventory.SCoLPickup>() : null;
+                    if (pickup != null && _inventory != null)
+                    {
+                        _sb.AppendLine($"Aim Item: {_inventory.GetItemDisplayName(pickup.type, unknownIfUndiscovered: true)}");
+                        _sb.AppendLine(_inventory.GetItemDescription(pickup.type, unknownIfUndiscovered: true));
+                    }
+
                     if (runtime.TryWorldToCell(hit.point, out int cx, out int cy))
                     {
                         var c = runtime.Grid.Get(cx, cy);
@@ -248,6 +267,63 @@ namespace SCoL.Visualization
             // XRSettings.isDeviceActive is the simplest cross-pipeline signal that the HMD is driving rendering.
             // Controller validity can lag at startup, so either signal is fine.
             return XRSettings.isDeviceActive || IsXRControllerValid();
+        }
+
+        private bool TryGetCurrentToolItemType(out SCoL.Inventory.SCoLItemType type)
+        {
+            if (_fpsInteractor != null)
+            {
+                switch (_fpsInteractor.currentTool)
+                {
+                    case FPSRaycastInteractor.ApplyTool.Seed:
+                        type = SCoL.Inventory.SCoLItemType.Seed;
+                        return true;
+                    case FPSRaycastInteractor.ApplyTool.Water:
+                        type = SCoL.Inventory.SCoLItemType.Water;
+                        return true;
+                    case FPSRaycastInteractor.ApplyTool.Fire:
+                        type = SCoL.Inventory.SCoLItemType.Fire;
+                        return true;
+                    case FPSRaycastInteractor.ApplyTool.Plant:
+                        type = SCoL.Inventory.SCoLItemType.Plant;
+                        return true;
+                }
+            }
+
+            if (_toolController != null)
+            {
+                switch (_toolController.currentTool)
+                {
+                    case SCoL.XR.SCoLToolController.Tool.Seed:
+                        type = SCoL.Inventory.SCoLItemType.Seed;
+                        return true;
+                    case SCoL.XR.SCoLToolController.Tool.Water:
+                        type = SCoL.Inventory.SCoLItemType.Water;
+                        return true;
+                    case SCoL.XR.SCoLToolController.Tool.Fire:
+                        type = SCoL.Inventory.SCoLItemType.Fire;
+                        return true;
+                }
+            }
+
+            if (_xrInteractor != null)
+            {
+                switch (_xrInteractor.currentTool)
+                {
+                    case SCoL.XR.SCoLXRInteractor.Tool.Seed:
+                        type = SCoL.Inventory.SCoLItemType.Seed;
+                        return true;
+                    case SCoL.XR.SCoLXRInteractor.Tool.Water:
+                        type = SCoL.Inventory.SCoLItemType.Water;
+                        return true;
+                    case SCoL.XR.SCoLXRInteractor.Tool.Fire:
+                        type = SCoL.Inventory.SCoLItemType.Fire;
+                        return true;
+                }
+            }
+
+            type = default;
+            return false;
         }
 
         private void EnsureCanvasMode()

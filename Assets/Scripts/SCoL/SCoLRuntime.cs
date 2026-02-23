@@ -43,6 +43,27 @@ namespace SCoL
         public bool onlyPlayerSeededLineageCA = true;
         [Tooltip("Disable automatic initial plant seeding when lineage-only CA is enabled.")]
         public bool disableInitialPlantsWhenLineageOnly = true;
+        [Tooltip("Extra birth-rate boost applied only when lineage-only CA is enabled.")]
+        [Range(0f, 4f)] public float lineageSpreadChanceMultiplier = 0.1333f;
+        [Tooltip("Minimum per-tick sprout chance for cells adjacent to lineage plants.")]
+        [Range(0f, 1f)] public float lineageMinSproutChance = 0.008f;
+        [Tooltip("How far (in blocks) lineage flowers can climb uphill from neighboring sources.")]
+        [Range(1, 16)] public int lineageMaxClimbBlocks = 8;
+        [Tooltip("Hydration bonus applied to a 3x3 neighborhood when placing a seed.")]
+        [Range(0f, 0.5f)] public float lineageSeedNeighborWaterBoost = 0.12f;
+
+        [Header("Wind CA")]
+        [Tooltip("If enabled, CA spread can only move from source to target along current wind direction.")]
+        public bool constrainCASpreadToWindDirection = true;
+        [Tooltip("Wind direction index (0=E, 1=NE, 2=N, 3=NW, 4=W, 5=SW, 6=S, 7=SE).")]
+        [Range(0, 7)] public int windDirectionIndex = 0;
+        [Tooltip("If enabled, wind direction rotates over time.")]
+        public bool randomizeWindDirectionOverTime = false;
+        [Min(1f)] public float windDirectionChangeSeconds = 20f;
+
+        [Header("Seasonal Growth")]
+        [Tooltip("If true, cellular spread and plant growth are paused during Winter.")]
+        public bool pausePlantGrowthInWinter = true;
 
         public GridViewMode ViewMode
         {
@@ -69,6 +90,19 @@ namespace SCoL
         }
 
         private System.Random _rng;
+        private float _windDirectionTimer;
+        private Vector2Int _windDirection = new Vector2Int(1, 0);
+        private static readonly Vector2Int[] WindDirections8 =
+        {
+            new Vector2Int(1, 0),   // E
+            new Vector2Int(1, 1),   // NE
+            new Vector2Int(0, 1),   // N
+            new Vector2Int(-1, 1),  // NW
+            new Vector2Int(-1, 0),  // W
+            new Vector2Int(-1, -1), // SW
+            new Vector2Int(0, -1),  // S
+            new Vector2Int(1, -1),  // SE
+        };
 
         private void EnsureHUD()
         {
@@ -120,6 +154,12 @@ namespace SCoL
             _rng = new System.Random(seed);
             _tickTimer = 0f;
             _seasonTimer = 0f;
+            _windDirectionTimer = 0f;
+
+            if (randomizeWindDirectionOverTime)
+                SetWindDirectionIndex(_rng.Next(0, WindDirections8.Length));
+            else
+                SetWindDirectionIndex(windDirectionIndex);
 
             _renderRoot = new GameObject("SCoL_Render").transform;
             _renderRoot.SetParent(transform, worldPositionStays: true);
@@ -194,6 +234,7 @@ namespace SCoL
             // For now, keep simulation ticking, but tools give immediate visual feedback.
             _tickTimer += Time.deltaTime;
             _seasonTimer += Time.deltaTime;
+            UpdateWindDirectionState(Time.deltaTime);
 
             if (_seasonTimer >= Config.seasonSeconds)
             {
@@ -447,9 +488,19 @@ namespace SCoL
 
         private void StepGrowth(int x, int y, CellState cur, CellState n)
         {
+            bool pauseForWinter = pausePlantGrowthInWinter && CurrentSeason == Season.Winter;
+
             // if burnt, slowly recover success
             if (cur.PlantStage == PlantStage.Burnt)
             {
+                if (pauseForWinter)
+                {
+                    n.PlantAgeSeconds = cur.PlantAgeSeconds;
+                    n.Success = cur.Success;
+                    n.IsPlayerSeedLineage = cur.IsPlayerSeedLineage;
+                    return;
+                }
+
                 n.PlantAgeSeconds = 0f;
                 n.Success = Mathf.Clamp01(cur.Success + 0.01f);
                 n.IsPlayerSeedLineage = cur.IsPlayerSeedLineage;
@@ -468,6 +519,21 @@ namespace SCoL
                 return;
             }
 
+            if (pauseForWinter)
+            {
+                if (!cur.HasPlant)
+                {
+                    n.PlantAgeSeconds = 0f;
+                    n.IsPlayerSeedLineage = false;
+                }
+                else
+                {
+                    n.PlantAgeSeconds = cur.PlantAgeSeconds;
+                    n.IsPlayerSeedLineage = cur.IsPlayerSeedLineage;
+                }
+                return;
+            }
+
             // Basic water/sun ranges for plants
             bool waterOk = cur.Water >= 0.25f && cur.Water <= 0.85f;
             bool sunOk = cur.Sunlight >= 0.45f && cur.Sunlight <= 0.95f;
@@ -476,12 +542,15 @@ namespace SCoL
             int smallPlants = Grid.CountNeighbors(x, y, c => c.PlantStage == PlantStage.SmallPlant && (!onlyPlayerSeededLineageCA || c.IsPlayerSeedLineage));
             int anyPlants = Grid.CountNeighbors(x, y, c => c.HasPlant && (!onlyPlayerSeededLineageCA || c.IsPlayerSeedLineage));
             int lineagePlants = Grid.CountNeighbors(x, y, c => c.HasPlant && c.IsPlayerSeedLineage);
+            int windSourcePlants = CountWindSourceNeighbors(x, y);
 
             if (cur.PlantStage == PlantStage.Empty)
             {
                 if (!IsPlantableColumn(x, y))
                     return;
                 if (onlyPlayerSeededLineageCA && lineagePlants <= 0)
+                    return;
+                if (constrainCASpreadToWindDirection && windSourcePlants <= 0)
                     return;
 
                 // Birth: stochastic sprouting (less "grid-perfect" than strict Life rules).
@@ -493,9 +562,12 @@ namespace SCoL
                     if (sunOk) env += 0.45f;
                     if (heatOk) env += 0.25f;
                     env = Mathf.Clamp01(env);
+                    if (onlyPlayerSeededLineageCA && lineagePlants > 0)
+                        env = Mathf.Max(env, 0.55f);
+                    float minEnv = (onlyPlayerSeededLineageCA && lineagePlants > 0) ? 0.15f : 0.35f;
 
                     // Require at least some nearby vegetation so it doesn't random-fill the whole map.
-                    if (anyPlants > 0 && env > 0.35f)
+                    if (anyPlants > 0 && env > minEnv)
                     {
                         // Voxel constraints for flowers:
                         // - only grow on grass surface
@@ -514,12 +586,14 @@ namespace SCoL
                                 if (!Grid.InBounds(nx, ny)) continue;
 
                                 var nb = Grid.Get(nx, ny);
-                                if (nb.PlantStage != PlantStage.SmallPlant) continue;
+                                if (!nb.HasPlant) continue;
                                 if (onlyPlayerSeededLineageCA && !nb.IsPlayerSeedLineage) continue;
                                 if (!IsPlantableColumn(nx, ny)) continue;
+                                if (!IsWindSpreadDirection(nx, ny, x, y)) continue;
 
                                 int sourceH = _voxelWorld.GetSurfaceY(nx, ny);
-                                if (targetH <= sourceH + 5)
+                                int maxClimb = onlyPlayerSeededLineageCA ? lineageMaxClimbBlocks : 5;
+                                if (targetH <= sourceH + maxClimb)
                                     hasReachableSource = true;
                             }
 
@@ -528,9 +602,16 @@ namespace SCoL
                         }
 
                         // Neighborhood factor: more neighbors => higher chance, but diminishing returns.
-                        float neigh = Mathf.Clamp01(anyPlants / 6f);
+                        float neighCount = constrainCASpreadToWindDirection ? windSourcePlants : anyPlants;
+                        float neigh = Mathf.Clamp01(neighCount / 6f);
                         float chance = Config.stochasticSproutChance * env * (0.35f + 0.65f * neigh);
                         chance *= flowerSpreadMultiplier;
+                        if (onlyPlayerSeededLineageCA && lineagePlants > 0)
+                        {
+                            chance *= lineageSpreadChanceMultiplier;
+                            chance = Mathf.Max(chance, lineageMinSproutChance);
+                        }
+                        chance = Mathf.Clamp(chance, 0f, 0.95f);
 
                         if (_rng.NextDouble() < chance)
                         {
@@ -545,7 +626,13 @@ namespace SCoL
                 }
 
                 // Strict CA birth (classic Life-style)
-                if (smallPlants == 3 && waterOk && sunOk && heatOk && IsPlantableColumn(x, y) && _rng.NextDouble() < flowerSpreadMultiplier)
+                if (smallPlants == 3 &&
+                    waterOk &&
+                    sunOk &&
+                    heatOk &&
+                    IsPlantableColumn(x, y) &&
+                    (!constrainCASpreadToWindDirection || windSourcePlants > 0) &&
+                    _rng.NextDouble() < flowerSpreadMultiplier)
                 {
                     n.PlantStage = PlantStage.SmallPlant;
                     n.PlantAgeSeconds = 0f;
@@ -644,8 +731,27 @@ namespace SCoL
             c.PlantStage = PlantStage.SmallPlant;
             c.PlantAgeSeconds = 0f;
             c.Durability = 1.0f;
+            c.Water = Mathf.Max(c.Water, 0.55f);
+            c.Success = Mathf.Max(c.Success, 0.75f);
             c.WaterVisual = 0f;
             c.IsPlayerSeedLineage = true;
+
+            // Give nearby dry cells a small hydration nudge so lineage expansion is visible after seeding.
+            for (int dy = -1; dy <= 1; dy++)
+            {
+                for (int dx = -1; dx <= 1; dx++)
+                {
+                    int nx = x + dx;
+                    int ny = y + dy;
+                    if (!Grid.InBounds(nx, ny))
+                        continue;
+
+                    var n = Grid.Get(nx, ny);
+                    n.Water = Mathf.Clamp01(n.Water + lineageSeedNeighborWaterBoost);
+                    if (n.PlantStage == PlantStage.Empty || n.PlantStage == PlantStage.Burnt)
+                        n.Success = Mathf.Clamp01(Mathf.Max(n.Success, 0.58f));
+                }
+            }
 
             // Ensure readable view
             ViewMode = GridViewMode.Stage;
@@ -845,6 +951,84 @@ namespace SCoL
                 return false;
 
             return true;
+        }
+
+        private void UpdateWindDirectionState(float dt)
+        {
+            if (!randomizeWindDirectionOverTime)
+            {
+                SetWindDirectionIndex(windDirectionIndex);
+                return;
+            }
+
+            _windDirectionTimer += Mathf.Max(0f, dt);
+            if (_windDirectionTimer < Mathf.Max(1f, windDirectionChangeSeconds))
+                return;
+
+            _windDirectionTimer = 0f;
+            int next = windDirectionIndex;
+            if (_rng != null)
+            {
+                for (int i = 0; i < 8; i++)
+                {
+                    int pick = _rng.Next(0, WindDirections8.Length);
+                    if (pick != windDirectionIndex)
+                    {
+                        next = pick;
+                        break;
+                    }
+                }
+            }
+
+            SetWindDirectionIndex(next);
+        }
+
+        private void SetWindDirectionIndex(int index)
+        {
+            if (WindDirections8 == null || WindDirections8.Length == 0)
+                return;
+
+            int len = WindDirections8.Length;
+            index %= len;
+            if (index < 0) index += len;
+            windDirectionIndex = index;
+            _windDirection = WindDirections8[index];
+        }
+
+        private bool IsWindSpreadDirection(int sourceX, int sourceY, int targetX, int targetY)
+        {
+            if (!constrainCASpreadToWindDirection)
+                return true;
+
+            int dx = targetX - sourceX;
+            int dy = targetY - sourceY;
+            dx = Mathf.Clamp(dx, -1, 1);
+            dy = Mathf.Clamp(dy, -1, 1);
+            return dx == _windDirection.x && dy == _windDirection.y;
+        }
+
+        private int CountWindSourceNeighbors(int targetX, int targetY)
+        {
+            int count = 0;
+
+            for (int dy = -1; dy <= 1; dy++)
+            {
+                for (int dx = -1; dx <= 1; dx++)
+                {
+                    if (dx == 0 && dy == 0) continue;
+                    int sx = targetX + dx;
+                    int sy = targetY + dy;
+                    if (!Grid.InBounds(sx, sy)) continue;
+
+                    var src = Grid.Get(sx, sy);
+                    if (!src.HasPlant) continue;
+                    if (onlyPlayerSeededLineageCA && !src.IsPlayerSeedLineage) continue;
+                    if (!IsWindSpreadDirection(sx, sy, targetX, targetY)) continue;
+                    count++;
+                }
+            }
+
+            return count;
         }
 
         private void SeedInitialPlants()
