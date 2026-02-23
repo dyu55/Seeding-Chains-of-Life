@@ -35,6 +35,12 @@ public class SimpleFirstPersonController : MonoBehaviour
     [Min(5f)] public float underwaterFarClip = 28f;
     public Color underwaterFogColor = new Color(0.18f, 0.46f, 0.62f, 1f);
 
+    [Header("Fail-Safe Spawn Rescue")]
+    [Min(0.5f)] public float rescueBelowWorldOffset = 4f;
+    [Min(0f)] public float rescueHeightOffset = 1.25f;
+    [Min(0.1f)] public float rescueCooldownSeconds = 1.0f;
+    public int rescueColliderRadiusChunks = 2;
+
     CharacterController _cc;
     float _pitch;
     Vector3 _velocity;
@@ -50,6 +56,7 @@ public class SimpleFirstPersonController : MonoBehaviour
     float _savedFogStartDistance;
     float _savedFogEndDistance;
     float _savedFarClip;
+    float _lastRescueTime = -999f;
 
     void Awake()
     {
@@ -122,6 +129,8 @@ public class SimpleFirstPersonController : MonoBehaviour
         _velocity.y += gravity * Time.deltaTime;
         _cc.Move(_velocity * Time.deltaTime);
 
+        TryRescueIfFallenBelowWorld();
+
         // Escape to unlock cursor
         if (kb != null && kb.escapeKey.wasPressedThisFrame)
         {
@@ -135,6 +144,80 @@ public class SimpleFirstPersonController : MonoBehaviour
             Cursor.lockState = CursorLockMode.Locked;
             Cursor.visible = false;
         }
+    }
+
+    void TryRescueIfFallenBelowWorld()
+    {
+        if (_voxelWorld == null)
+            _voxelWorld = FindFirstObjectByType<VoxelWorld>();
+        if (_voxelWorld == null || _voxelWorld.Config == null)
+            return;
+
+        float worldMinY = _voxelWorld.OriginWorld.y - Mathf.Max(0.5f, rescueBelowWorldOffset);
+        if (transform.position.y >= worldMinY)
+            return;
+        if (Time.unscaledTime < _lastRescueTime + Mathf.Max(0.1f, rescueCooldownSeconds))
+            return;
+
+        if (!TryFindRescuePoint(out var rescuePos))
+            return;
+
+        bool wasEnabled = _cc != null && _cc.enabled;
+        if (_cc != null) _cc.enabled = false;
+        transform.position = rescuePos;
+        if (_cc != null) _cc.enabled = wasEnabled;
+        _velocity = Vector3.zero;
+        _lastRescueTime = Time.unscaledTime;
+
+        _voxelWorld.ForceEnableChunksAtWorld(
+            rescuePos,
+            renderRadiusChunks: 1,
+            colliderRadiusChunks: Mathf.Max(0, rescueColliderRadiusChunks));
+    }
+
+    bool TryFindRescuePoint(out Vector3 worldPos)
+    {
+        worldPos = transform.position;
+
+        var cfg = _voxelWorld.Config;
+        int width = cfg.worldWidth;
+        int depth = cfg.worldDepth;
+        if (width <= 0 || depth <= 0)
+            return false;
+
+        int cx = width / 2;
+        int cz = depth / 2;
+        int maxR = Mathf.Max(width, depth);
+
+        for (int r = 0; r < maxR; r++)
+        {
+            int samples = r == 0 ? 1 : r * 8;
+            for (int i = 0; i < samples; i++)
+            {
+                Vector2 dir = r == 0 ? Vector2.zero : DirectionOnCircle(i / (float)samples);
+                int x = cx + Mathf.RoundToInt(dir.x * r);
+                int z = cz + Mathf.RoundToInt(dir.y * r);
+                if (x < 0 || z < 0 || x >= width || z >= depth)
+                    continue;
+                if (!_voxelWorld.IsGrassSurface(x, z))
+                    continue;
+
+                int y = _voxelWorld.GetSurfaceY(x, z);
+                if (y < cfg.seaLevel)
+                    continue;
+
+                worldPos = _voxelWorld.OriginWorld + new Vector3(x + 0.5f, y + Mathf.Max(0f, rescueHeightOffset), z + 0.5f);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    static Vector2 DirectionOnCircle(float t)
+    {
+        float a = t * Mathf.PI * 2f;
+        return new Vector2(Mathf.Cos(a), Mathf.Sin(a));
     }
 
     void LateUpdate()

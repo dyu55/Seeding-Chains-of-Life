@@ -17,6 +17,16 @@ namespace SCoL.Visualization
     /// </summary>
     public class DayNightLightingController : MonoBehaviour
     {
+        public enum InteractionSfx
+        {
+            PlaceFire,
+            ExtinguishFire,
+            PlantSeed,
+            DestroySeed
+        }
+
+        static DayNightLightingController _instance;
+
         [Header("Time")]
         [Range(0f, 1f)] public float timeOfDay01 = 0.5f;
 
@@ -91,6 +101,15 @@ namespace SCoL.Visualization
 
         [Range(0f, 1f)] public float weatherVolume = 0.9f;
 
+        [Header("Interaction SFX (optional)")]
+        [Tooltip("Optional one-shot source for interaction events (plant/fire/extinguish/destroy).")]
+        public AudioSource interactionAudioSource;
+        public AudioClip placeFireClip;
+        public AudioClip extinguishFireClip;
+        public AudioClip plantSeedClip;
+        public AudioClip destroySeedClip;
+        [Range(0f, 1f)] public float interactionSfxVolume = 1f;
+
         [Header("Thunderstorm Lightning Flash (optional)")]
         public bool enableThunderFlash = true;
 
@@ -147,14 +166,55 @@ namespace SCoL.Visualization
 
         void OnEnable()
         {
+            _instance = this;
             if (weatherSystem != null)
                 weatherSystem.OnPhaseStarted += HandleWeatherPhaseStarted;
         }
 
         void OnDisable()
         {
+            if (_instance == this) _instance = null;
             if (weatherSystem != null)
                 weatherSystem.OnPhaseStarted -= HandleWeatherPhaseStarted;
+        }
+
+        public static void PlayInteractionSfx(InteractionSfx sfx)
+        {
+            if (_instance == null) return;
+            _instance.PlayInteractionSfxLocal(sfx);
+        }
+
+        public static void StopInteractionSfx()
+        {
+            if (_instance == null) return;
+            _instance.StopInteractionSfxLocal();
+        }
+
+        void PlayInteractionSfxLocal(InteractionSfx sfx)
+        {
+            var src = interactionAudioSource != null ? interactionAudioSource : weatherAudioSource;
+            if (src == null) return;
+
+            var clip = sfx switch
+            {
+                InteractionSfx.PlaceFire => placeFireClip,
+                InteractionSfx.ExtinguishFire => extinguishFireClip,
+                InteractionSfx.PlantSeed => plantSeedClip,
+                InteractionSfx.DestroySeed => destroySeedClip,
+                _ => null
+            };
+            if (clip == null) return;
+
+            src.spatialBlend = 0f;
+            src.PlayOneShot(clip, Mathf.Clamp01(interactionSfxVolume));
+        }
+
+        void StopInteractionSfxLocal()
+        {
+            var src = interactionAudioSource != null ? interactionAudioSource : weatherAudioSource;
+            if (src == null) return;
+            if (src.isPlaying)
+                src.Stop();
         }
 
         void Start()

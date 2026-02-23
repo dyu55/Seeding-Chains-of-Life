@@ -18,6 +18,8 @@ public class FPSSpawnOnVoxel : MonoBehaviour
     [Header("Placement")]
     public float spawnOffsetY = 0.15f;
     public float retrySeconds = 2f;
+    public int forceEnableRenderRadiusChunks = 1;
+    public int forceEnableColliderRadiusChunks = 2;
 
     CharacterController _cc;
 
@@ -33,7 +35,9 @@ public class FPSSpawnOnVoxel : MonoBehaviour
         {
             if (TryFindVoxelSpawnPoint(out var point))
             {
-                Teleport(point + Vector3.up * spawnOffsetY);
+                var snapped = point + Vector3.up * spawnOffsetY;
+                Teleport(snapped);
+                ForceEnableNearbyVoxelChunks(snapped);
                 yield break;
             }
             yield return null;
@@ -169,5 +173,17 @@ public class FPSSpawnOnVoxel : MonoBehaviour
         }
 
         transform.position = worldPos;
+    }
+
+    void ForceEnableNearbyVoxelChunks(Vector3 worldPos)
+    {
+        var world = FindFirstObjectByType<VoxelWorld>();
+        if (world == null)
+            return;
+
+        world.ForceEnableChunksAtWorld(
+            worldPos,
+            renderRadiusChunks: Mathf.Max(0, forceEnableRenderRadiusChunks),
+            colliderRadiusChunks: Mathf.Max(0, forceEnableColliderRadiusChunks));
     }
 }

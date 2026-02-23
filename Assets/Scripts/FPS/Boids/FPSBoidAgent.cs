@@ -98,7 +98,6 @@ public class FPSBoidAgent : MonoBehaviour
     static float _plantAttractorWeight = 3f;
 
     Camera _playerCam;
-    float _jumpOffsetY;
     float _feedReactionTimer;
     float _feedReactionDuration = 1.2f;
     float _feedReactionJumpHeight = 0.35f;
@@ -149,15 +148,6 @@ public class FPSBoidAgent : MonoBehaviour
 
     void Update()
     {
-        // Remove previous frame jump offset before boid integration.
-        if (_jumpOffsetY != 0f)
-        {
-            var p0 = transform.position;
-            p0.y -= _jumpOffsetY;
-            transform.position = p0;
-            _jumpOffsetY = 0f;
-        }
-
         var accel = ComputeAcceleration();
 
         velocity += accel * Time.deltaTime;
@@ -171,23 +161,10 @@ public class FPSBoidAgent : MonoBehaviour
 
         transform.position += velocity * Time.deltaTime;
 
-        // Feed reaction: 3 jump pulses.
-        if (_feedReactionTimer > 0f)
-        {
-            _feedReactionTimer -= Time.deltaTime;
-            float elapsed = Mathf.Clamp(_feedReactionDuration - _feedReactionTimer, 0f, _feedReactionDuration);
-            float t = _feedReactionDuration <= 0.0001f ? 1f : Mathf.Clamp01(elapsed / _feedReactionDuration);
-            float wave = Mathf.Sin(t * Mathf.PI * 2f * Mathf.Max(1, _feedReactionJumpCount));
-            if (wave < 0f) wave = 0f;
-            _jumpOffsetY = wave * _feedReactionJumpHeight;
-
-            var p1 = transform.position;
-            p1.y += _jumpOffsetY;
-            transform.position = p1;
-        }
-
         if (constrainToGround)
             SnapToGround();
+
+        ApplyFeedReactionHop();
 
         if (canEatMaturePlants)
             UpdateEatProgress();
@@ -384,6 +361,8 @@ public class FPSBoidAgent : MonoBehaviour
         _feedReactionDuration = Mathf.Max(0.2f, reactionDurationSeconds);
         _feedReactionJumpCount = Mathf.Max(1, jumps);
         _feedReactionTimer = _feedReactionDuration;
+        // Feed reaction should always be grounded for land animals.
+        constrainToGround = true;
     }
 
     void RetargetWanderIfNeeded()
@@ -429,11 +408,64 @@ public class FPSBoidAgent : MonoBehaviour
             if (otherBoid != null)
                 continue;
 
-            float targetY = hit.point.y + groundOffset + _jumpOffsetY;
+            float targetY = hit.point.y + groundOffset;
             p.y = Mathf.Lerp(p.y, targetY, Mathf.Clamp01(groundSnapSpeed * Time.deltaTime));
             transform.position = p;
             return;
         }
+    }
+
+    void ApplyFeedReactionHop()
+    {
+        if (_feedReactionTimer <= 0f)
+            return;
+
+        _feedReactionTimer -= Time.deltaTime;
+        float elapsed = Mathf.Clamp(_feedReactionDuration - _feedReactionTimer, 0f, _feedReactionDuration);
+        float t = _feedReactionDuration <= 0.0001f ? 1f : Mathf.Clamp01(elapsed / _feedReactionDuration);
+        float wave = Mathf.Sin(t * Mathf.PI * 2f * Mathf.Max(1, _feedReactionJumpCount));
+        if (wave < 0f) wave = 0f;
+        float hopY = wave * _feedReactionJumpHeight;
+
+        if (TryGetGroundY(out float groundY))
+        {
+            var p = transform.position;
+            p.y = groundY + hopY;
+            transform.position = p;
+        }
+    }
+
+    bool TryGetGroundY(out float groundY)
+    {
+        groundY = transform.position.y;
+        Vector3 p = transform.position;
+        Vector3 origin = new Vector3(p.x, p.y + Mathf.Max(0.1f, groundRaycastHeight), p.z);
+        float dist = Mathf.Max(0.2f, groundRaycastHeight * 2f);
+
+        var hits = Physics.RaycastAll(origin, Vector3.down, dist, groundMask, QueryTriggerInteraction.Ignore);
+        if (hits == null || hits.Length == 0)
+            return false;
+
+        System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+        for (int i = 0; i < hits.Length; i++)
+        {
+            var hit = hits[i];
+            if (hit.collider == null)
+                continue;
+
+            var t = hit.collider.transform;
+            if (t == transform || t.IsChildOf(transform))
+                continue;
+
+            var otherBoid = hit.collider.GetComponentInParent<FPSBoidAgent>();
+            if (otherBoid != null)
+                continue;
+
+            groundY = hit.point.y + groundOffset;
+            return true;
+        }
+
+        return false;
     }
 
     bool TryEnsureEatTarget()

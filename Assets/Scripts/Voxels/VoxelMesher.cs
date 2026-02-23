@@ -101,10 +101,7 @@ namespace SCoL.Voxels
                     norms.Add(face.normal);
                     norms.Add(face.normal);
 
-                    uvs.Add(QuadUV[0]);
-                    uvs.Add(QuadUV[1]);
-                    uvs.Add(QuadUV[2]);
-                    uvs.Add(QuadUV[3]);
+                    AddFaceUVs(uvs, t, f);
 
                     // two triangles
                     tlist.Add(vi + 0);
@@ -135,6 +132,36 @@ namespace SCoL.Voxels
 
             mesh.RecalculateBounds();
             return mesh;
+        }
+
+        private static void AddFaceUVs(List<Vector2> uvs, VoxelBlockType t, int faceIndex)
+        {
+            // Grass material can use a 3-tile horizontal atlas:
+            // tile 0 = side, tile 1 = top, tile 2 = bottom.
+            if (t == VoxelBlockType.Grass)
+            {
+                int tile = 0; // side by default
+                if (faceIndex == 2) tile = 1;      // +Y (top)
+                else if (faceIndex == 3) tile = 2; // -Y (bottom)
+
+                const float third = 1f / 3f;
+                const float pad = 0.001f; // reduce atlas bleeding
+                float u0 = tile * third + pad;
+                float u1 = (tile + 1) * third - pad;
+                float v0 = 0f + pad;
+                float v1 = 1f - pad;
+
+                uvs.Add(new Vector2(u0, v0));
+                uvs.Add(new Vector2(u1, v0));
+                uvs.Add(new Vector2(u1, v1));
+                uvs.Add(new Vector2(u0, v1));
+                return;
+            }
+
+            uvs.Add(QuadUV[0]);
+            uvs.Add(QuadUV[1]);
+            uvs.Add(QuadUV[2]);
+            uvs.Add(QuadUV[3]);
         }
 
         private static bool IsAirLike(VoxelBlockType t, bool includeWater)

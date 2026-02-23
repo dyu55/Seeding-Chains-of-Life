@@ -2,6 +2,7 @@ using UnityEngine;
 #if ENABLE_INPUT_SYSTEM
 using UnityEngine.InputSystem;
 #endif
+using SCoL.Visualization;
 
 /// <summary>
 /// FPS mouse interaction: on LMB, raycast from screen center and detect objects tagged "Harvestable"
@@ -56,6 +57,8 @@ public class FPSRaycastInteractor : MonoBehaviour
     public bool fireCanDestroyPlants = false;
     [Range(0f, 1f)] public float fireDestroyChance = 0.5f;
     [Min(0f)] public float fireDestroyDelaySeconds = 0.25f;
+    [Range(0.05f, 1f)] public float fireBurnRadiusScale = 0.25f;
+    [Min(0.1f)] public float fireExtinguishRadius = 2.0f;
 
     [Header("Plant Tool / Animal Feed")]
     public bool animalsFollowWhenPlantToolSelected = true;
@@ -66,10 +69,30 @@ public class FPSRaycastInteractor : MonoBehaviour
     [Min(0.2f)] public float feedReactionDuration = 1.2f;
     [Min(1)] public int feedJumpCount = 3;
 
+    [Header("Plant Destroy (RMB clicks)")]
+    [Min(1)] public int plantDestroyClicksRequired = 4;
+    [Min(0.1f)] public float plantDestroyClickWindowSeconds = 2.0f;
+
+    [Header("Fire Loop Audio (optional)")]
+    public AudioSource fireLoopAudioSource;
+    public AudioClip fireLoopClip;
+    [Range(0f, 1f)] public float fireLoopVolume = 0.65f;
+
     SCoL.Inventory.SCoLInventory _inventory;
     Material _waterSpreadMat;
     Material _fireSpreadMat;
     FPSSeeding.GrowthSetup _growthSetup;
+    Coroutine _activeFireSpreadRoutine;
+    readonly System.Collections.Generic.List<GameObject> _activeFireBlocks = new System.Collections.Generic.List<GameObject>(128);
+    Vector3 _activeFireCenter;
+    bool _hasActiveFire;
+    struct PlantDestroyClickState
+    {
+        public int count;
+        public float expiresAt;
+    }
+
+    readonly System.Collections.Generic.Dictionary<int, PlantDestroyClickState> _plantDestroyClicks = new System.Collections.Generic.Dictionary<int, PlantDestroyClickState>();
 
     void Awake()
     {
@@ -87,6 +110,14 @@ public class FPSRaycastInteractor : MonoBehaviour
 
         _growthSetup = new FPSSeeding.GrowthSetup();
         RefreshGrowthSetup();
+
+        if (fireLoopAudioSource != null)
+        {
+            fireLoopAudioSource.loop = true;
+            fireLoopAudioSource.playOnAwake = false;
+            fireLoopAudioSource.spatialBlend = 0f;
+            fireLoopAudioSource.volume = Mathf.Clamp01(fireLoopVolume);
+        }
     }
 
     void Update()
@@ -166,6 +197,9 @@ public class FPSRaycastInteractor : MonoBehaviour
             if (_inventory == null)
                 return;
 
+            if (TryHandlePlantDestroyClick(hit))
+                return;
+
             switch (currentTool)
             {
                 case ApplyTool.Seed:
@@ -190,6 +224,7 @@ public class FPSRaycastInteractor : MonoBehaviour
 
                     if (logHits && spawned != null)
                         Debug.Log($"[FPSRaycastInteractor] Planted: {spawned.name}");
+                    DayNightLightingController.PlayInteractionSfx(DayNightLightingController.InteractionSfx.PlantSeed);
                     break;
                 }
 
@@ -203,6 +238,12 @@ public class FPSRaycastInteractor : MonoBehaviour
                     {
                         if (logHits) Debug.Log("[FPSRaycastInteractor] No water to place");
                         return;
+                    }
+
+                    if (TryExtinguishActiveFire(hit.point))
+                    {
+                        DayNightLightingController.PlayInteractionSfx(DayNightLightingController.InteractionSfx.ExtinguishFire);
+                        break;
                     }
 
                     StartCoroutine(SpawnTransientSpread(hit.point, hit.normal, GetWaterSpreadMat(), false, true));
@@ -222,7 +263,10 @@ public class FPSRaycastInteractor : MonoBehaviour
                     }
 
                     TryBurnTintTarget(hit);
-                    StartCoroutine(SpawnTransientSpread(hit.point, hit.normal, GetFireSpreadMat(), true, false));
+                    StartFireSpread(hit.point, hit.normal);
+                    // Avoid overlapping a long one-shot fire clip with the managed fire loop.
+                    if (fireLoopAudioSource == null || fireLoopClip == null)
+                        DayNightLightingController.PlayInteractionSfx(DayNightLightingController.InteractionSfx.PlaceFire);
                     break;
                 }
 
@@ -249,6 +293,115 @@ public class FPSRaycastInteractor : MonoBehaviour
                 }
             }
         }
+    }
+
+    bool TryHandlePlantDestroyClick(RaycastHit hit)
+    {
+        if (hit.collider == null) return false;
+        var growth = hit.collider.GetComponentInParent<FPSSeedGrowth>();
+        if (growth == null) return false;
+
+        int key = growth.GetInstanceID();
+        float now = Time.time;
+        PlantDestroyClickState state;
+        if (!_plantDestroyClicks.TryGetValue(key, out state))
+            state = new PlantDestroyClickState { count = 0, expiresAt = 0f };
+
+        int next = (now <= state.expiresAt) ? state.count + 1 : 1;
+        _plantDestroyClicks[key] = new PlantDestroyClickState
+        {
+            count = next,
+            expiresAt = now + Mathf.Max(0.1f, plantDestroyClickWindowSeconds)
+        };
+
+        if (next >= Mathf.Max(1, plantDestroyClicksRequired))
+        {
+            _plantDestroyClicks.Remove(key);
+            if (growth != null)
+                Destroy(growth.gameObject);
+            DayNightLightingController.PlayInteractionSfx(DayNightLightingController.InteractionSfx.DestroySeed);
+            if (logHits) Debug.Log("[FPSRaycastInteractor] Plant destroyed by repeated RMB clicks.");
+        }
+        else if (logHits)
+        {
+            Debug.Log($"[FPSRaycastInteractor] Plant destroy progress: {next}/{Mathf.Max(1, plantDestroyClicksRequired)}", growth);
+        }
+
+        return true;
+    }
+
+    void StartFireSpread(Vector3 hitPoint, Vector3 hitNormal)
+    {
+        ClearActiveFire();
+        _activeFireCenter = SnapToVoxelCenter(hitPoint + hitNormal * 0.55f);
+        _hasActiveFire = true;
+        StartFireLoopAudio();
+        _activeFireSpreadRoutine = StartCoroutine(SpawnTransientSpread(hitPoint, hitNormal, GetFireSpreadMat(), true, false, _activeFireBlocks, () =>
+        {
+            _activeFireSpreadRoutine = null;
+            _hasActiveFire = false;
+            _activeFireBlocks.Clear();
+            StopFireLoopAudio();
+        }));
+    }
+
+    bool TryExtinguishActiveFire(Vector3 atPoint)
+    {
+        if (!_hasActiveFire)
+            return false;
+
+        var d = new Vector2(atPoint.x - _activeFireCenter.x, atPoint.z - _activeFireCenter.z);
+        if (d.magnitude > Mathf.Max(0.1f, fireExtinguishRadius))
+            return false;
+
+        ClearActiveFire();
+        _hasActiveFire = false;
+        if (logHits) Debug.Log("[FPSRaycastInteractor] Fire extinguished by water.");
+        return true;
+    }
+
+    void ClearActiveFire()
+    {
+        _hasActiveFire = false;
+        if (_activeFireSpreadRoutine != null)
+        {
+            StopCoroutine(_activeFireSpreadRoutine);
+            _activeFireSpreadRoutine = null;
+        }
+        for (int i = 0; i < _activeFireBlocks.Count; i++)
+        {
+            if (_activeFireBlocks[i] != null)
+                Destroy(_activeFireBlocks[i]);
+        }
+        _activeFireBlocks.Clear();
+        StopFireLoopAudio();
+        DayNightLightingController.StopInteractionSfx();
+    }
+
+    void OnDisable()
+    {
+        ClearActiveFire();
+    }
+
+    void StartFireLoopAudio()
+    {
+        if (fireLoopAudioSource == null || fireLoopClip == null)
+            return;
+
+        fireLoopAudioSource.clip = fireLoopClip;
+        fireLoopAudioSource.loop = true;
+        fireLoopAudioSource.volume = Mathf.Clamp01(fireLoopVolume);
+        fireLoopAudioSource.spatialBlend = 0f;
+        if (!fireLoopAudioSource.isPlaying)
+            fireLoopAudioSource.Play();
+    }
+
+    void StopFireLoopAudio()
+    {
+        if (fireLoopAudioSource == null)
+            return;
+        if (fireLoopAudioSource.isPlaying)
+            fireLoopAudioSource.Stop();
     }
 
     void UpdatePlantAttractor()
@@ -299,9 +452,18 @@ public class FPSRaycastInteractor : MonoBehaviour
 #endif
     }
 
-    System.Collections.IEnumerator SpawnTransientSpread(Vector3 hitPoint, Vector3 hitNormal, Material mat, bool burnTargets = false, bool waterTargets = false)
+    System.Collections.IEnumerator SpawnTransientSpread(
+        Vector3 hitPoint,
+        Vector3 hitNormal,
+        Material mat,
+        bool burnTargets = false,
+        bool waterTargets = false,
+        System.Collections.Generic.List<GameObject> externalSink = null,
+        System.Action onDone = null)
     {
-        var spawned = new System.Collections.Generic.List<GameObject>(64);
+        var spawned = externalSink ?? new System.Collections.Generic.List<GameObject>(64);
+        if (externalSink != null)
+            externalSink.Clear();
 
         Vector3 center = SnapToVoxelCenter(hitPoint + hitNormal * 0.55f);
         SpawnBlock(center, mat, spawned, burnTargets, waterTargets);
@@ -322,6 +484,7 @@ public class FPSRaycastInteractor : MonoBehaviour
             if (spawned[i] != null)
                 Destroy(spawned[i]);
         }
+        onDone?.Invoke();
     }
 
     void SpawnRing(Vector3 center, int ring, Material mat, System.Collections.Generic.List<GameObject> sink, bool burnTargets, bool waterTargets)
@@ -356,8 +519,9 @@ public class FPSRaycastInteractor : MonoBehaviour
 
         if (burnTargets)
         {
-            BurnTargetsAtTile(surfacePos, Mathf.Max(0.05f, blockScale * 0.55f));
-            FireAffectSeedGrowthAtTile(surfacePos, Mathf.Max(0.05f, blockScale * 0.55f));
+            float burnRadius = Mathf.Max(0.05f, blockScale * Mathf.Clamp(fireBurnRadiusScale, 0.05f, 1f));
+            BurnTargetsAtTile(surfacePos, burnRadius);
+            FireAffectSeedGrowthAtTile(surfacePos, burnRadius);
         }
         else if (waterTargets)
         {

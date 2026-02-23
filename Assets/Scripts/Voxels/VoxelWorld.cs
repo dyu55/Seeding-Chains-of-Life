@@ -88,6 +88,7 @@ namespace SCoL.Voxels
         private GameObject _boundaryRoot;
 
         private float _streamT;
+        private Texture2D _grassFaceAtlasRuntime;
 
         public Vector3 OriginWorld => useTransformAsOrigin ? transform.position : Vector3.zero;
 
@@ -138,15 +139,17 @@ namespace SCoL.Voxels
 
             if (grassMat == null) grassMat = new Material(shader) { name = "Voxel_Grass" };
             grassMat.enableInstancing = true;
-            ApplyGrassTextureIfAvailable(grassMat);
+            ApplyGrassFaceAtlasOrFallback(grassMat);
 
             if (dirtMat == null) dirtMat = new Material(shader) { name = "Voxel_Dirt" };
             dirtMat.enableInstancing = true;
             dirtMat.color = new Color(0.45f, 0.32f, 0.22f);
+            ApplyTextureFromResourcesIfAvailable(dirtMat, "Voxels/s1");
 
             if (stoneMat == null) stoneMat = new Material(shader) { name = "Voxel_Stone" };
             stoneMat.enableInstancing = true;
             stoneMat.color = new Color(0.55f, 0.55f, 0.60f);
+            ApplyTextureFromResourcesIfAvailable(stoneMat, "Voxels/s1");
 
             if (useOriginalWaterMaterial && (overrideAssignedTerrainMaterials || waterMat == null))
                 waterMat = null;
@@ -154,6 +157,7 @@ namespace SCoL.Voxels
             if (waterMat == null) waterMat = new Material(shader) { name = "Voxel_Water" };
             waterMat.enableInstancing = true;
             waterMat.color = new Color(0.18f, 0.35f, 0.85f, 0.85f);
+            ApplyTextureFromResourcesIfAvailable(waterMat, "Voxels/w1");
 
             if (showBoundaryWalls && boundaryWallMaterial == null)
             {
@@ -278,26 +282,27 @@ namespace SCoL.Voxels
 #endif
         }
 
-        private static void ApplyGrassTextureIfAvailable(Material m)
+        private static void ApplyTextureFromResourcesIfAvailable(Material m, params string[] resourcePaths)
         {
-            // If a user assigned a material in inspector, don't override it.
             if (m == null) return;
 
-            // Try load from Resources so this works in builds.
-            // File: Assets/Resources/Voxels/grass_basecolor.jpg
-            var tex = Resources.Load<Texture2D>("Voxels/grass_basecolor");
-            if (tex == null)
+            Texture2D tex = null;
+            if (resourcePaths != null)
             {
-                // fallback: readable green
-                m.color = new Color(0.25f, 0.80f, 0.25f);
-                return;
+                for (int i = 0; i < resourcePaths.Length; i++)
+                {
+                    var path = resourcePaths[i];
+                    if (string.IsNullOrEmpty(path)) continue;
+                    tex = Resources.Load<Texture2D>(path);
+                    if (tex != null) break;
+                }
             }
+            if (tex == null)
+                return;
 
-            // Pixel-ish look: point sampling.
             tex.filterMode = FilterMode.Point;
             tex.anisoLevel = 0;
 
-            // URP Lit: _BaseMap; Standard: _MainTex
             if (m.HasProperty("_BaseMap"))
                 m.SetTexture("_BaseMap", tex);
             if (m.HasProperty("_MainTex"))
@@ -307,6 +312,81 @@ namespace SCoL.Voxels
                 m.SetColor("_BaseColor", Color.white);
             if (m.HasProperty("_Color"))
                 m.SetColor("_Color", Color.white);
+        }
+
+        private void ApplyGrassFaceAtlasOrFallback(Material m)
+        {
+            if (m == null) return;
+
+            var side = Resources.Load<Texture2D>("Voxels/grassside");
+            var top = Resources.Load<Texture2D>("Voxels/topgrass");
+            var bottom = Resources.Load<Texture2D>("Voxels/grassbot");
+
+            // If no face textures are provided, keep old single-texture fallback behavior.
+            if (side == null && top == null && bottom == null)
+            {
+                ApplyTextureFromResourcesIfAvailable(m, "Voxels/grass", "Voxels/grass_basecolor");
+                return;
+            }
+
+            if (side == null) side = top != null ? top : bottom;
+            if (top == null) top = side != null ? side : bottom;
+            if (bottom == null) bottom = side != null ? side : top;
+            if (side == null || top == null || bottom == null)
+            {
+                ApplyTextureFromResourcesIfAvailable(m, "Voxels/grass", "Voxels/grass_basecolor");
+                return;
+            }
+
+            _grassFaceAtlasRuntime = BuildHorizontalAtlas(side, top, bottom, "Runtime_GrassFaceAtlas");
+            if (_grassFaceAtlasRuntime == null)
+            {
+                ApplyTextureFromResourcesIfAvailable(m, "Voxels/grass", "Voxels/grass_basecolor");
+                return;
+            }
+
+            if (m.HasProperty("_BaseMap"))
+                m.SetTexture("_BaseMap", _grassFaceAtlasRuntime);
+            if (m.HasProperty("_MainTex"))
+                m.SetTexture("_MainTex", _grassFaceAtlasRuntime);
+            if (m.HasProperty("_BaseColor"))
+                m.SetColor("_BaseColor", Color.white);
+            if (m.HasProperty("_Color"))
+                m.SetColor("_Color", Color.white);
+        }
+
+        private static Texture2D BuildHorizontalAtlas(Texture2D side, Texture2D top, Texture2D bottom, string texName)
+        {
+            if (side == null || top == null || bottom == null)
+                return null;
+
+            int tileW = Mathf.Max(1, Mathf.Max(side.width, Mathf.Max(top.width, bottom.width)));
+            int tileH = Mathf.Max(1, Mathf.Max(side.height, Mathf.Max(top.height, bottom.height)));
+
+            var rt = RenderTexture.GetTemporary(tileW * 3, tileH, 0, RenderTextureFormat.ARGB32);
+            var prev = RenderTexture.active;
+            RenderTexture.active = rt;
+
+            GL.PushMatrix();
+            GL.LoadPixelMatrix(0, rt.width, rt.height, 0);
+            GL.Clear(true, true, Color.clear);
+
+            Graphics.DrawTexture(new Rect(0, 0, tileW, tileH), side);
+            Graphics.DrawTexture(new Rect(tileW, 0, tileW, tileH), top);
+            Graphics.DrawTexture(new Rect(tileW * 2, 0, tileW, tileH), bottom);
+
+            GL.PopMatrix();
+
+            var atlas = new Texture2D(tileW * 3, tileH, TextureFormat.RGBA32, false);
+            atlas.ReadPixels(new Rect(0, 0, rt.width, rt.height), 0, 0, false);
+            atlas.filterMode = FilterMode.Point;
+            atlas.anisoLevel = 0;
+            atlas.name = texName;
+            atlas.Apply(false, true);
+
+            RenderTexture.active = prev;
+            RenderTexture.ReleaseTemporary(rt);
+            return atlas;
         }
 
         public void GenerateAll()
@@ -751,19 +831,60 @@ namespace SCoL.Voxels
         {
             if (_chunkGOs.Count == 0) return;
 
-            // Prefer XR Origin position (stable "player" reference) over Camera.main.
-            Vector3 focusPos;
+            Camera frustumCam = Camera.main;
             var xrOrigin = FindFirstObjectByType<Unity.XR.CoreUtils.XROrigin>();
-            if (xrOrigin != null)
+            bool xrActive = UnityEngine.XR.XRSettings.isDeviceActive;
+
+            Vector3 focusPos;
+            if (xrActive && xrOrigin != null)
+            {
+                // In headset play, stream around the rig root for stable chunk loading.
                 focusPos = xrOrigin.transform.position;
+            }
             else
             {
-                var cam = Camera.main;
-                if (cam == null) return;
-                focusPos = cam.transform.position;
-            }
+                // In desktop/laptop play, prefer the FPS controller transform over any XR rig camera.
+                var fps = FindFirstObjectByType<SimpleFirstPersonController>();
+                if (fps != null)
+                {
+                    var focusTf = fps.cameraPivot != null ? fps.cameraPivot : fps.transform;
+                    focusPos = focusTf.position;
+                    frustumCam = focusTf.GetComponent<Camera>();
+                }
+                else if (frustumCam != null && (xrOrigin == null || !frustumCam.transform.IsChildOf(xrOrigin.transform)))
+                {
+                    focusPos = frustumCam.transform.position;
+                }
+                else
+                {
+                    // Fallback: find any non-XR enabled camera.
+                    Camera[] cams = FindObjectsByType<Camera>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+                    Camera nonXrCam = null;
+                    for (int i = 0; i < cams.Length; i++)
+                    {
+                        var c = cams[i];
+                        if (c == null || !c.isActiveAndEnabled) continue;
+                        if (xrOrigin != null && c.transform.IsChildOf(xrOrigin.transform)) continue;
+                        nonXrCam = c;
+                        break;
+                    }
 
-            Camera frustumCam = Camera.main;
+                    if (nonXrCam != null)
+                    {
+                        frustumCam = nonXrCam;
+                        focusPos = nonXrCam.transform.position;
+                    }
+                    else if (xrOrigin != null)
+                    {
+                        // Last fallback if no gameplay camera is available.
+                        focusPos = xrOrigin.transform.position;
+                    }
+                    else
+                    {
+                        return;
+                    }
+                }
+            }
 
             int cs = config.chunkSize;
             Vector3 local = focusPos - OriginWorld;
