@@ -17,6 +17,11 @@ public class VoxBoxFishSchool : MonoBehaviour
     [Min(1)] public int fishCount = 24;
     [Min(1)] public int waterSampleStep = 3;
     public Vector2 spawnScaleRange = new Vector2(0.45f, 0.75f);
+    [Header("Runtime Multipliers")]
+    [Tooltip("Final spawned fish count = fishCount * fishCountMultiplier.")]
+    [Min(0.1f)] public float fishCountMultiplier = 4f;
+    [Tooltip("Final fish scale multiplier. 0.333 means 3x smaller fish.")]
+    [Min(0.01f)] public float fishScaleMultiplier = 1f / 3f;
     [Tooltip("Offset (in blocks) from sea level. Keep values negative to stay below surface.")]
     public Vector2 spawnYOffsetFromSea = new Vector2(-0.85f, -0.25f);
     public bool spawnOnStart = true;
@@ -83,7 +88,10 @@ public class VoxBoxFishSchool : MonoBehaviour
         }
 
         int spawnedCount = 0;
-        for (int i = 0; i < Mathf.Max(1, fishCount); i++)
+        // Keep an explicit runtime floor so already-serialized scene values also get a denser school.
+        float effectiveCountMultiplier = Mathf.Max(4f, fishCountMultiplier);
+        int targetCount = Mathf.Max(1, Mathf.RoundToInt(effectiveCountMultiplier * fishCount));
+        for (int i = 0; i < targetCount; i++)
         {
             if (!TryPickSpawnPoint(out var spawnPos))
                 continue;
@@ -97,7 +105,7 @@ public class VoxBoxFishSchool : MonoBehaviour
 
         if (logSpawnInfo)
         {
-            Debug.Log($"[VoxBoxFishSchool] Spawned {spawnedCount} fish from {_waterAnchors.Count} water anchors.", this);
+            Debug.Log($"[VoxBoxFishSchool] Spawned {spawnedCount}/{targetCount} fish from {_waterAnchors.Count} water anchors.", this);
         }
     }
 
@@ -116,7 +124,8 @@ public class VoxBoxFishSchool : MonoBehaviour
         if (fish == null) return null;
 
         fish.name = $"Fish_{index:00}";
-        float s = Random.Range(spawnScaleRange.x, spawnScaleRange.y);
+        float baseScale = Random.Range(spawnScaleRange.x, spawnScaleRange.y);
+        float s = baseScale * Mathf.Max(0.01f, fishScaleMultiplier);
         fish.transform.localScale *= s;
 
         if (disableFishColliders)

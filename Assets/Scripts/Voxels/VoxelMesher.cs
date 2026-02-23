@@ -101,7 +101,7 @@ namespace SCoL.Voxels
                     norms.Add(face.normal);
                     norms.Add(face.normal);
 
-                    AddFaceUVs(uvs, t, f);
+                    AddFaceUVs(uvs, world, t, f);
 
                     // two triangles
                     tlist.Add(vi + 0);
@@ -134,8 +134,15 @@ namespace SCoL.Voxels
             return mesh;
         }
 
-        private static void AddFaceUVs(List<Vector2> uvs, VoxelBlockType t, int faceIndex)
+        private static void AddFaceUVs(List<Vector2> uvs, VoxelWorld world, VoxelBlockType t, int faceIndex)
         {
+            // Teammate terrain textures are cube-net sheets (4x3 cross). Use per-face UV tiles when enabled.
+            if (world != null && world.UseCubeNetUVFor(t))
+            {
+                AddFaceUVsFromCubeCross(uvs, faceIndex);
+                return;
+            }
+
             // Grass material can use a 3-tile horizontal atlas:
             // tile 0 = side, tile 1 = top, tile 2 = bottom.
             if (t == VoxelBlockType.Grass)
@@ -162,6 +169,57 @@ namespace SCoL.Voxels
             uvs.Add(QuadUV[1]);
             uvs.Add(QuadUV[2]);
             uvs.Add(QuadUV[3]);
+        }
+
+        private static void AddFaceUVsFromCubeCross(List<Vector2> uvs, int faceIndex)
+        {
+            // Standard cube cross layout on a 4x3 grid:
+            // row0: [ , Top,  ,    ]
+            // row1: [L, Front, R, Back]
+            // row2: [ , Bottom, ,   ]
+            const float cols = 4f;
+            const float rows = 3f;
+            const float pad = 0.001f;
+
+            int col;
+            int row;
+            switch (faceIndex)
+            {
+                case 0: // +X
+                    col = 2; row = 1;
+                    break;
+                case 1: // -X
+                    col = 0; row = 1;
+                    break;
+                case 2: // +Y
+                    col = 1; row = 0;
+                    break;
+                case 3: // -Y
+                    col = 1; row = 2;
+                    break;
+                case 4: // +Z
+                    col = 1; row = 1;
+                    break;
+                case 5: // -Z
+                    col = 3; row = 1;
+                    break;
+                default:
+                    col = 1; row = 1;
+                    break;
+            }
+
+            float u0 = (col / cols) + pad;
+            float u1 = ((col + 1f) / cols) - pad;
+            // Convert row-from-top to UV v-range (bottom-origin)
+            float vTop = 1f - (row / rows);
+            float vBottom = 1f - ((row + 1f) / rows);
+            float v0 = vBottom + pad;
+            float v1 = vTop - pad;
+
+            uvs.Add(new Vector2(u0, v0));
+            uvs.Add(new Vector2(u1, v0));
+            uvs.Add(new Vector2(u1, v1));
+            uvs.Add(new Vector2(u0, v1));
         }
 
         private static bool IsAirLike(VoxelBlockType t, bool includeWater)

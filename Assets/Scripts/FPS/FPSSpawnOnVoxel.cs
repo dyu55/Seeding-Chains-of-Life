@@ -22,10 +22,12 @@ public class FPSSpawnOnVoxel : MonoBehaviour
     public int forceEnableColliderRadiusChunks = 2;
 
     CharacterController _cc;
+    VoxelWorld _voxelWorld;
 
     IEnumerator Start()
     {
         _cc = GetComponent<CharacterController>();
+        _voxelWorld = FindFirstObjectByType<VoxelWorld>();
 
         // Wait one frame so runtime-generated voxel chunks/colliders can appear.
         yield return null;
@@ -35,6 +37,18 @@ public class FPSSpawnOnVoxel : MonoBehaviour
         {
             if (TryFindVoxelSpawnPoint(out var point))
             {
+                if (_voxelWorld != null)
+                {
+                    // Ensure chunks/colliders are active before teleporting the controller.
+                    _voxelWorld.ForceEnableChunksAtWorld(
+                        point,
+                        renderRadiusChunks: Mathf.Max(0, forceEnableRenderRadiusChunks),
+                        colliderRadiusChunks: Mathf.Max(0, forceEnableColliderRadiusChunks));
+                }
+
+                if (TryProjectToColliderSurface(point, out var groundedPoint))
+                    point = groundedPoint;
+
                 var snapped = point + Vector3.up * spawnOffsetY;
                 Teleport(snapped);
                 ForceEnableNearbyVoxelChunks(snapped);
@@ -42,13 +56,25 @@ public class FPSSpawnOnVoxel : MonoBehaviour
             }
             yield return null;
         }
+
+        // Last-resort fallback: snap to voxel center column so we never keep free-falling from authoring position.
+        if (_voxelWorld != null && _voxelWorld.Config != null)
+        {
+            int x = Mathf.Clamp(_voxelWorld.Config.worldWidth / 2, 0, _voxelWorld.Config.worldWidth - 1);
+            int z = Mathf.Clamp(_voxelWorld.Config.worldDepth / 2, 0, _voxelWorld.Config.worldDepth - 1);
+            int y = _voxelWorld.GetSurfaceY(x, z);
+            Vector3 fallback = _voxelWorld.OriginWorld + new Vector3(x + 0.5f, y + 1f, z + 0.5f);
+            _voxelWorld.ForceEnableChunksAtWorld(fallback, renderRadiusChunks: 2, colliderRadiusChunks: 2);
+            Teleport(fallback + Vector3.up * spawnOffsetY);
+        }
     }
 
     bool TryFindVoxelSpawnPoint(out Vector3 point)
     {
         point = default;
 
-        var voxelWorld = FindFirstObjectByType<VoxelWorld>();
+        var voxelWorld = _voxelWorld != null ? _voxelWorld : FindFirstObjectByType<VoxelWorld>();
+        _voxelWorld = voxelWorld;
         if (voxelWorld != null && voxelWorld.Config != null)
             return TryFindDryLandSpawnPoint(voxelWorld, out point);
 
@@ -80,6 +106,20 @@ public class FPSSpawnOnVoxel : MonoBehaviour
         }
 
         return false;
+    }
+
+    bool TryProjectToColliderSurface(Vector3 nearPoint, out Vector3 point)
+    {
+        point = nearPoint;
+        Vector3 origin = nearPoint + Vector3.up * Mathf.Max(2f, castHeight * 0.05f);
+        float dist = Mathf.Max(6f, castDistance * 0.25f);
+        if (!Physics.Raycast(origin, Vector3.down, out var hit, dist, hitMask, QueryTriggerInteraction.Ignore))
+            return false;
+        if (!IsVoxelHit(hit.collider))
+            return false;
+
+        point = hit.point;
+        return true;
     }
 
     bool TryFindDryLandSpawnPoint(VoxelWorld voxelWorld, out Vector3 point)

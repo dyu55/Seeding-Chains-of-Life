@@ -77,6 +77,11 @@ public class FPSBoidAgent : MonoBehaviour
     public bool avoidWaterColumns = false;
     [Min(0f)] public float waterAvoidWeight = 3.2f;
     [Range(1, 12)] public int waterSearchRadius = 5;
+    [Tooltip("If true, land animals immediately turn back when their forward lookahead hits water.")]
+    public bool hardTurnAtWaterEdge = true;
+    [Min(0.1f)] public float waterEdgeLookAheadDistance = 1.1f;
+    [Min(0.1f)] public float waterEdgeTurnSpeedMultiplier = 1.2f;
+    [Min(0f)] public float waterEdgeExtraAvoidWeight = 3.0f;
 
     [Header("Plant Eating")]
     public bool canEatMaturePlants = false;
@@ -158,6 +163,8 @@ public class FPSBoidAgent : MonoBehaviour
         // clamp speed
         float sp = velocity.magnitude;
         if (sp > maxSpeed) velocity = velocity / sp * maxSpeed;
+
+        ApplyHardWaterEdgeTurn();
 
         transform.position += velocity * Time.deltaTime;
 
@@ -345,6 +352,38 @@ public class FPSBoidAgent : MonoBehaviour
             accel = accel.normalized * maxForce;
 
         return accel;
+    }
+
+    void ApplyHardWaterEdgeTurn()
+    {
+        if (!avoidWaterColumns || !hardTurnAtWaterEdge || voxelWorld == null || voxelWorld.Config == null)
+            return;
+
+        Vector3 planar = new Vector3(velocity.x, 0f, velocity.z);
+        if (planar.sqrMagnitude < 0.0001f)
+            return;
+
+        float lookAhead = Mathf.Max(0.1f, waterEdgeLookAheadDistance);
+        Vector3 ahead = transform.position + planar.normalized * lookAhead;
+        if (!IsWaterColumnAtWorld(ahead))
+            return;
+
+        Vector3 away = -planar.normalized;
+        if (TryFindNearestDryColumnWorld(transform.position, out var dryTarget))
+        {
+            Vector3 toDry = dryTarget - transform.position;
+            toDry.y = 0f;
+            if (toDry.sqrMagnitude > 0.0001f)
+                away = (away + toDry.normalized * Mathf.Max(0f, waterEdgeExtraAvoidWeight * 0.5f)).normalized;
+        }
+
+        float speed = Mathf.Max(0.2f, planar.magnitude * Mathf.Max(0.1f, waterEdgeTurnSpeedMultiplier));
+        Vector3 turned = away * speed;
+        velocity.x = turned.x;
+        velocity.z = turned.z;
+
+        _wanderDir = away;
+        _nextWanderRetargetAt = Time.time + Mathf.Max(0.2f, wanderRetargetSeconds * 0.6f);
     }
 
     public static void SetPlantAttractor(Transform target, bool enabled, float radius, float weight)

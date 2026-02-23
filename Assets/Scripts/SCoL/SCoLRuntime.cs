@@ -35,6 +35,8 @@ namespace SCoL
         [Header("Tree Growth")]
         [Tooltip("Multiplier for promotions into tree stages. 0.33 means about 2/3 fewer new trees.")]
         [Range(0f, 1f)] public float treePromotionMultiplier = 0.33f;
+        [Tooltip("Multiplier for flower/plant spread birth rate. 0.5 means half spread speed.")]
+        [Range(0f, 1f)] public float flowerSpreadMultiplier = 0.5f;
 
         public GridViewMode ViewMode
         {
@@ -515,6 +517,7 @@ namespace SCoL
                         // Neighborhood factor: more neighbors => higher chance, but diminishing returns.
                         float neigh = Mathf.Clamp01(anyPlants / 6f);
                         float chance = Config.stochasticSproutChance * env * (0.35f + 0.65f * neigh);
+                        chance *= flowerSpreadMultiplier;
 
                         if (_rng.NextDouble() < chance)
                         {
@@ -528,7 +531,7 @@ namespace SCoL
                 }
 
                 // Strict CA birth (classic Life-style)
-                if (smallPlants == 3 && waterOk && sunOk && heatOk && IsPlantableColumn(x, y))
+                if (smallPlants == 3 && waterOk && sunOk && heatOk && IsPlantableColumn(x, y) && _rng.NextDouble() < flowerSpreadMultiplier)
                 {
                     n.PlantStage = PlantStage.SmallPlant;
                     n.PlantAgeSeconds = 0f;

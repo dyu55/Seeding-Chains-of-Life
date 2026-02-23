@@ -140,6 +140,26 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
         boid.avoidWaterColumns = true;
         boid.waterAvoidWeight = 3.4f;
         boid.waterSearchRadius = 6;
+        boid.hardTurnAtWaterEdge = true;
+        boid.waterEdgeLookAheadDistance = 1.1f;
+        boid.waterEdgeTurnSpeedMultiplier = 1.2f;
+        boid.waterEdgeExtraAvoidWeight = 3.0f;
+
+        bool isFox = false;
+        if (prefab != null)
+            isFox = prefab.name.IndexOf("fox", System.StringComparison.OrdinalIgnoreCase) >= 0;
+        if (!isFox)
+            isFox = go.name.IndexOf("fox", System.StringComparison.OrdinalIgnoreCase) >= 0;
+        if (isFox)
+        {
+            // Foxes get stricter shoreline behavior: avoid entering water and turn around at edges.
+            boid.waterAvoidWeight = 7.5f;
+            boid.waterSearchRadius = 10;
+            boid.waterEdgeLookAheadDistance = 1.35f;
+            boid.waterEdgeTurnSpeedMultiplier = 1.45f;
+            boid.waterEdgeExtraAvoidWeight = 4.5f;
+        }
+
         boid.canEatMaturePlants = animalsEatMaturePlants;
         boid.eatPlantRange = eatPlantRange;
         boid.eatCheckIntervalSeconds = eatCheckIntervalSeconds;

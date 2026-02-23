@@ -30,6 +30,16 @@ namespace SCoL.Voxels
         public bool overrideAssignedTerrainMaterials = true;
         [Tooltip("Keep original simple blue water instead of VoxBox water tile style.")]
         public bool useOriginalWaterMaterial = true;
+        [Tooltip("Prefer teammate-provided Cube Grass/Dirt/Sand textures for terrain materials when available.")]
+        public bool useIncomingTerrainBlockTextures = true;
+
+        [Header("Shoreline Sand")]
+        [Tooltip("Replace shoreline surface blocks with sand (stone channel) around lakes/sea.")]
+        public bool enableShorelineSand = true;
+        [Min(0)] public int shorelineSandMinRings = 2;
+        [Min(0)] public int shorelineSandMaxRings = 3;
+        [Tooltip("Noise scale controlling where 2-ring vs 3-ring shoreline appears.")]
+        [Min(0.001f)] public float shorelineSandNoiseScale = 0.085f;
 
         [Header("Grass Props (decorations)")]
         // Default OFF: avoids auto-spawning legacy/placeholder props when entering Play mode.
@@ -86,6 +96,9 @@ namespace SCoL.Voxels
         private readonly Dictionary<Vector2Int, GrassPropChunk> _chunkGrassProps = new();
         private readonly Dictionary<Vector2Int, FloraPropChunk> _chunkFloraProps = new();
         private GameObject _boundaryRoot;
+        private bool _useCubeNetGrassUV;
+        private bool _useCubeNetDirtUV;
+        private bool _useCubeNetStoneUV;
 
         private float _streamT;
         private Texture2D _grassFaceAtlasRuntime;
@@ -137,19 +150,36 @@ namespace SCoL.Voxels
 
             TryApplyVoxBoxTerrainMaterials(shader);
 
+            _useCubeNetGrassUV = false;
+            _useCubeNetDirtUV = false;
+            _useCubeNetStoneUV = false;
+
             if (grassMat == null) grassMat = new Material(shader) { name = "Voxel_Grass" };
             grassMat.enableInstancing = true;
-            ApplyGrassFaceAtlasOrFallback(grassMat);
 
             if (dirtMat == null) dirtMat = new Material(shader) { name = "Voxel_Dirt" };
             dirtMat.enableInstancing = true;
-            dirtMat.color = new Color(0.45f, 0.32f, 0.22f);
-            ApplyTextureFromResourcesIfAvailable(dirtMat, "Voxels/s1");
 
             if (stoneMat == null) stoneMat = new Material(shader) { name = "Voxel_Stone" };
             stoneMat.enableInstancing = true;
-            stoneMat.color = new Color(0.55f, 0.55f, 0.60f);
-            ApplyTextureFromResourcesIfAvailable(stoneMat, "Voxels/s1");
+
+            TryApplyIncomingTerrainBlockTextures(out bool incomingGrassApplied, out bool incomingDirtApplied, out bool incomingSandApplied);
+
+            if (!incomingGrassApplied)
+                ApplyGrassFaceAtlasOrFallback(grassMat);
+
+            if (!incomingDirtApplied)
+            {
+                dirtMat.color = new Color(0.45f, 0.32f, 0.22f);
+                ApplyTextureFromResourcesIfAvailable(dirtMat, "Voxels/s1");
+            }
+
+            // Reuse stone channel for the new sand look without changing voxel type layout.
+            if (!incomingSandApplied)
+            {
+                stoneMat.color = new Color(0.55f, 0.55f, 0.60f);
+                ApplyTextureFromResourcesIfAvailable(stoneMat, "Voxels/s1");
+            }
 
             if (useOriginalWaterMaterial && (overrideAssignedTerrainMaterials || waterMat == null))
                 waterMat = null;
@@ -300,6 +330,14 @@ namespace SCoL.Voxels
             if (tex == null)
                 return;
 
+            ApplyTextureToMaterial(m, tex);
+        }
+
+        private static bool ApplyTextureToMaterial(Material m, Texture2D tex)
+        {
+            if (m == null || tex == null)
+                return false;
+
             tex.filterMode = FilterMode.Point;
             tex.anisoLevel = 0;
 
@@ -312,6 +350,74 @@ namespace SCoL.Voxels
                 m.SetColor("_BaseColor", Color.white);
             if (m.HasProperty("_Color"))
                 m.SetColor("_Color", Color.white);
+
+            return true;
+        }
+
+        private void TryApplyIncomingTerrainBlockTextures(out bool grassApplied, out bool dirtApplied, out bool sandApplied)
+        {
+            grassApplied = false;
+            dirtApplied = false;
+            sandApplied = false;
+
+            if (!useIncomingTerrainBlockTextures)
+                return;
+
+            var grassTex = LoadEditorOrResourceTexture(
+                "Assets/Models/Modeling/_Incoming/Cube Grass.png",
+                "Voxels/cube_grass");
+            var dirtTex = LoadEditorOrResourceTexture(
+                "Assets/Models/Modeling/_Incoming/Cube Dirt.png",
+                "Voxels/cube_dirt");
+            var sandTex = LoadEditorOrResourceTexture(
+                "Assets/Models/Modeling/_Incoming/Cube Sand.png",
+                "Voxels/cube_sand");
+
+            var resolvedDirt = dirtTex != null ? dirtTex : (sandTex != null ? sandTex : grassTex);
+            var resolvedSand = sandTex != null ? sandTex : (dirtTex != null ? dirtTex : grassTex);
+
+            if (grassMat != null && grassTex != null)
+            {
+                grassApplied = ApplyTextureToMaterial(grassMat, grassTex);
+                _useCubeNetGrassUV = grassApplied;
+            }
+
+            if (dirtMat != null && resolvedDirt != null)
+            {
+                dirtApplied = ApplyTextureToMaterial(dirtMat, resolvedDirt);
+                _useCubeNetDirtUV = dirtApplied;
+            }
+
+            // Stone channel is used as the terrain third layer; map it to sand if provided.
+            if (stoneMat != null && resolvedSand != null)
+            {
+                sandApplied = ApplyTextureToMaterial(stoneMat, resolvedSand);
+                _useCubeNetStoneUV = sandApplied;
+            }
+        }
+
+        private static Texture2D LoadEditorOrResourceTexture(string editorAssetPath, params string[] resourcePaths)
+        {
+#if UNITY_EDITOR
+            if (!string.IsNullOrEmpty(editorAssetPath))
+            {
+                var tex = AssetDatabase.LoadAssetAtPath<Texture2D>(editorAssetPath);
+                if (tex != null)
+                    return tex;
+            }
+#endif
+            if (resourcePaths == null)
+                return null;
+
+            for (int i = 0; i < resourcePaths.Length; i++)
+            {
+                var path = resourcePaths[i];
+                if (string.IsNullOrEmpty(path)) continue;
+                var tex = Resources.Load<Texture2D>(path);
+                if (tex != null) return tex;
+            }
+
+            return null;
         }
 
         private void ApplyGrassFaceAtlasOrFallback(Material m)
@@ -389,6 +495,17 @@ namespace SCoL.Voxels
             return atlas;
         }
 
+        public bool UseCubeNetUVFor(VoxelBlockType t)
+        {
+            return t switch
+            {
+                VoxelBlockType.Grass => _useCubeNetGrassUV,
+                VoxelBlockType.Dirt => _useCubeNetDirtUV,
+                VoxelBlockType.Stone => _useCubeNetStoneUV,
+                _ => false
+            };
+        }
+
         public void GenerateAll()
         {
             ClearWorldObjects();
@@ -397,6 +514,7 @@ namespace SCoL.Voxels
             int cs = config.chunkSize;
             int chunksX = Mathf.CeilToInt(config.worldWidth / (float)cs);
             int chunksZ = Mathf.CeilToInt(config.worldDepth / (float)cs);
+            var coords = new List<Vector2Int>(chunksX * chunksZ);
 
             for (int cz = 0; cz < chunksZ; cz++)
             for (int cx = 0; cx < chunksX; cx++)
@@ -404,10 +522,15 @@ namespace SCoL.Voxels
                 var cc = new Vector2Int(cx, cz);
                 var chunk = new VoxelChunk(cc, cs, config.worldHeight);
                 _chunks[cc] = chunk;
+                coords.Add(cc);
 
                 FillChunkTerrain(chunk);
-                BuildChunkGO(cc);
             }
+
+            ApplyShorelineSandRings();
+
+            for (int i = 0; i < coords.Count; i++)
+                BuildChunkGO(coords[i]);
 
             BuildWorldBoundary();
         }
@@ -479,6 +602,113 @@ namespace SCoL.Voxels
                         chunk.Set(lx, y, lz, VoxelBlockType.Water);
                 }
             }
+        }
+
+        private void ApplyShorelineSandRings()
+        {
+            if (!enableShorelineSand || config == null)
+                return;
+
+            int minR = Mathf.Max(0, shorelineSandMinRings);
+            int maxR = Mathf.Max(minR, shorelineSandMaxRings);
+            if (maxR <= 0)
+                return;
+
+            int w = config.worldWidth;
+            int d = config.worldDepth;
+            var waterColumns = new bool[w, d];
+
+            for (int z = 0; z < d; z++)
+            for (int x = 0; x < w; x++)
+            {
+                waterColumns[x, z] = IsWaterColumn(x, z);
+            }
+
+            for (int z = 0; z < d; z++)
+            for (int x = 0; x < w; x++)
+            {
+                if (waterColumns[x, z])
+                    continue;
+
+                int surfaceY = GetSurfaceY(x, z);
+                if (surfaceY < 0)
+                    continue;
+
+                var top = GetBlock(x, surfaceY, z);
+                if (top == VoxelBlockType.Air || top == VoxelBlockType.Water)
+                    continue;
+
+                int rings = ResolveShorelineRingCount(x, z, minR, maxR);
+                if (rings <= 0)
+                    continue;
+
+                int nearestWater = DistanceToNearestWaterChebyshev(x, z, rings, waterColumns);
+                if (nearestWater <= 0 || nearestWater > rings)
+                    continue;
+
+                // Stone channel currently maps to sand look in this project.
+                SetBlock(x, surfaceY, z, VoxelBlockType.Stone);
+            }
+        }
+
+        private bool IsWaterColumn(int x, int z)
+        {
+            if (x < 0 || z < 0 || x >= config.worldWidth || z >= config.worldDepth)
+                return false;
+
+            int sea = Mathf.Clamp(config.seaLevel, 0, config.worldHeight - 1);
+            if (GetBlock(x, sea, z) == VoxelBlockType.Water)
+                return true;
+
+            int y0 = Mathf.Max(0, sea - 2);
+            int y1 = Mathf.Min(config.worldHeight - 1, sea + 1);
+            for (int y = y0; y <= y1; y++)
+            {
+                if (GetBlock(x, y, z) == VoxelBlockType.Water)
+                    return true;
+            }
+            return false;
+        }
+
+        private int ResolveShorelineRingCount(int x, int z, int minR, int maxR)
+        {
+            if (maxR <= minR)
+                return minR;
+
+            float nx = (x + _noiseOffset.x + 173.7f) * shorelineSandNoiseScale;
+            float nz = (z + _noiseOffset.y - 91.3f) * shorelineSandNoiseScale;
+            float n = Mathf.PerlinNoise(nx, nz);
+
+            int span = maxR - minR + 1;
+            int ring = minR + Mathf.FloorToInt(n * span);
+            return Mathf.Clamp(ring, minR, maxR);
+        }
+
+        private static int DistanceToNearestWaterChebyshev(int x, int z, int maxRadius, bool[,] waterColumns)
+        {
+            int width = waterColumns.GetLength(0);
+            int depth = waterColumns.GetLength(1);
+
+            for (int r = 1; r <= maxRadius; r++)
+            {
+                int xMin = Mathf.Max(0, x - r);
+                int xMax = Mathf.Min(width - 1, x + r);
+                int zMin = Mathf.Max(0, z - r);
+                int zMax = Mathf.Min(depth - 1, z + r);
+
+                for (int nz = zMin; nz <= zMax; nz++)
+                for (int nx = xMin; nx <= xMax; nx++)
+                {
+                    int dx = Mathf.Abs(nx - x);
+                    int dz = Mathf.Abs(nz - z);
+                    if (Mathf.Max(dx, dz) != r)
+                        continue;
+
+                    if (waterColumns[nx, nz])
+                        return r;
+                }
+            }
+            return int.MaxValue;
         }
 
         private void BuildChunkGO(Vector2Int cc)
@@ -767,6 +997,23 @@ namespace SCoL.Voxels
                 return VoxelBlockType.Air;
 
             return chunk.Get(lx, y, lz);
+        }
+
+        public void SetBlock(int x, int y, int z, VoxelBlockType t)
+        {
+            if (!InBounds(x, y, z)) return;
+
+            int cs = config.chunkSize;
+            int cx = x / cs;
+            int cz = z / cs;
+            int lx = x - cx * cs;
+            int lz = z - cz * cs;
+
+            var cc = new Vector2Int(cx, cz);
+            if (!_chunks.TryGetValue(cc, out var chunk))
+                return;
+
+            chunk.Set(lx, y, lz, t);
         }
 
         public int GetSurfaceY(int x, int z)
