@@ -38,6 +38,12 @@ namespace SCoL
         [Tooltip("Multiplier for flower/plant spread birth rate. 0.5 means half spread speed.")]
         [Range(0f, 1f)] public float flowerSpreadMultiplier = 0.5f;
 
+        [Header("Lineage CA")]
+        [Tooltip("If true, only plants seeded by player (and descendants) can spread via CA.")]
+        public bool onlyPlayerSeededLineageCA = true;
+        [Tooltip("Disable automatic initial plant seeding when lineage-only CA is enabled.")]
+        public bool disableInitialPlantsWhenLineageOnly = true;
+
         public GridViewMode ViewMode
         {
             get => _renderer != null ? _renderer.ViewMode : GridViewMode.Stage;
@@ -147,7 +153,8 @@ namespace SCoL
 
             Grid = new EcosystemGrid(gridWidth, gridHeight, gridCellSize, gridOrigin);
 
-            if (seedInitialPlants)
+            bool allowInitialPlants = seedInitialPlants && !(onlyPlayerSeededLineageCA && disableInitialPlantsWhenLineageOnly);
+            if (allowInitialPlants)
                 SeedInitialPlants();
 
             // Snap XR rig to ground after voxel world exists.
@@ -445,6 +452,7 @@ namespace SCoL
             {
                 n.PlantAgeSeconds = 0f;
                 n.Success = Mathf.Clamp01(cur.Success + 0.01f);
+                n.IsPlayerSeedLineage = cur.IsPlayerSeedLineage;
                 return;
             }
 
@@ -455,6 +463,7 @@ namespace SCoL
                 n.PlantAgeSeconds = 0f;
                 n.IsOnFire = false;
                 n.FireFuel = 0f;
+                n.IsPlayerSeedLineage = false;
                 n.Success = Mathf.Clamp01(cur.Success - 0.05f);
                 return;
             }
@@ -464,12 +473,15 @@ namespace SCoL
             bool sunOk = cur.Sunlight >= 0.45f && cur.Sunlight <= 0.95f;
             bool heatOk = cur.Heat <= 0.85f; // too hot is bad (fire)
 
-            int smallPlants = Grid.CountNeighbors(x, y, c => c.PlantStage == PlantStage.SmallPlant);
-            int anyPlants = Grid.CountNeighbors(x, y, c => c.HasPlant);
+            int smallPlants = Grid.CountNeighbors(x, y, c => c.PlantStage == PlantStage.SmallPlant && (!onlyPlayerSeededLineageCA || c.IsPlayerSeedLineage));
+            int anyPlants = Grid.CountNeighbors(x, y, c => c.HasPlant && (!onlyPlayerSeededLineageCA || c.IsPlayerSeedLineage));
+            int lineagePlants = Grid.CountNeighbors(x, y, c => c.HasPlant && c.IsPlayerSeedLineage);
 
             if (cur.PlantStage == PlantStage.Empty)
             {
                 if (!IsPlantableColumn(x, y))
+                    return;
+                if (onlyPlayerSeededLineageCA && lineagePlants <= 0)
                     return;
 
                 // Birth: stochastic sprouting (less "grid-perfect" than strict Life rules).
@@ -503,6 +515,7 @@ namespace SCoL
 
                                 var nb = Grid.Get(nx, ny);
                                 if (nb.PlantStage != PlantStage.SmallPlant) continue;
+                                if (onlyPlayerSeededLineageCA && !nb.IsPlayerSeedLineage) continue;
                                 if (!IsPlantableColumn(nx, ny)) continue;
 
                                 int sourceH = _voxelWorld.GetSurfaceY(nx, ny);
@@ -524,6 +537,7 @@ namespace SCoL
                             n.PlantStage = PlantStage.SmallPlant;
                             n.PlantAgeSeconds = 0f;
                             n.Durability = 1.0f;
+                            n.IsPlayerSeedLineage = onlyPlayerSeededLineageCA || lineagePlants > 0;
                         }
                     }
 
@@ -536,6 +550,7 @@ namespace SCoL
                     n.PlantStage = PlantStage.SmallPlant;
                     n.PlantAgeSeconds = 0f;
                     n.Durability = 1.0f;
+                    n.IsPlayerSeedLineage = onlyPlayerSeededLineageCA || lineagePlants > 0;
                 }
                 return;
             }
@@ -543,6 +558,7 @@ namespace SCoL
             if (!cur.HasPlant)
             {
                 n.PlantAgeSeconds = 0f;
+                n.IsPlayerSeedLineage = false;
                 return;
             }
 
@@ -556,6 +572,7 @@ namespace SCoL
                     n.PlantAgeSeconds = 0f;
                     n.IsOnFire = false;
                     n.FireFuel = 0f;
+                    n.IsPlayerSeedLineage = false;
                     return;
                 }
 
@@ -628,6 +645,7 @@ namespace SCoL
             c.PlantAgeSeconds = 0f;
             c.Durability = 1.0f;
             c.WaterVisual = 0f;
+            c.IsPlayerSeedLineage = true;
 
             // Ensure readable view
             ViewMode = GridViewMode.Stage;
@@ -635,6 +653,34 @@ namespace SCoL
 
             _renderer?.Render(Grid);
             _plantRenderer?.RenderNow();
+        }
+
+        public bool TryDestroyPlantAtCell(int x, int y)
+        {
+            if (Grid == null || !Grid.InBounds(x, y))
+                return false;
+
+            var c = Grid.Get(x, y);
+            if (!c.HasPlant)
+                return false;
+
+            c.PlantStage = PlantStage.Empty;
+            c.PlantAgeSeconds = 0f;
+            c.IsOnFire = false;
+            c.FireFuel = 0f;
+            c.IsPlayerSeedLineage = false;
+            c.Success = Mathf.Clamp01(c.Success - 0.02f);
+
+            _renderer?.Render(Grid);
+            _plantRenderer?.RenderNow();
+            return true;
+        }
+
+        public bool TryDestroyPlantAtWorld(Vector3 world)
+        {
+            if (!TryWorldToCell(world, out int x, out int y))
+                return false;
+            return TryDestroyPlantAtCell(x, y);
         }
 
         public void AddWaterAt(Vector3 world, float amount = 0.25f)
@@ -824,6 +870,7 @@ namespace SCoL
                     c.Durability = 1f;
                     c.Success = Mathf.Clamp01(0.45f + (float)_rng.NextDouble() * 0.40f);
                     c.Water = Mathf.Clamp01(c.Water + 0.10f);
+                    c.IsPlayerSeedLineage = false;
                     seededAny = true;
                 }
             }
@@ -852,6 +899,7 @@ namespace SCoL
                         c.Durability = 1f;
                         c.Success = 0.65f;
                         c.Water = Mathf.Clamp01(c.Water + 0.15f);
+                        c.IsPlayerSeedLineage = false;
                         return;
                     }
                 }

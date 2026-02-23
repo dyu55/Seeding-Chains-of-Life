@@ -85,7 +85,8 @@ namespace SCoL
                 Success = c.Success,
                 IsOnFire = c.IsOnFire,
                 FireFuel = c.FireFuel,
-                WaterVisual = c.WaterVisual
+                WaterVisual = c.WaterVisual,
+                IsPlayerSeedLineage = c.IsPlayerSeedLineage
             };
         }
 
@@ -102,6 +103,7 @@ namespace SCoL
             dst.IsOnFire = src.IsOnFire;
             dst.FireFuel = src.FireFuel;
             dst.WaterVisual = src.WaterVisual;
+            dst.IsPlayerSeedLineage = src.IsPlayerSeedLineage;
         }
     }
 }

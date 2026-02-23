@@ -24,6 +24,9 @@ namespace SCoL
         // Simple prototype: allows water to darken the cell color without relying on view modes
         public float WaterVisual = 0f; // 0..1
 
+        // True only for plants that come from player-placed seeds (and their descendants).
+        public bool IsPlayerSeedLineage = false;
+
         public bool HasPlant => PlantStage != PlantStage.Empty && PlantStage != PlantStage.Burnt;
     }
 }

@@ -14,6 +14,12 @@ namespace SCoL.Inventory
         public int fire = 0;
         public int plants = 0;
 
+        [Header("Discovery (session only)")]
+        public bool discoveredSeed = false;
+        public bool discoveredWater = false;
+        public bool discoveredFire = false;
+        public bool discoveredPlant = false;
+
         public int Get(SCoLItemType type)
         {
             return type switch
@@ -44,6 +50,8 @@ namespace SCoL.Inventory
                     plants += amount;
                     break;
             }
+
+            Discover(type);
         }
 
         public bool TryConsume(SCoLItemType type, int amount = 1)
@@ -69,6 +77,67 @@ namespace SCoL.Inventory
                     return true;
             }
             return false;
+        }
+
+        public bool IsDiscovered(SCoLItemType type)
+        {
+            return type switch
+            {
+                SCoLItemType.Seed => discoveredSeed,
+                SCoLItemType.Water => discoveredWater,
+                SCoLItemType.Fire => discoveredFire,
+                SCoLItemType.Plant => discoveredPlant,
+                _ => false
+            };
+        }
+
+        public void Discover(SCoLItemType type)
+        {
+            switch (type)
+            {
+                case SCoLItemType.Seed:
+                    discoveredSeed = true;
+                    break;
+                case SCoLItemType.Water:
+                    discoveredWater = true;
+                    break;
+                case SCoLItemType.Fire:
+                    discoveredFire = true;
+                    break;
+                case SCoLItemType.Plant:
+                    discoveredPlant = true;
+                    break;
+            }
+        }
+
+        public string GetItemDisplayName(SCoLItemType type, bool unknownIfUndiscovered = true)
+        {
+            if (unknownIfUndiscovered && !IsDiscovered(type))
+                return "Unknown item";
+
+            return type switch
+            {
+                SCoLItemType.Seed => "Seed",
+                SCoLItemType.Water => "Water",
+                SCoLItemType.Fire => "Fire",
+                SCoLItemType.Plant => "Plant",
+                _ => "Unknown item"
+            };
+        }
+
+        public string GetItemDescription(SCoLItemType type, bool unknownIfUndiscovered = true)
+        {
+            if (unknownIfUndiscovered && !IsDiscovered(type))
+                return "You have not discovered this item yet.";
+
+            return type switch
+            {
+                SCoLItemType.Seed => "Used to plant and start ecosystem lineage.",
+                SCoLItemType.Water => "Hydrates plants and can extinguish fire.",
+                SCoLItemType.Fire => "Ignites and burns targets.",
+                SCoLItemType.Plant => "Used to feed animals.",
+                _ => "You have not discovered this item yet."
+            };
         }
     }
 }

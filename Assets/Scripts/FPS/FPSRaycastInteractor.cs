@@ -2,6 +2,7 @@ using UnityEngine;
 #if ENABLE_INPUT_SYSTEM
 using UnityEngine.InputSystem;
 #endif
+using SCoL;
 using SCoL.Visualization;
 
 /// <summary>
@@ -52,6 +53,9 @@ public class FPSRaycastInteractor : MonoBehaviour
     public GameObject mediumStagePrefab;
     public GameObject matureStagePrefab;
 
+    [Header("CA Runtime Integration")]
+    public bool useCARuntimeSeeding = true;
+
     [Header("Water/Fire vs Planted Models")]
     [Min(0f)] public float waterBoostSecondsPerTile = 3f;
     public bool fireCanDestroyPlants = false;
@@ -79,6 +83,7 @@ public class FPSRaycastInteractor : MonoBehaviour
     [Range(0f, 1f)] public float fireLoopVolume = 0.65f;
 
     SCoL.Inventory.SCoLInventory _inventory;
+    SCoLRuntime _runtime;
     Material _waterSpreadMat;
     Material _fireSpreadMat;
     FPSSeeding.GrowthSetup _growthSetup;
@@ -107,6 +112,7 @@ public class FPSRaycastInteractor : MonoBehaviour
             DontDestroyOnLoad(invGO);
             _inventory = invGO.AddComponent<SCoL.Inventory.SCoLInventory>();
         }
+        _runtime = FindFirstObjectByType<SCoLRuntime>();
 
         _growthSetup = new FPSSeeding.GrowthSetup();
         RefreshGrowthSetup();
@@ -214,16 +220,40 @@ public class FPSRaycastInteractor : MonoBehaviour
                         return;
                     }
 
-                    var spawnPos = hit.point + hit.normal * 0.02f;
-                    var spawnRot = Quaternion.LookRotation(Vector3.ProjectOnPlane(cameraSource.transform.forward, Vector3.up).normalized, Vector3.up);
-                    RefreshGrowthSetup();
-                    var spawned = FPSSeeding.SpawnFromSeed(spawnPos, spawnRot, _growthSetup);
+                    bool attemptedRuntime = false;
+                    bool plantedByRuntime = false;
+                    if (useCARuntimeSeeding)
+                        plantedByRuntime = TryPlaceSeedWithRuntime(hit.point, out attemptedRuntime);
+
+                    GameObject spawned = null;
+                    if (attemptedRuntime)
+                    {
+                        if (!plantedByRuntime)
+                        {
+                            // Runtime rejected the placement (invalid tile/terrain), refund consumed seed.
+                            _inventory.Add(SCoL.Inventory.SCoLItemType.Seed, 1);
+                            if (logHits) Debug.Log("[FPSRaycastInteractor] Runtime seed placement rejected.");
+                            return;
+                        }
+                    }
+                    else
+                    {
+                        var spawnPos = hit.point + hit.normal * 0.02f;
+                        var spawnRot = Quaternion.LookRotation(Vector3.ProjectOnPlane(cameraSource.transform.forward, Vector3.up).normalized, Vector3.up);
+                        RefreshGrowthSetup();
+                        spawned = FPSSeeding.SpawnFromSeed(spawnPos, spawnRot, _growthSetup);
+                    }
 
                     FPSGameFeel.VoxelBurst(hit.point, count: 14, spread: 1.0f, life: 0.8f, cubeSize: 0.055f);
                     FPSGameFeel.Shake(0.05f, 0.10f);
 
-                    if (logHits && spawned != null)
-                        Debug.Log($"[FPSRaycastInteractor] Planted: {spawned.name}");
+                    if (logHits)
+                    {
+                        if (attemptedRuntime)
+                            Debug.Log("[FPSRaycastInteractor] Planted via SCoLRuntime CA.");
+                        else if (spawned != null)
+                            Debug.Log($"[FPSRaycastInteractor] Planted: {spawned.name}");
+                    }
                     DayNightLightingController.PlayInteractionSfx(DayNightLightingController.InteractionSfx.PlantSeed);
                     break;
                 }
@@ -298,10 +328,47 @@ public class FPSRaycastInteractor : MonoBehaviour
     bool TryHandlePlantDestroyClick(RaycastHit hit)
     {
         if (hit.collider == null) return false;
-        var growth = hit.collider.GetComponentInParent<FPSSeedGrowth>();
-        if (growth == null) return false;
 
-        int key = growth.GetInstanceID();
+        var growth = hit.collider.GetComponentInParent<FPSSeedGrowth>();
+        int key;
+        string targetLabel;
+        System.Action destroyAction;
+        Object logContext = null;
+
+        if (growth != null)
+        {
+            key = growth.GetInstanceID();
+            targetLabel = growth.name;
+            logContext = growth;
+            destroyAction = () =>
+            {
+                if (growth != null)
+                    Destroy(growth.gameObject);
+            };
+        }
+        else if (hit.collider.GetComponentInParent<SCoL.Inventory.SCoLPickup>() != null ||
+                 hit.collider.GetComponentInParent<FPSBoidAgent>() != null ||
+                 IsHarvestableHierarchy(hit.collider.transform))
+        {
+            return false;
+        }
+        else if (TryResolveCAPlantCellFromWorld(hit.point, out int cx, out int cy))
+        {
+            key = HashCAPlantCellKey(cx, cy);
+            targetLabel = $"CACell({cx},{cy})";
+            destroyAction = () =>
+            {
+                if (_runtime == null)
+                    _runtime = FindFirstObjectByType<SCoLRuntime>();
+                if (_runtime != null)
+                    _runtime.TryDestroyPlantAtCell(cx, cy);
+            };
+        }
+        else
+        {
+            return false;
+        }
+
         float now = Time.time;
         PlantDestroyClickState state;
         if (!_plantDestroyClicks.TryGetValue(key, out state))
@@ -317,17 +384,79 @@ public class FPSRaycastInteractor : MonoBehaviour
         if (next >= Mathf.Max(1, plantDestroyClicksRequired))
         {
             _plantDestroyClicks.Remove(key);
-            if (growth != null)
-                Destroy(growth.gameObject);
+            destroyAction?.Invoke();
             DayNightLightingController.PlayInteractionSfx(DayNightLightingController.InteractionSfx.DestroySeed);
-            if (logHits) Debug.Log("[FPSRaycastInteractor] Plant destroyed by repeated RMB clicks.");
+            if (logHits) Debug.Log($"[FPSRaycastInteractor] Plant destroyed by repeated RMB clicks: {targetLabel}", logContext);
         }
         else if (logHits)
         {
-            Debug.Log($"[FPSRaycastInteractor] Plant destroy progress: {next}/{Mathf.Max(1, plantDestroyClicksRequired)}", growth);
+            Debug.Log($"[FPSRaycastInteractor] Plant destroy progress: {next}/{Mathf.Max(1, plantDestroyClicksRequired)} on {targetLabel}", logContext);
         }
 
         return true;
+    }
+
+    bool TryPlaceSeedWithRuntime(Vector3 worldPoint, out bool attemptedRuntime)
+    {
+        attemptedRuntime = false;
+        if (_runtime == null)
+            _runtime = FindFirstObjectByType<SCoLRuntime>();
+        if (_runtime == null || _runtime.Grid == null)
+            return false;
+
+        attemptedRuntime = true;
+        if (!_runtime.TryWorldToCell(worldPoint, out int x, out int y))
+            return false;
+
+        var before = _runtime.Grid.Get(x, y);
+        var beforeStage = before != null ? before.PlantStage : SCoL.PlantStage.Empty;
+        bool beforePlant = before != null && before.HasPlant;
+        bool beforeLineage = before != null && before.IsPlayerSeedLineage;
+
+        _runtime.PlaceSeedAt(worldPoint);
+
+        var after = _runtime.Grid.Get(x, y);
+        if (after == null)
+            return false;
+
+        if (after.PlantStage == SCoL.PlantStage.SmallPlant && after.IsPlayerSeedLineage)
+            return !beforePlant || beforeStage != after.PlantStage || !beforeLineage;
+
+        return false;
+    }
+
+    bool TryResolveCAPlantCellFromWorld(Vector3 worldPoint, out int x, out int y)
+    {
+        x = y = -1;
+        if (_runtime == null)
+            _runtime = FindFirstObjectByType<SCoLRuntime>();
+        if (_runtime == null || _runtime.Grid == null)
+            return false;
+        if (!_runtime.TryWorldToCell(worldPoint, out x, out y))
+            return false;
+        var c = _runtime.Grid.Get(x, y);
+        return c != null && c.HasPlant;
+    }
+
+    static bool IsHarvestableHierarchy(Transform t)
+    {
+        for (var p = t; p != null; p = p.parent)
+        {
+            if (p.gameObject.CompareTag("Harvestable"))
+                return true;
+        }
+        return false;
+    }
+
+    static int HashCAPlantCellKey(int x, int y)
+    {
+        unchecked
+        {
+            int h = 0x4F1BBCDC;
+            h = (h * 397) ^ x;
+            h = (h * 397) ^ y;
+            return h;
+        }
     }
 
     void StartFireSpread(Vector3 hitPoint, Vector3 hitNormal)

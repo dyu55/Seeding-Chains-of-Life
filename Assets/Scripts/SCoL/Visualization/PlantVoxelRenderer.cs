@@ -345,6 +345,24 @@ namespace SCoL.Visualization
                 go.transform.position += Vector3.up * dy;
         }
 
+        public bool TryGetActivePlantGameObject(int x, int y, out GameObject go)
+        {
+            go = null;
+            if (runtime == null || runtime.Grid == null)
+                return false;
+            if (!runtime.Grid.InBounds(x, y))
+                return false;
+
+            int idx = y * runtime.Grid.Width + x;
+            if (!_active.TryGetValue(idx, out var active))
+                return false;
+            if (active.go == null || !active.go.activeInHierarchy)
+                return false;
+
+            go = active.go;
+            return true;
+        }
+
         public void RenderNow()
         {
             if (runtime == null || runtime.Grid == null) return;
