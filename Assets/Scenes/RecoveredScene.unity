@@ -229,6 +229,60 @@ MonoBehaviour:
   enabledInEditor: 1
   everyFrame: 0
   intervalSeconds: 0.2
+--- !u!1 &149690699
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 149690701}
+  - component: {fileID: 149690700}
+  m_Layer: 0
+  m_Name: SpawnPickups
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &149690700
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 149690699}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5e97733662d1485a84207dffee5f6f7d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SCoL.Inventory.SpawnPickups
+  seedCount: 70
+  fireCount: 70
+  seedPickupPrefab: {fileID: 0}
+  firePickupPrefab: {fileID: 0}
+  scatterAcrossGrid: 1
+  center: {x: 0, y: 1.1, z: 1.2}
+  radius: 0.8
+  yOffset: 0.25
+  randomScaleRange: {x: 0.75, y: 1.25}
+  maxSpawnAttemptsPerItem: 18
+--- !u!4 &149690701
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 149690699}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 86.53584, y: -35.92324, z: 131.66464}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &426019055
 GameObject:
   m_ObjectHideFlags: 0
@@ -10544,6 +10598,10 @@ MonoBehaviour:
   water: 30
   fire: 30
   plants: 30
+  discoveredSeed: 1
+  discoveredWater: 1
+  discoveredFire: 1
+  discoveredPlant: 1
 --- !u!1 &980379203
 GameObject:
   m_ObjectHideFlags: 0
@@ -17096,18 +17154,30 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   cameraPivot: {fileID: 1140753245}
-  walkSpeed: 5
+  walkSpeed: 15
   sprintSpeed: 8
   jumpHeight: 1.2
   gravity: -18
   mouseSensitivity: 2
   maxPitch: 85
+  winterMoveMultiplier: 0.65
+  destroyPlantWhenSteppedOn: 1
+  stompCheckIntervalSeconds: 0.1
+  stompProbeRadius: 0.16
+  stompProbeDistance: 0.55
+  stompMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
   lockCursor: 1
   enableUnderwaterView: 1
   waterlinePadding: 0.05
   underwaterFogDensity: 0.055
   underwaterFarClip: 28
   underwaterFogColor: {r: 0.18, g: 0.46, b: 0.62, a: 1}
+  rescueBelowWorldOffset: 4
+  rescueHeightOffset: 1.25
+  rescueCooldownSeconds: 1
+  rescueColliderRadiusChunks: 2
 --- !u!114 &9000000005
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -17129,6 +17199,13 @@ MonoBehaviour:
   thicknessPx: 2
   idleColor: {r: 1, g: 1, b: 1, a: 0.9}
   hoverColor: {r: 0.3, g: 1, b: 0.3, a: 0.95}
+  showTargetInfo: 1
+  targetTitleColor: {r: 0.95, g: 0.98, b: 1, a: 0.95}
+  targetDetailColor: {r: 0.78, g: 0.92, b: 1, a: 0.92}
+  targetTitleFontSize: 16
+  targetDetailFontSize: 14
+  targetTitleOffsetPx: {x: 0, y: -28}
+  targetDetailOffsetPx: {x: 0, y: -50}
 --- !u!114 &9000000006
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -17165,6 +17242,7 @@ MonoBehaviour:
   smallStagePrefab: {fileID: 0}
   mediumStagePrefab: {fileID: 0}
   matureStagePrefab: {fileID: 0}
+  useCARuntimeSeeding: 1
   waterBoostSecondsPerTile: 3
   fireCanDestroyPlants: 0
   fireDestroyChance: 0.5
@@ -17183,6 +17261,12 @@ MonoBehaviour:
   fireLoopAudioSource: {fileID: 9000000008}
   fireLoopClip: {fileID: 8300000, guid: 78f538e74bc6d47d289b0732a9256abb, type: 3}
   fireLoopVolume: 0.65
+  thunderCanIgniteTargetedPlant: 1
+  thunderTargetIgniteChance: 0.12
+  thunderTargetCheckIntervalSeconds: 0.35
+  collectPickupsOnRightClick: 1
+  collectWaterFromRegionOnRightClick: 1
+  waterCollectAmount: 1
 --- !u!114 &9000000007
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -17204,6 +17288,8 @@ MonoBehaviour:
     m_Bits: 4294967295
   spawnOffsetY: 0.2
   retrySeconds: 4
+  forceEnableRenderRadiusChunks: 1
+  forceEnableColliderRadiusChunks: 2
 --- !u!82 &9000000008
 AudioSource:
   m_ObjectHideFlags: 0
@@ -17325,3 +17411,4 @@ SceneRoots:
   - {fileID: 888800001}
   - {fileID: 571384967}
   - {fileID: 627328408}
+  - {fileID: 149690701}

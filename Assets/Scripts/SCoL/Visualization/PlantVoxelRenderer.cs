@@ -28,6 +28,7 @@ namespace SCoL.Visualization
         public Vector2 smallTreeScaleRange = new Vector2(0.85f, 1.10f);
         public Vector2 mediumTreeScaleRange = new Vector2(1.10f, 1.35f);
         public Vector2 largeTreeScaleRange = new Vector2(1.35f, 1.70f);
+        public Vector2 burntScaleRange = new Vector2(0.20f, 0.30f);
 
         [Header("Placement")]
         public float smallPlantYOffset = 0.00f;
@@ -38,6 +39,7 @@ namespace SCoL.Visualization
         public Color fallbackSmallTreeColor = new Color(0.44f, 0.74f, 0.36f);
         public Color fallbackMediumTreeColor = new Color(0.35f, 0.62f, 0.31f);
         public Color fallbackLargeTreeColor = new Color(0.26f, 0.48f, 0.26f);
+        public Color fallbackBurntColor = new Color(0.08f, 0.08f, 0.08f, 1f);
 
         struct ActivePlant
         {
@@ -114,6 +116,7 @@ namespace SCoL.Visualization
             _fallbackMats[PlantStage.SmallTree] = NewFallbackMat(shader, "PlantFallback_SmallTree", fallbackSmallTreeColor);
             _fallbackMats[PlantStage.MediumTree] = NewFallbackMat(shader, "PlantFallback_MediumTree", fallbackMediumTreeColor);
             _fallbackMats[PlantStage.LargeTree] = NewFallbackMat(shader, "PlantFallback_LargeTree", fallbackLargeTreeColor);
+            _fallbackMats[PlantStage.Burnt] = NewFallbackMat(shader, "PlantFallback_Burnt", fallbackBurntColor);
         }
 
         private static Material NewFallbackMat(Shader shader, string name, Color color)
@@ -129,7 +132,8 @@ namespace SCoL.Visualization
             return stage == PlantStage.SmallPlant
                 || stage == PlantStage.SmallTree
                 || stage == PlantStage.MediumTree
-                || stage == PlantStage.LargeTree;
+                || stage == PlantStage.LargeTree
+                || stage == PlantStage.Burnt;
         }
 
         private GameObject[] PrefabsFor(PlantStage stage)
@@ -140,6 +144,7 @@ namespace SCoL.Visualization
                 PlantStage.SmallTree => smallTreePrefabs,
                 PlantStage.MediumTree => mediumTreePrefabs,
                 PlantStage.LargeTree => largeTreePrefabs,
+                PlantStage.Burnt => null,
                 _ => null
             };
         }
@@ -192,6 +197,7 @@ namespace SCoL.Visualization
                 PlantStage.SmallTree => smallTreeScaleRange,
                 PlantStage.MediumTree => mediumTreeScaleRange,
                 PlantStage.LargeTree => largeTreeScaleRange,
+                PlantStage.Burnt => burntScaleRange,
                 _ => Vector2.one
             };
             if (range.y < range.x) range = new Vector2(range.y, range.x);
@@ -202,7 +208,7 @@ namespace SCoL.Visualization
 
         private float YOffsetFor(PlantStage stage)
         {
-            return stage == PlantStage.SmallPlant ? smallPlantYOffset : treeYOffset;
+            return (stage == PlantStage.SmallPlant || stage == PlantStage.Burnt) ? smallPlantYOffset : treeYOffset;
         }
 
         private string PoolKey(PlantStage stage, int variant)

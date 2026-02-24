@@ -4,6 +4,9 @@ using UnityEngine.InputSystem;
 #endif
 using SCoL;
 using SCoL.Visualization;
+using SCoL.Weather;
+using SCoL.Inventory;
+using SCoL.Voxels;
 
 /// <summary>
 /// FPS mouse interaction: on LMB, raycast from screen center and detect objects tagged "Harvestable"
@@ -82,6 +85,16 @@ public class FPSRaycastInteractor : MonoBehaviour
     public AudioClip fireLoopClip;
     [Range(0f, 1f)] public float fireLoopVolume = 0.65f;
 
+    [Header("Thunder Target Fire")]
+    public bool thunderCanIgniteTargetedPlant = true;
+    [Range(0f, 1f)] public float thunderTargetIgniteChance = 0.12f;
+    [Min(0.05f)] public float thunderTargetCheckIntervalSeconds = 0.35f;
+
+    [Header("RMB Collect")]
+    public bool collectPickupsOnRightClick = true;
+    public bool collectWaterFromRegionOnRightClick = true;
+    [Min(1)] public int waterCollectAmount = 1;
+
     SCoL.Inventory.SCoLInventory _inventory;
     SCoLRuntime _runtime;
     Material _waterSpreadMat;
@@ -91,6 +104,9 @@ public class FPSRaycastInteractor : MonoBehaviour
     readonly System.Collections.Generic.List<GameObject> _activeFireBlocks = new System.Collections.Generic.List<GameObject>(128);
     Vector3 _activeFireCenter;
     bool _hasActiveFire;
+    WeatherSystem _weatherSystem;
+    float _nextThunderTargetCheckAt;
+    VoxelWorld _voxelWorld;
     struct PlantDestroyClickState
     {
         public int count;
@@ -131,6 +147,7 @@ public class FPSRaycastInteractor : MonoBehaviour
         if (cameraSource == null) return;
         HandleToolSwitchInput();
         UpdatePlantAttractor();
+        TryIgniteTargetedPlantDuringThunder();
 
         // Primary: harvest
         if (SCoL.Interaction.SCoLInteractionInput.PrimaryPressed())
@@ -201,6 +218,14 @@ public class FPSRaycastInteractor : MonoBehaviour
             if (_inventory == null)
                 _inventory = FindFirstObjectByType<SCoL.Inventory.SCoLInventory>();
             if (_inventory == null)
+                return;
+
+            // RMB priority #1: collect world pickups (seed/torch/etc).
+            if (collectPickupsOnRightClick && TryCollectPickupAtHit(hit))
+                return;
+
+            // RMB priority #2: collect water from region, but not when frozen.
+            if (collectWaterFromRegionOnRightClick && TryCollectWaterFromRegionAtHit(hit))
                 return;
 
             if (TryHandlePlantDestroyClick(hit))
@@ -277,6 +302,13 @@ public class FPSRaycastInteractor : MonoBehaviour
                     }
 
                     StartCoroutine(SpawnTransientSpread(hit.point, hit.normal, GetWaterSpreadMat(), false, true));
+                    if (_runtime == null || !_runtime.isActiveAndEnabled)
+                        _runtime = FindFirstObjectByType<SCoLRuntime>();
+                    if (_runtime != null)
+                    {
+                        int n = _runtime.AddWaterAroundWorld(hit.point, radius: 1.6f, amount: 1.0f);
+                        if (logHits) Debug.Log($"[FPSRaycastInteractor] Runtime water affected cells: {n}");
+                    }
                     break;
                 }
 
@@ -294,6 +326,13 @@ public class FPSRaycastInteractor : MonoBehaviour
 
                     TryBurnTintTarget(hit);
                     StartFireSpread(hit.point, hit.normal);
+                    if (_runtime == null || !_runtime.isActiveAndEnabled)
+                        _runtime = FindFirstObjectByType<SCoLRuntime>();
+                    if (_runtime != null)
+                    {
+                        int n = _runtime.IgniteAroundWorld(hit.point, radius: 1.35f, fuel: 1.0f);
+                        if (logHits) Debug.Log($"[FPSRaycastInteractor] Runtime ignite affected cells: {n}");
+                    }
                     // Avoid overlapping a long one-shot fire clip with the managed fire loop.
                     if (fireLoopAudioSource == null || fireLoopClip == null)
                         DayNightLightingController.PlayInteractionSfx(DayNightLightingController.InteractionSfx.PlaceFire);
@@ -323,6 +362,70 @@ public class FPSRaycastInteractor : MonoBehaviour
                 }
             }
         }
+    }
+
+    bool TryCollectPickupAtHit(RaycastHit hit)
+    {
+        var pickup = hit.collider != null ? hit.collider.GetComponentInParent<SCoLPickup>() : null;
+        if (pickup == null || _inventory == null)
+            return false;
+
+        _inventory.Add(pickup.type, Mathf.Max(1, pickup.amount));
+        if (logHits) Debug.Log($"[FPSRaycastInteractor] Collected pickup: {pickup.type} +{Mathf.Max(1, pickup.amount)}");
+        Destroy(pickup.gameObject);
+        return true;
+    }
+
+    bool TryCollectWaterFromRegionAtHit(RaycastHit hit)
+    {
+        if (_inventory == null)
+            return false;
+
+        if (_voxelWorld == null || !_voxelWorld.isActiveAndEnabled)
+            _voxelWorld = FindFirstObjectByType<VoxelWorld>();
+        if (_voxelWorld == null)
+            return false;
+
+        Vector3 p = hit.point;
+        if (!_voxelWorld.IsWaterColumnAtWorld(p))
+            return false;
+        if (_voxelWorld.IsWinterSurfaceFrozen)
+        {
+            if (logHits) Debug.Log("[FPSRaycastInteractor] Water is frozen (ice), cannot collect.");
+            return false;
+        }
+
+        int amount = Mathf.Max(1, waterCollectAmount);
+        _inventory.Add(SCoLItemType.Water, amount);
+        if (logHits) Debug.Log($"[FPSRaycastInteractor] Collected water from region: +{amount}");
+        return true;
+    }
+
+    void TryIgniteTargetedPlantDuringThunder()
+    {
+        if (!thunderCanIgniteTargetedPlant)
+            return;
+        if (Time.time < _nextThunderTargetCheckAt)
+            return;
+        _nextThunderTargetCheckAt = Time.time + Mathf.Max(0.05f, thunderTargetCheckIntervalSeconds);
+
+        if (_weatherSystem == null || !_weatherSystem.isActiveAndEnabled)
+            _weatherSystem = FindFirstObjectByType<WeatherSystem>();
+        if (_weatherSystem == null || _weatherSystem.CurrentPhase != WeatherPhase.Thunderstorm)
+            return;
+
+        if (!SCoL.Interaction.SCoLInteractionInput.TryGetAimRay(cameraSource, out var ray))
+            return;
+        if (!Physics.Raycast(ray, out var hit, 50f, hitMask, QueryTriggerInteraction.Ignore))
+            return;
+
+        var growth = hit.collider != null ? hit.collider.GetComponentInParent<FPSSeedGrowth>() : null;
+        if (growth == null || growth.IsBurned)
+            return;
+        if (Random.value > Mathf.Clamp01(thunderTargetIgniteChance))
+            return;
+
+        growth.ApplyFire(destroyOnFire: false, destroyChance: 0f, destroyDelaySeconds: 0f);
     }
 
     bool TryHandlePlantDestroyClick(RaycastHit hit)
@@ -699,7 +802,7 @@ public class FPSRaycastInteractor : MonoBehaviour
 
     void BurnTargetsAtTile(Vector3 tileCenter, float tileRadius)
     {
-        var hits = Physics.OverlapSphere(tileCenter, Mathf.Max(0.05f, tileRadius), hitMask, QueryTriggerInteraction.Ignore);
+        var hits = Physics.OverlapSphere(tileCenter, Mathf.Max(0.05f, tileRadius), ~0, QueryTriggerInteraction.Ignore);
         if (hits == null || hits.Length == 0)
             return;
 
@@ -763,26 +866,9 @@ public class FPSRaycastInteractor : MonoBehaviour
 
     System.Collections.Generic.List<FPSSeedGrowth> CollectGrowthRootsAtTile(Vector3 tileCenter, float tileRadius)
     {
-        var outList = new System.Collections.Generic.List<FPSSeedGrowth>(8);
-        var hits = Physics.OverlapSphere(tileCenter, Mathf.Max(0.05f, tileRadius), hitMask, QueryTriggerInteraction.Ignore);
-        if (hits == null || hits.Length == 0)
-            return outList;
-
-        var seen = new System.Collections.Generic.HashSet<FPSSeedGrowth>();
-        for (int i = 0; i < hits.Length; i++)
-        {
-            var col = hits[i];
-            if (col == null) continue;
-            var growth = col.GetComponentInParent<FPSSeedGrowth>();
-            if (growth == null || !seen.Add(growth))
-                continue;
-
-            Vector3 p = ClosestPointOnRoot(growth.transform, tileCenter);
-            Vector2 d = new Vector2(p.x - tileCenter.x, p.z - tileCenter.z);
-            if (d.magnitude > tileRadius)
-                continue;
-            outList.Add(growth);
-        }
+        var outList = new System.Collections.Generic.List<FPSSeedGrowth>(16);
+        float radius = Mathf.Max(0.25f, tileRadius + 0.95f);
+        FPSSeedGrowth.CollectNearby(tileCenter, radius, outList);
         return outList;
     }
 

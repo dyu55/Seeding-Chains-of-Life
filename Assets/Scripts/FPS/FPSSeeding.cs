@@ -1,6 +1,7 @@
 using UnityEngine;
 using System.Collections.Generic;
 using SCoL.Weather;
+using SCoL.Visualization;
 
 /// <summary>
 /// T07: Seeding loop for FPS.
@@ -230,7 +231,13 @@ public sealed class FPSSeedGrowth : MonoBehaviour
     [Header("Weather Response")]
     [Min(0f)] public float rainGrowthMultiplier = 2f;
     public bool pauseGrowthDuringSnow = true;
-    [Min(0.1f)] public float thunderDamageIntervalSeconds = 2.5f;
+
+    [Header("Stomp Interaction")]
+    public bool destroyWhenPlayerStepsOnTop = true;
+    [Min(0.02f)] public float stompCheckIntervalSeconds = 0.1f;
+    [Min(0f)] public float stompTopTolerance = 0.15f;
+    [Min(0f)] public float stompFootAllowanceAboveTop = 0.45f;
+    [Min(0.05f)] public float stompHorizontalPadding = 0.20f;
 
     private int _stage; // 0=sprout, 1=small, 2=medium, 3=mature
     private float _stageTimer;
@@ -240,7 +247,10 @@ public sealed class FPSSeedGrowth : MonoBehaviour
     static readonly List<FPSSeedGrowth> _allPlants = new List<FPSSeedGrowth>(256);
     static WeatherSystem _weatherSystem;
     static float _nextWeatherLookupAt;
-    static float _nextThunderDamageAt;
+    static SimpleFirstPersonController _playerController;
+    static CharacterController _playerCharacterController;
+    static float _nextPlayerLookupAt;
+    float _nextStompCheckAt;
 
     void OnEnable()
     {
@@ -269,6 +279,27 @@ public sealed class FPSSeedGrowth : MonoBehaviour
 
     public bool IsMature => _stage >= 3;
     public bool IsBurned => _burned;
+
+    public static int CollectNearby(Vector3 center, float radius, System.Collections.Generic.List<FPSSeedGrowth> results)
+    {
+        if (results == null) return 0;
+        results.Clear();
+        float r = Mathf.Max(0.01f, radius);
+        float rSqr = r * r;
+
+        for (int i = 0; i < _allPlants.Count; i++)
+        {
+            var p = _allPlants[i];
+            if (p == null || !p.isActiveAndEnabled)
+                continue;
+            var d = p.transform.position - center;
+            d.y = 0f;
+            if (d.sqrMagnitude <= rSqr)
+                results.Add(p);
+        }
+
+        return results.Count;
+    }
 
     public void SetStagePrefabs(GameObject sprout, GameObject small, GameObject medium, GameObject mature)
     {
@@ -308,10 +339,9 @@ public sealed class FPSSeedGrowth : MonoBehaviour
     {
         if (_burned) return;
 
-        var phase = ResolveWeatherPhase();
+        TryHandlePlayerStomp();
 
-        if (phase == WeatherPhase.Thunderstorm)
-            TryApplyThunderDamageTick();
+        var phase = ResolveWeatherPhase();
 
         if (_stage >= 3) return;
         if (pauseGrowthDuringSnow && phase == WeatherPhase.Snow) return;
@@ -350,30 +380,87 @@ public sealed class FPSSeedGrowth : MonoBehaviour
         return _weatherSystem != null ? _weatherSystem.CurrentPhase : WeatherPhase.Clear;
     }
 
-    void TryApplyThunderDamageTick()
+    void TryHandlePlayerStomp()
     {
-        float interval = Mathf.Max(0.1f, thunderDamageIntervalSeconds);
-        if (Time.time < _nextThunderDamageAt)
+        if (!destroyWhenPlayerStepsOnTop)
+            return;
+        if (Time.time < _nextStompCheckAt)
+            return;
+        _nextStompCheckAt = Time.time + Mathf.Max(0.02f, stompCheckIntervalSeconds);
+
+        if (!TryResolvePlayer(out Vector3 playerPos, out float playerFootY))
+            return;
+        if (!TryGetPlantBounds(out Bounds plantBounds))
             return;
 
-        _nextThunderDamageAt = Time.time + interval;
+        float horizontalRadius = Mathf.Max(plantBounds.extents.x, plantBounds.extents.z) + Mathf.Max(0.05f, stompHorizontalPadding);
+        Vector2 plantXZ = new Vector2(plantBounds.center.x, plantBounds.center.z);
+        Vector2 playerXZ = new Vector2(playerPos.x, playerPos.z);
+        if ((playerXZ - plantXZ).sqrMagnitude > horizontalRadius * horizontalRadius)
+            return;
 
-        var candidates = new List<FPSSeedGrowth>(32);
-        for (int i = 0; i < _allPlants.Count; i++)
+        float topY = plantBounds.max.y;
+        if (playerFootY < topY - Mathf.Max(0f, stompTopTolerance))
+            return;
+        if (playerFootY > topY + Mathf.Max(0f, stompFootAllowanceAboveTop))
+            return;
+
+        DayNightLightingController.PlayInteractionSfx(DayNightLightingController.InteractionSfx.DestroySeed);
+        Destroy(gameObject);
+    }
+
+    static bool TryResolvePlayer(out Vector3 playerPos, out float playerFootY)
+    {
+        playerPos = Vector3.zero;
+        playerFootY = 0f;
+
+        if ((_playerController == null || !_playerController.isActiveAndEnabled) && Time.time >= _nextPlayerLookupAt)
         {
-            var p = _allPlants[i];
-            if (p == null || p._burned || !p.isActiveAndEnabled)
-                continue;
-            candidates.Add(p);
+            _playerController = Object.FindFirstObjectByType<SimpleFirstPersonController>();
+            _playerCharacterController = _playerController != null ? _playerController.GetComponent<CharacterController>() : null;
+            _nextPlayerLookupAt = Time.time + 1f;
         }
 
-        if (candidates.Count == 0)
-            return;
+        if (_playerController == null || !_playerController.isActiveAndEnabled)
+            return false;
 
-        int idx = Random.Range(0, candidates.Count);
-        var target = candidates[idx];
-        if (target != null)
-            target.ApplyFire(destroyOnFire: false, destroyChance: 0f, destroyDelaySeconds: 0f);
+        playerPos = _playerController.transform.position;
+        playerFootY = _playerCharacterController != null ? _playerCharacterController.bounds.min.y : playerPos.y;
+        return true;
+    }
+
+    public bool TryGetPlantBounds(out Bounds bounds)
+    {
+        bounds = default;
+        bool hasBounds = false;
+
+        var renderers = GetComponentsInChildren<Renderer>(includeInactive: true);
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            var r = renderers[i];
+            if (r == null) continue;
+            if (!hasBounds)
+            {
+                bounds = r.bounds;
+                hasBounds = true;
+            }
+            else
+            {
+                bounds.Encapsulate(r.bounds);
+            }
+        }
+
+        if (hasBounds)
+            return true;
+
+        var c = GetComponent<Collider>();
+        if (c != null)
+        {
+            bounds = c.bounds;
+            return true;
+        }
+
+        return false;
     }
 
     float CurrentStageDuration()

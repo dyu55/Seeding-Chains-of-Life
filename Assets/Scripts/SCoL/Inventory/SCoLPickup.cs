@@ -1,4 +1,7 @@
 using UnityEngine;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 namespace SCoL.Inventory
 {
@@ -15,6 +18,11 @@ namespace SCoL.Inventory
         public Color colorWater = new Color(0.2f, 0.55f, 1f);
         public Color colorFire = new Color(0.95f, 0.15f, 0.1f);
         public Color colorPlant = new Color(0.45f, 1f, 0.35f);
+        [Header("Optional Textures")]
+        public Texture2D seedTexture;
+        public Texture2D waterTexture;
+        public Texture2D fireTexture;
+        public Texture2D plantTexture;
 
         private void Reset()
         {
@@ -28,19 +36,64 @@ namespace SCoL.Inventory
 
         public void ApplyVisual()
         {
-            // Visual
-            var r = GetComponent<Renderer>();
-            if (r != null)
+            TryAutoAssignFireTexture();
+
+            Color tint = type switch
             {
-                r.material.color = type switch
+                SCoLItemType.Seed => colorSeed,
+                SCoLItemType.Water => colorWater,
+                SCoLItemType.Fire => colorFire,
+                SCoLItemType.Plant => colorPlant,
+                _ => Color.white
+            };
+
+            Texture2D tex = type switch
+            {
+                SCoLItemType.Seed => seedTexture,
+                SCoLItemType.Water => waterTexture,
+                SCoLItemType.Fire => fireTexture,
+                SCoLItemType.Plant => plantTexture,
+                _ => null
+            };
+
+            var renderers = GetComponentsInChildren<Renderer>(includeInactive: true);
+            for (int i = 0; i < renderers.Length; i++)
+            {
+                var r = renderers[i];
+                if (r == null) continue;
+                var m = r.material;
+                if (m == null) continue;
+
+                if (tex != null)
                 {
-                    SCoLItemType.Seed => colorSeed,
-                    SCoLItemType.Water => colorWater,
-                    SCoLItemType.Fire => colorFire,
-                    SCoLItemType.Plant => colorPlant,
-                    _ => Color.white
-                };
+                    if (m.HasProperty("_BaseMap")) m.SetTexture("_BaseMap", tex);
+                    if (m.HasProperty("_MainTex")) m.SetTexture("_MainTex", tex);
+                    if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", Color.white);
+                    if (m.HasProperty("_Color")) m.SetColor("_Color", Color.white);
+                }
+                else
+                {
+                    if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", tint);
+                    if (m.HasProperty("_Color")) m.SetColor("_Color", tint);
+                }
             }
+        }
+
+        private void TryAutoAssignFireTexture()
+        {
+#if UNITY_EDITOR
+            if (seedTexture == null)
+            {
+                seedTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(
+                    "Assets/Models/Modeling/Squash seed/kirby-seed.png");
+            }
+
+            if (fireTexture == null)
+            {
+                fireTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(
+                    "Assets/Models/Modeling/Squash seed/Diffuse.png");
+            }
+#endif
         }
     }
 }

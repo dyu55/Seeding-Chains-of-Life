@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using Unity.XR.CoreUtils;
+using SCoL.Visualization;
+using SCoL.Weather;
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
@@ -82,6 +84,14 @@ namespace SCoL.Voxels
         public bool showBoundaryWalls = false;
         public Material boundaryWallMaterial;
 
+        [Header("Winter Overlay")]
+        [Tooltip("When Winter is active, add a thin snow layer on land and an ice layer over water.")]
+        public bool enableWinterSnowAndIce = true;
+        [Min(0.001f)] public float winterOverlayHeightOffset = 0.02f;
+        [Min(0.001f)] public float winterOverlayInset = 0.015f;
+        public Color snowOverlayColor = new Color(0.98f, 0.98f, 1.0f, 0.92f);
+        public Color iceOverlayColor = new Color(0.70f, 0.90f, 1.0f, 0.84f);
+
         [Tooltip("If true, world (0,0,0) is placed at this transform position.")]
         public bool useTransformAsOrigin = true;
 
@@ -96,6 +106,17 @@ namespace SCoL.Voxels
         private readonly Dictionary<Vector2Int, GrassPropChunk> _chunkGrassProps = new();
         private readonly Dictionary<Vector2Int, FloraPropChunk> _chunkFloraProps = new();
         private GameObject _boundaryRoot;
+        private GameObject _winterOverlayRoot;
+        private GameObject _snowOverlayGO;
+        private GameObject _iceOverlayGO;
+        private GameObject _iceColliderGO;
+        private Material _snowOverlayMat;
+        private Material _iceOverlayMat;
+        private SeasonSkyboxController _seasonSkybox;
+        private WeatherSystem _weatherSystem;
+        private SCoL.SCoLRuntime _runtime;
+        private float _nextSeasonLookupAt;
+        private bool _winterVisualsActive;
         private bool _useCubeNetGrassUV;
         private bool _useCubeNetDirtUV;
         private bool _useCubeNetStoneUV;
@@ -140,6 +161,7 @@ namespace SCoL.Voxels
             _streamT = 0f;
 
             StreamAroundCamera();
+            UpdateWinterVisualState();
         }
 
         private void EnsureDefaultMaterials()
@@ -533,6 +555,8 @@ namespace SCoL.Voxels
                 BuildChunkGO(coords[i]);
 
             BuildWorldBoundary();
+            RebuildWinterOverlayMeshes();
+            UpdateWinterVisualState(force: true);
         }
 
         private void ClearWorldObjects()
@@ -550,6 +574,293 @@ namespace SCoL.Voxels
             if (_boundaryRoot != null)
                 Destroy(_boundaryRoot);
             _boundaryRoot = null;
+            if (_winterOverlayRoot != null)
+                Destroy(_winterOverlayRoot);
+            _winterOverlayRoot = null;
+            _snowOverlayGO = null;
+            _iceOverlayGO = null;
+            _iceColliderGO = null;
+        }
+
+        private void RebuildWinterOverlayMeshes()
+        {
+            if (!enableWinterSnowAndIce || config == null)
+                return;
+
+            EnsureWinterOverlayObjects();
+            BuildOverlayMeshInto(_snowOverlayGO, includeWaterColumns: false);
+            BuildOverlayMeshInto(_iceOverlayGO, includeWaterColumns: true);
+            BuildIceColliderMesh();
+        }
+
+        private void EnsureWinterOverlayObjects()
+        {
+            if (_winterOverlayRoot == null)
+            {
+                _winterOverlayRoot = new GameObject("WinterOverlays");
+                _winterOverlayRoot.transform.SetParent(transform, worldPositionStays: true);
+                _winterOverlayRoot.transform.position = OriginWorld;
+                _winterOverlayRoot.SetActive(false);
+            }
+
+            Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+            if (shader == null) shader = Shader.Find("Standard");
+
+            if (_snowOverlayMat == null)
+            {
+                _snowOverlayMat = new Material(shader) { name = "Winter_SnowOverlay" };
+                _snowOverlayMat.enableInstancing = true;
+            }
+            if (_snowOverlayMat.HasProperty("_BaseColor")) _snowOverlayMat.SetColor("_BaseColor", snowOverlayColor);
+            if (_snowOverlayMat.HasProperty("_Color")) _snowOverlayMat.SetColor("_Color", snowOverlayColor);
+
+            if (_iceOverlayMat == null)
+            {
+                _iceOverlayMat = new Material(shader) { name = "Winter_IceOverlay" };
+                _iceOverlayMat.enableInstancing = true;
+            }
+            if (_iceOverlayMat.HasProperty("_BaseColor")) _iceOverlayMat.SetColor("_BaseColor", iceOverlayColor);
+            if (_iceOverlayMat.HasProperty("_Color")) _iceOverlayMat.SetColor("_Color", iceOverlayColor);
+
+            if (_snowOverlayGO == null)
+                _snowOverlayGO = CreateOverlayGO("SnowOverlay", _snowOverlayMat);
+            if (_iceOverlayGO == null)
+                _iceOverlayGO = CreateOverlayGO("IceOverlay", _iceOverlayMat);
+            if (_iceColliderGO == null)
+                _iceColliderGO = CreateIceColliderGO("IceCollider");
+        }
+
+        private GameObject CreateOverlayGO(string name, Material mat)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(_winterOverlayRoot.transform, worldPositionStays: false);
+            go.transform.localPosition = Vector3.zero;
+            go.transform.localRotation = Quaternion.identity;
+            go.transform.localScale = Vector3.one;
+
+            var mf = go.AddComponent<MeshFilter>();
+            mf.sharedMesh = new Mesh { name = $"{name}_Mesh" };
+            mf.sharedMesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+
+            var mr = go.AddComponent<MeshRenderer>();
+            mr.sharedMaterial = mat;
+            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            mr.receiveShadows = false;
+            return go;
+        }
+
+        private GameObject CreateIceColliderGO(string name)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(_winterOverlayRoot.transform, worldPositionStays: false);
+            go.transform.localPosition = Vector3.zero;
+            go.transform.localRotation = Quaternion.identity;
+            go.transform.localScale = Vector3.one;
+
+            var mf = go.AddComponent<MeshFilter>();
+            mf.sharedMesh = new Mesh { name = $"{name}_Mesh" };
+            mf.sharedMesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+
+            var mc = go.AddComponent<MeshCollider>();
+            mc.cookingOptions = MeshColliderCookingOptions.None;
+            mc.sharedMesh = mf.sharedMesh;
+            mc.convex = false;
+            mc.enabled = false;
+            return go;
+        }
+
+        private void BuildOverlayMeshInto(GameObject overlayGO, bool includeWaterColumns)
+        {
+            if (overlayGO == null || config == null)
+                return;
+
+            var mf = overlayGO.GetComponent<MeshFilter>();
+            if (mf == null)
+                return;
+            if (mf.sharedMesh == null)
+                mf.sharedMesh = new Mesh { name = overlayGO.name + "_Mesh" };
+            var mesh = mf.sharedMesh;
+            mesh.Clear();
+            mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+
+            float inset = Mathf.Clamp(winterOverlayInset, 0.001f, 0.49f);
+            float h = Mathf.Max(0.001f, winterOverlayHeightOffset);
+
+            var verts = new List<Vector3>(config.worldWidth * config.worldDepth * 4);
+            var tris = new List<int>(config.worldWidth * config.worldDepth * 6);
+            var uvs = new List<Vector2>(config.worldWidth * config.worldDepth * 4);
+
+            for (int z = 0; z < config.worldDepth; z++)
+            for (int x = 0; x < config.worldWidth; x++)
+            {
+                if (!TryGetColumnTopBlock(x, z, out int yTop, out VoxelBlockType topType))
+                    continue;
+
+                bool isWater = topType == VoxelBlockType.Water;
+                if (includeWaterColumns != isWater)
+                    continue;
+
+                float y = yTop + 1f + h;
+                float x0 = x + inset;
+                float x1 = x + 1f - inset;
+                float z0 = z + inset;
+                float z1 = z + 1f - inset;
+
+                int v = verts.Count;
+                verts.Add(new Vector3(x0, y, z0));
+                verts.Add(new Vector3(x1, y, z0));
+                verts.Add(new Vector3(x1, y, z1));
+                verts.Add(new Vector3(x0, y, z1));
+
+                uvs.Add(new Vector2(0f, 0f));
+                uvs.Add(new Vector2(1f, 0f));
+                uvs.Add(new Vector2(1f, 1f));
+                uvs.Add(new Vector2(0f, 1f));
+
+                tris.Add(v + 0);
+                tris.Add(v + 2);
+                tris.Add(v + 1);
+                tris.Add(v + 0);
+                tris.Add(v + 3);
+                tris.Add(v + 2);
+            }
+
+            mesh.SetVertices(verts);
+            mesh.SetTriangles(tris, 0);
+            mesh.SetUVs(0, uvs);
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
+        }
+
+        private void BuildIceColliderMesh()
+        {
+            if (_iceColliderGO == null || config == null)
+                return;
+
+            var mf = _iceColliderGO.GetComponent<MeshFilter>();
+            var mc = _iceColliderGO.GetComponent<MeshCollider>();
+            if (mf == null || mc == null)
+                return;
+
+            if (mf.sharedMesh == null)
+                mf.sharedMesh = new Mesh { name = "IceCollider_Mesh" };
+            var mesh = mf.sharedMesh;
+            mesh.Clear();
+            mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+
+            float inset = Mathf.Clamp(winterOverlayInset, 0.001f, 0.49f);
+            float h = Mathf.Max(0.001f, winterOverlayHeightOffset) + 0.005f;
+
+            var verts = new List<Vector3>(config.worldWidth * config.worldDepth * 4);
+            var tris = new List<int>(config.worldWidth * config.worldDepth * 12);
+
+            for (int z = 0; z < config.worldDepth; z++)
+            for (int x = 0; x < config.worldWidth; x++)
+            {
+                if (!TryGetColumnTopBlock(x, z, out int yTop, out VoxelBlockType topType))
+                    continue;
+                if (topType != VoxelBlockType.Water)
+                    continue;
+
+                float y = yTop + 1f + h;
+                float x0 = x + inset;
+                float x1 = x + 1f - inset;
+                float z0 = z + inset;
+                float z1 = z + 1f - inset;
+
+                int v = verts.Count;
+                verts.Add(new Vector3(x0, y, z0));
+                verts.Add(new Vector3(x1, y, z0));
+                verts.Add(new Vector3(x1, y, z1));
+                verts.Add(new Vector3(x0, y, z1));
+
+                // Top face
+                tris.Add(v + 0); tris.Add(v + 2); tris.Add(v + 1);
+                tris.Add(v + 0); tris.Add(v + 3); tris.Add(v + 2);
+                // Bottom face for robust CC collision from either side
+                tris.Add(v + 0); tris.Add(v + 1); tris.Add(v + 2);
+                tris.Add(v + 0); tris.Add(v + 2); tris.Add(v + 3);
+            }
+
+            mesh.SetVertices(verts);
+            mesh.SetTriangles(tris, 0);
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
+            mc.sharedMesh = null;
+            mc.sharedMesh = mesh;
+        }
+
+        private bool TryGetColumnTopBlock(int x, int z, out int yTop, out VoxelBlockType topType)
+        {
+            yTop = 0;
+            topType = VoxelBlockType.Air;
+            if (config == null)
+                return false;
+
+            for (int y = config.worldHeight - 1; y >= 0; y--)
+            {
+                var t = GetBlock(x, y, z);
+                if (t == VoxelBlockType.Air)
+                    continue;
+
+                yTop = y;
+                topType = t;
+                return true;
+            }
+
+            return false;
+        }
+
+        private void UpdateWinterVisualState(bool force = false)
+        {
+            if (!enableWinterSnowAndIce)
+            {
+                SetWinterVisualActive(false);
+                return;
+            }
+
+            bool winterActive = IsWinterActive();
+            if (!force && winterActive == _winterVisualsActive)
+                return;
+
+            _winterVisualsActive = winterActive;
+            SetWinterVisualActive(winterActive);
+        }
+
+        private void SetWinterVisualActive(bool active)
+        {
+            if (_winterOverlayRoot == null && active)
+                EnsureWinterOverlayObjects();
+            if (_winterOverlayRoot != null && _winterOverlayRoot.activeSelf != active)
+                _winterOverlayRoot.SetActive(active);
+            if (_iceColliderGO != null)
+            {
+                var mc = _iceColliderGO.GetComponent<MeshCollider>();
+                if (mc != null) mc.enabled = active;
+            }
+        }
+
+        private bool IsWinterActive()
+        {
+            if (Time.unscaledTime >= _nextSeasonLookupAt)
+            {
+                if (_seasonSkybox == null || !_seasonSkybox.isActiveAndEnabled)
+                    _seasonSkybox = FindFirstObjectByType<SeasonSkyboxController>();
+                if (_weatherSystem == null || !_weatherSystem.isActiveAndEnabled)
+                    _weatherSystem = FindFirstObjectByType<WeatherSystem>();
+                if (_runtime == null || !_runtime.isActiveAndEnabled)
+                    _runtime = FindFirstObjectByType<SCoL.SCoLRuntime>();
+                _nextSeasonLookupAt = Time.unscaledTime + 1f;
+            }
+
+            if (_seasonSkybox != null && _seasonSkybox.GetCurrentSeason() == SeasonSkyboxController.Season.Winter)
+                return true;
+            if (_weatherSystem != null && _weatherSystem.CurrentPhase == WeatherPhase.Snow)
+                return true;
+            if (_runtime != null && _runtime.CurrentSeason == SCoL.Season.Winter)
+                return true;
+
+            return false;
         }
 
         private float Noise(float x, float z)
@@ -1042,6 +1353,26 @@ namespace SCoL.Voxels
             x = Mathf.FloorToInt(local.x);
             z = Mathf.FloorToInt(local.z);
             return x >= 0 && z >= 0 && x < config.worldWidth && z < config.worldDepth;
+        }
+
+        public bool IsWinterSurfaceFrozen => enableWinterSnowAndIce && _winterVisualsActive;
+
+        public bool IsWaterColumnAtWorld(Vector3 world)
+        {
+            if (config == null)
+                return false;
+            if (!TryWorldToColumn(world, out int x, out int z))
+                return false;
+
+            int sea = Mathf.Clamp(config.seaLevel, 0, config.worldHeight - 1);
+            if (GetBlock(x, sea, z) == VoxelBlockType.Water)
+                return true;
+
+            int top = GetSurfaceY(x, z) + 1;
+            if (top >= 0 && top < config.worldHeight && GetBlock(x, top, z) == VoxelBlockType.Water)
+                return true;
+
+            return false;
         }
 
         public Vector3 ColumnTopWorld(int x, int z)

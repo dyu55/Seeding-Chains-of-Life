@@ -1,6 +1,8 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 using SCoL.Voxels;
+using SCoL.Visualization;
+using SCoL.Weather;
 
 /// <summary>
 /// Minimal FPS controller for keyboard + mouse (no XR, no Input System dependency).
@@ -25,6 +27,16 @@ public class SimpleFirstPersonController : MonoBehaviour
     public float mouseSensitivity = 2.0f;
     public float maxPitch = 85f;
 
+    [Header("Season Movement")]
+    [Range(0.2f, 1f)] public float winterMoveMultiplier = 0.65f;
+
+    [Header("Plant Stomp")]
+    public bool destroyPlantWhenSteppedOn = true;
+    [Min(0.05f)] public float stompCheckIntervalSeconds = 0.1f;
+    [Min(0.02f)] public float stompProbeRadius = 0.16f;
+    [Min(0.05f)] public float stompProbeDistance = 0.55f;
+    public LayerMask stompMask = ~0;
+
     [Header("Options")]
     public bool lockCursor = true;
 
@@ -46,6 +58,10 @@ public class SimpleFirstPersonController : MonoBehaviour
     Vector3 _velocity;
     Camera _playerCamera;
     VoxelWorld _voxelWorld;
+    SeasonSkyboxController _seasonSkybox;
+    WeatherSystem _weatherSystem;
+    SCoL.SCoLRuntime _runtime;
+    float _nextSeasonLookupAt;
 
     bool _underwaterActive;
     bool _savedRenderState;
@@ -57,6 +73,7 @@ public class SimpleFirstPersonController : MonoBehaviour
     float _savedFogEndDistance;
     float _savedFarClip;
     float _lastRescueTime = -999f;
+    float _nextStompCheckAt;
 
     void Awake()
     {
@@ -112,6 +129,8 @@ public class SimpleFirstPersonController : MonoBehaviour
 
         bool sprinting = kb != null && (kb.leftShiftKey.isPressed || kb.rightShiftKey.isPressed);
         float speed = sprinting ? sprintSpeed : walkSpeed;
+        if (IsWinterActive())
+            speed *= Mathf.Clamp(winterMoveMultiplier, 0.2f, 1f);
         _cc.Move(move * (speed * Time.deltaTime));
 
         // Ground / gravity
@@ -128,6 +147,7 @@ public class SimpleFirstPersonController : MonoBehaviour
 
         _velocity.y += gravity * Time.deltaTime;
         _cc.Move(_velocity * Time.deltaTime);
+        TryStompPlantUnderfoot(grounded);
 
         TryRescueIfFallenBelowWorld();
 
@@ -143,6 +163,83 @@ public class SimpleFirstPersonController : MonoBehaviour
         {
             Cursor.lockState = CursorLockMode.Locked;
             Cursor.visible = false;
+        }
+    }
+
+    bool IsWinterActive()
+    {
+        if (Time.time >= _nextSeasonLookupAt)
+        {
+            if (_seasonSkybox == null || !_seasonSkybox.isActiveAndEnabled)
+                _seasonSkybox = FindFirstObjectByType<SeasonSkyboxController>();
+            if (_weatherSystem == null || !_weatherSystem.isActiveAndEnabled)
+                _weatherSystem = FindFirstObjectByType<WeatherSystem>();
+            if (_runtime == null || !_runtime.isActiveAndEnabled)
+                _runtime = FindFirstObjectByType<SCoL.SCoLRuntime>();
+            _nextSeasonLookupAt = Time.time + 1f;
+        }
+
+        if (_seasonSkybox != null && _seasonSkybox.GetCurrentSeason() == SeasonSkyboxController.Season.Winter)
+            return true;
+        if (_weatherSystem != null && _weatherSystem.CurrentPhase == WeatherPhase.Snow)
+            return true;
+        if (_runtime != null && _runtime.CurrentSeason == SCoL.Season.Winter)
+            return true;
+
+        return false;
+    }
+
+    void TryStompPlantUnderfoot(bool grounded)
+    {
+        if (!destroyPlantWhenSteppedOn || !grounded)
+            return;
+        if (Time.time < _nextStompCheckAt)
+            return;
+        _nextStompCheckAt = Time.time + Mathf.Max(0.05f, stompCheckIntervalSeconds);
+
+        var runtime = FindFirstObjectByType<SCoL.SCoLRuntime>();
+        if (runtime != null)
+        {
+            Vector3 stompPoint = transform.position + Vector3.down * 0.25f;
+            int removed = runtime.TryDestroyPlantAroundWorld(stompPoint, radius: 1.0f, maxPlants: 2);
+            if (removed > 0)
+            {
+                SCoL.Visualization.DayNightLightingController.PlayInteractionSfx(SCoL.Visualization.DayNightLightingController.InteractionSfx.DestroySeed);
+                Debug.Log($"[SimpleFirstPersonController] Stomp removed runtime plants: {removed}");
+                return;
+            }
+        }
+
+        float radius = Mathf.Max(0.02f, stompProbeRadius);
+        if (_cc != null)
+            radius = Mathf.Max(radius, _cc.radius * 0.85f);
+        radius = Mathf.Max(radius, 0.45f);
+
+        var nearby = new System.Collections.Generic.List<FPSSeedGrowth>(8);
+        FPSSeedGrowth.CollectNearby(transform.position, Mathf.Max(radius, stompProbeDistance + 0.6f), nearby);
+        if (nearby.Count == 0)
+            return;
+
+        float footY = _cc != null ? _cc.bounds.min.y : transform.position.y;
+        for (int i = 0; i < nearby.Count; i++)
+        {
+            var g = nearby[i];
+            if (g == null) continue;
+            if (!g.TryGetPlantBounds(out var b)) continue;
+
+            Vector2 d = new Vector2(transform.position.x - b.center.x, transform.position.z - b.center.z);
+            float horizontalLimit = Mathf.Max(radius, Mathf.Max(b.extents.x, b.extents.z) + 0.05f);
+            if (d.sqrMagnitude > horizontalLimit * horizontalLimit)
+                continue;
+
+            float top = b.max.y;
+            if (footY < top - 0.10f || footY > top + Mathf.Max(0.2f, stompProbeDistance))
+                continue;
+
+            SCoL.Visualization.DayNightLightingController.PlayInteractionSfx(SCoL.Visualization.DayNightLightingController.InteractionSfx.DestroySeed);
+            Destroy(g.gameObject);
+            Debug.Log("[SimpleFirstPersonController] Stomp removed FPSSeedGrowth plant.");
+            break;
         }
     }
 

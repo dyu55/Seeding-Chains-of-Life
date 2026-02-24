@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 using SCoL.Voxels;
 using SCoL.Visualization;
@@ -37,6 +38,12 @@ namespace SCoL
         [Range(0f, 1f)] public float treePromotionMultiplier = 0.33f;
         [Tooltip("Multiplier for flower/plant spread birth rate. 0.5 means half spread speed.")]
         [Range(0f, 1f)] public float flowerSpreadMultiplier = 0.5f;
+        [Tooltip("Deterministic age threshold (seconds) for each tree promotion stage.")]
+        [Min(0.5f)] public float secondsPerTreeStage = 3f;
+        [Tooltip("When water is applied, add this many growth-age seconds to nearby plants.")]
+        [Min(0f)] public float waterGrowthAgeBoostSeconds = 3f;
+        [Tooltip("When water is applied, boost plant success (0..1) to accelerate growth checks.")]
+        [Range(0f, 1f)] public float waterGrowthSuccessBoost = 0.35f;
 
         [Header("Lineage CA")]
         [Tooltip("If true, only plants seeded by player (and descendants) can spread via CA.")]
@@ -667,7 +674,9 @@ namespace SCoL
             }
             else
             {
-                n.PlantAgeSeconds = cur.PlantAgeSeconds;
+                // Keep age advancing even when lifecycle timeout is disabled,
+                // so deterministic stage progression still works.
+                n.PlantAgeSeconds = cur.PlantAgeSeconds + Config.tickSeconds;
             }
 
             // For this prototype: once planted, a tile stays planted (no death-by-environment).
@@ -704,6 +713,9 @@ namespace SCoL
 
             // Success slowly increases when a plant survives ticks
             n.Success = Mathf.Clamp01(cur.Success + 0.01f);
+
+            // Deterministic promotion by age so player-seeded flowers reliably become trees.
+            PromotePlantByAge(ref n);
         }
 
         // ---------- Public interaction API (call from XR interactables / UI) ----------
@@ -789,6 +801,51 @@ namespace SCoL
             return TryDestroyPlantAtCell(x, y);
         }
 
+        public int TryDestroyPlantAroundWorld(Vector3 world, float radius = 1.25f, int maxPlants = 3)
+        {
+            if (Grid == null)
+                return 0;
+            if (!TryWorldToCell(world, out int cx, out int cy))
+                return 0;
+
+            float r = Mathf.Max(0.1f, radius);
+            float cell = Mathf.Max(0.0001f, Grid.CellSize);
+            int cellR = Mathf.Max(1, Mathf.CeilToInt(r / cell));
+            int removed = 0;
+
+            var candidates = new List<(int x, int y, float dSqr)>(32);
+            for (int y = cy - cellR; y <= cy + cellR; y++)
+            for (int x = cx - cellR; x <= cx + cellR; x++)
+            {
+                if (!Grid.InBounds(x, y))
+                    continue;
+
+                var c = Grid.Get(x, y);
+                if (!c.HasPlant)
+                    continue;
+
+                Vector3 center = Grid.CellCenterWorld(x, y);
+                Vector2 d = new Vector2(center.x - world.x, center.z - world.z);
+                float dSqr = d.sqrMagnitude;
+                if (dSqr <= r * r)
+                    candidates.Add((x, y, dSqr));
+            }
+
+            if (candidates.Count == 0)
+                return 0;
+
+            candidates.Sort((a, b) => a.dSqr.CompareTo(b.dSqr));
+            int limit = Mathf.Max(1, maxPlants);
+            for (int i = 0; i < candidates.Count && removed < limit; i++)
+            {
+                var c = candidates[i];
+                if (TryDestroyPlantAtCell(c.x, c.y))
+                    removed++;
+            }
+
+            return removed;
+        }
+
         public void AddWaterAt(Vector3 world, float amount = 0.25f)
         {
             if (!TryWorldToCell(world, out int x, out int y)) return;
@@ -798,6 +855,7 @@ namespace SCoL
             cell.Water = Mathf.Clamp01(cell.Water + amount);
             // Stronger, more readable visual
             cell.WaterVisual = Mathf.Clamp01(cell.WaterVisual + amount);
+            ApplyWaterGrowthBoost(ref cell);
 
             // Ensure readable view
             ViewMode = GridViewMode.Stage;
@@ -807,9 +865,61 @@ namespace SCoL
             _plantRenderer?.RenderNow();
         }
 
+        public int AddWaterAroundWorld(Vector3 world, float radius = 1.5f, float amount = 0.25f)
+        {
+            if (Grid == null)
+                return 0;
+            if (!TryWorldToCell(world, out int cx, out int cy))
+                return 0;
+
+            float r = Mathf.Max(0.1f, radius);
+            float cell = Mathf.Max(0.0001f, Grid.CellSize);
+            int cellR = Mathf.Max(1, Mathf.CeilToInt(r / cell));
+            int affected = 0;
+
+            for (int y = cy - cellR; y <= cy + cellR; y++)
+            for (int x = cx - cellR; x <= cx + cellR; x++)
+            {
+                if (!Grid.InBounds(x, y))
+                    continue;
+
+                Vector3 center = Grid.CellCenterWorld(x, y);
+                Vector2 d = new Vector2(center.x - world.x, center.z - world.z);
+                if (d.sqrMagnitude > r * r)
+                    continue;
+
+                var dst = Grid.Get(x, y);
+                dst.Water = Mathf.Clamp01(dst.Water + amount);
+                dst.WaterVisual = Mathf.Clamp01(dst.WaterVisual + amount);
+                ApplyWaterGrowthBoost(ref dst);
+                affected++;
+            }
+
+            if (affected > 0)
+            {
+                ViewMode = GridViewMode.Stage;
+                OverlayFire = true;
+                _renderer?.Render(Grid);
+                _plantRenderer?.RenderNow();
+            }
+
+            return affected;
+        }
+
         public void IgniteAt(Vector3 world, float fuel = 0.8f)
         {
             if (!TryWorldToCell(world, out int x, out int y)) return;
+
+            var c = Grid.Get(x, y);
+            if (c != null && c.HasPlant)
+            {
+                ScorchCell(x, y);
+                ViewMode = GridViewMode.Stage;
+                OverlayFire = true;
+                _renderer?.Render(Grid);
+                _plantRenderer?.RenderNow();
+                return;
+            }
 
             // Ensure readable view
             ViewMode = GridViewMode.Stage;
@@ -821,6 +931,86 @@ namespace SCoL
 
             _renderer?.Render(Grid);
             _plantRenderer?.RenderNow();
+        }
+
+        public int IgniteAroundWorld(Vector3 world, float radius = 1.25f, float fuel = 0.8f)
+        {
+            if (Grid == null)
+                return 0;
+            if (!TryWorldToCell(world, out int cx, out int cy))
+                return 0;
+
+            float r = Mathf.Max(0.1f, radius);
+            float cell = Mathf.Max(0.0001f, Grid.CellSize);
+            int cellR = Mathf.Max(1, Mathf.CeilToInt(r / cell));
+            int ignited = 0;
+
+            for (int y = cy - cellR; y <= cy + cellR; y++)
+            for (int x = cx - cellR; x <= cx + cellR; x++)
+            {
+                if (!Grid.InBounds(x, y))
+                    continue;
+
+                Vector3 center = Grid.CellCenterWorld(x, y);
+                Vector2 d = new Vector2(center.x - world.x, center.z - world.z);
+                if (d.sqrMagnitude > r * r)
+                    continue;
+
+                var c = Grid.Get(x, y);
+                if (!c.HasPlant)
+                    continue;
+
+                ScorchCell(x, y);
+                ignited++;
+            }
+
+            if (ignited > 0)
+            {
+                ViewMode = GridViewMode.Stage;
+                OverlayFire = true;
+                _renderer?.Render(Grid);
+                _plantRenderer?.RenderNow();
+            }
+
+            return ignited;
+        }
+
+        private void ApplyWaterGrowthBoost(ref CellState c)
+        {
+            if (!c.HasPlant || c.PlantStage == PlantStage.Burnt)
+                return;
+
+            c.Success = Mathf.Clamp01(c.Success + Mathf.Max(0f, waterGrowthSuccessBoost));
+            c.PlantAgeSeconds += Mathf.Max(0f, waterGrowthAgeBoostSeconds);
+            PromotePlantByAge(ref c);
+        }
+
+        private void PromotePlantByAge(ref CellState c)
+        {
+            if (!c.HasPlant || c.PlantStage == PlantStage.Burnt)
+                return;
+
+            float step = Mathf.Max(0.5f, secondsPerTreeStage);
+            float age = Mathf.Max(0f, c.PlantAgeSeconds);
+
+            if (age >= step * 3f)
+                c.PlantStage = PlantStage.LargeTree;
+            else if (age >= step * 2f && c.PlantStage < PlantStage.MediumTree)
+                c.PlantStage = PlantStage.MediumTree;
+            else if (age >= step && c.PlantStage < PlantStage.SmallTree)
+                c.PlantStage = PlantStage.SmallTree;
+        }
+
+        private void ScorchCell(int x, int y)
+        {
+            if (Grid == null || !Grid.InBounds(x, y))
+                return;
+
+            var c = Grid.Get(x, y);
+            c.PlantStage = PlantStage.Burnt;
+            c.Durability = 0f;
+            c.IsOnFire = false;
+            c.FireFuel = 0f;
         }
 
         public void StompAt(Vector3 world, float damage = -1f)
