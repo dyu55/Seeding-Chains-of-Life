@@ -386,13 +386,13 @@ namespace SCoL.Voxels
                 return;
 
             var grassTex = LoadEditorOrResourceTexture(
-                "Assets/Models/Modeling/_Incoming/Cube Grass.png",
+                "Assets/Models/Modeling/_Incoming/Terrain/Cube Grass.png",
                 "Voxels/cube_grass");
             var dirtTex = LoadEditorOrResourceTexture(
-                "Assets/Models/Modeling/_Incoming/Cube Dirt.png",
+                "Assets/Models/Modeling/_Incoming/Terrain/Cube Dirt.png",
                 "Voxels/cube_dirt");
             var sandTex = LoadEditorOrResourceTexture(
-                "Assets/Models/Modeling/_Incoming/Cube Sand.png",
+                "Assets/Models/Modeling/_Incoming/Terrain/Cube Sand.png",
                 "Voxels/cube_sand");
 
             var resolvedDirt = dirtTex != null ? dirtTex : (sandTex != null ? sandTex : grassTex);

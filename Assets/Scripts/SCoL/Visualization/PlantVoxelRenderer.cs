@@ -67,8 +67,7 @@ namespace SCoL.Visualization
             if (smallPlantPrefabs == null || smallPlantPrefabs.Length == 0)
             {
                 smallPlantPrefabs = LoadPrefabs(
-                    "Assets/VoxBox/Prefabs/Grass Tiles/Tile 7.prefab",
-                    "Assets/VoxBox/Prefabs/Grass Tiles/Tile 6.prefab");
+                    "Assets/Models/Modeling/_Incoming/Flowers/FlowerV1/Flower0.obj");
             }
 
             if (smallTreePrefabs == null || smallTreePrefabs.Length == 0)
