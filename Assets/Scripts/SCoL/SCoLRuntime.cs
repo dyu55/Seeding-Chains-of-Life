@@ -40,6 +40,8 @@ namespace SCoL
         [Range(0f, 1f)] public float flowerSpreadMultiplier = 0.5f;
         [Tooltip("Deterministic age threshold (seconds) for each tree promotion stage.")]
         [Min(0.5f)] public float secondsPerTreeStage = 3f;
+        [Tooltip("If true, watering can accelerate plant growth progression.")]
+        public bool waterCanAccelerateGrowth = false;
         [Tooltip("When water is applied, add this many growth-age seconds to nearby plants.")]
         [Min(0f)] public float waterGrowthAgeBoostSeconds = 3f;
         [Tooltip("When water is applied, boost plant success (0..1) to accelerate growth checks.")]
@@ -977,6 +979,9 @@ namespace SCoL
 
         private void ApplyWaterGrowthBoost(ref CellState c)
         {
+            if (!waterCanAccelerateGrowth)
+                return;
+
             if (!c.HasPlant || c.PlantStage == PlantStage.Burnt)
                 return;
 
