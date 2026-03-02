@@ -37,6 +37,7 @@ public class FPSCrosshair : MonoBehaviour
 
     void Awake()
     {
+        showTargetInfo = true;
         if (cameraSource == null) cameraSource = Camera.main;
         _inventory = FindFirstObjectByType<SCoLInventory>();
         _runtime = FindFirstObjectByType<SCoLRuntime>();
@@ -194,6 +195,9 @@ public class FPSCrosshair : MonoBehaviour
 
     void EnsureUI()
     {
+        if (_img != null && _targetTitle != null && _targetDetail != null)
+            return;
+
         var canvasGO = new GameObject("FPS Crosshair (Runtime)");
         DontDestroyOnLoad(canvasGO);
 
@@ -225,6 +229,9 @@ public class FPSCrosshair : MonoBehaviour
         _targetTitle.alignment = TextAnchor.MiddleCenter;
         _targetTitle.fontSize = targetTitleFontSize;
         _targetTitle.color = targetTitleColor;
+        var titleOutline = titleGO.AddComponent<Outline>();
+        titleOutline.effectColor = new Color(0f, 0f, 0f, 0.9f);
+        titleOutline.effectDistance = new Vector2(1f, -1f);
 
         var detailGO = new GameObject("CrosshairTargetDetail");
         detailGO.transform.SetParent(canvasGO.transform, false);
@@ -233,10 +240,15 @@ public class FPSCrosshair : MonoBehaviour
         _targetDetail.alignment = TextAnchor.MiddleCenter;
         _targetDetail.fontSize = targetDetailFontSize;
         _targetDetail.color = targetDetailColor;
+        var detailOutline = detailGO.AddComponent<Outline>();
+        detailOutline.effectColor = new Color(0f, 0f, 0f, 0.85f);
+        detailOutline.effectDistance = new Vector2(1f, -1f);
 
         Font font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
         if (font == null)
             font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+        if (font == null)
+            font = Font.CreateDynamicFontFromOSFont(new[] { "Arial", "Helvetica", "PingFang SC", "Microsoft YaHei" }, Mathf.Max(targetTitleFontSize, targetDetailFontSize));
         _targetTitle.font = font;
         _targetDetail.font = font;
 

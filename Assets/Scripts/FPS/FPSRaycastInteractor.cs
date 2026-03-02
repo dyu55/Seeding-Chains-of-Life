@@ -127,6 +127,7 @@ public class FPSRaycastInteractor : MonoBehaviour
         if (cameraSource == null)
             cameraSource = Camera.main;
 
+        EnsureFpsFeedbackSystems();
         AutoAssignFinalFlowerStagePrefab();
 
         _inventory = FindFirstObjectByType<SCoL.Inventory.SCoLInventory>();
@@ -149,6 +150,32 @@ public class FPSRaycastInteractor : MonoBehaviour
             fireLoopAudioSource.spatialBlend = 0f;
             fireLoopAudioSource.volume = Mathf.Clamp01(fireLoopVolume);
         }
+    }
+
+    private void EnsureFpsFeedbackSystems()
+    {
+        var crosshair = FindFirstObjectByType<FPSCrosshair>();
+        if (crosshair == null)
+        {
+            crosshair = gameObject.GetComponent<FPSCrosshair>();
+            if (crosshair == null)
+                crosshair = gameObject.AddComponent<FPSCrosshair>();
+        }
+        crosshair.enabled = true;
+        crosshair.showTargetInfo = true;
+        if (crosshair.cameraSource == null)
+            crosshair.cameraSource = cameraSource;
+
+        var aura = FindFirstObjectByType<FPSAimAuraHighlighter>();
+        if (aura == null)
+        {
+            aura = gameObject.GetComponent<FPSAimAuraHighlighter>();
+            if (aura == null)
+                aura = gameObject.AddComponent<FPSAimAuraHighlighter>();
+        }
+        aura.enabled = true;
+        if (aura.cameraSource == null)
+            aura.cameraSource = cameraSource;
     }
 
     private void AutoAssignFinalFlowerStagePrefab()

@@ -103,9 +103,7 @@ public class SimpleFirstPersonController : MonoBehaviour
             var d = SCoLInteractionInput.LookDelta();
             float mxFromLook = d.x * mouseSensitivity * 0.02f;
             float my = d.y * mouseSensitivity * 0.02f;
-            float yawDelta = SCoLInteractionInput.TurnDegreesThisFrame();
-            if (Mathf.Abs(yawDelta) < 0.0001f)
-                yawDelta = mxFromLook;
+            float yawDelta = mxFromLook + SCoLInteractionInput.TurnDegreesThisFrame();
 
             transform.Rotate(0f, yawDelta, 0f, Space.Self);
 

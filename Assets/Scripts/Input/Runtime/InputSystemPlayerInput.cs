@@ -24,11 +24,13 @@ namespace SCoL.InputLayer
         [Header("Look Processing")]
         [Range(0.01f, 5f)] public float lookSensitivityX = 1f;
         [Range(0.01f, 5f)] public float lookSensitivityY = 1f;
+        public bool enableLookSmoothing = false;
         [Range(0f, 30f)] public float lookSmoothing = 14f;
 
         [Header("Turn")]
         public bool useSnapTurn = false;
         [Min(0f)] public float smoothTurnDegreesPerSecond = 180f;
+        [Range(0f, 1f)] public float turnAxisDeadzone = 0.2f;
         [Range(15f, 90f)] public float snapTurnDegrees = 45f;
         [Range(0.1f, 1f)] public float snapTurnDeadzone = 0.75f;
 
@@ -124,10 +126,19 @@ namespace SCoL.InputLayer
             Vector2 rawLook = ReadVector2(_look);
             rawLook = new Vector2(rawLook.x * lookSensitivityX, rawLook.y * lookSensitivityY);
             float dt = Mathf.Max(0.0001f, Time.unscaledDeltaTime);
-            float t = lookSmoothing <= 0f ? 1f : 1f - Mathf.Exp(-lookSmoothing * dt);
-            _smoothedLook = Vector2.Lerp(_smoothedLook, rawLook, t);
+            if (!enableLookSmoothing || lookSmoothing <= 0f)
+            {
+                _smoothedLook = rawLook;
+            }
+            else
+            {
+                float t = 1f - Mathf.Exp(-lookSmoothing * dt);
+                _smoothedLook = Vector2.Lerp(_smoothedLook, rawLook, t);
+            }
 
             float turnAxis = ReadFloat(_turn);
+            if (Mathf.Abs(turnAxis) < Mathf.Clamp01(turnAxisDeadzone))
+                turnAxis = 0f;
             TurnDegreesThisFrame = ComputeTurnDelta(turnAxis, dt);
 
             if (lockCursorOnStart && PausePressedThisFrame)
