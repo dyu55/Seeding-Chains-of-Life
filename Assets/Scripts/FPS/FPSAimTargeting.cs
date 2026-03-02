@@ -3,6 +3,7 @@ using SCoL;
 using SCoL.Inventory;
 using SCoL.Visualization;
 using SCoL.XR;
+using SCoL.Interaction;
 
 public enum FPSAimTargetKind
 {
@@ -52,10 +53,8 @@ public static class FPSAimTargeting
         out FPSAimTargetInfo info)
     {
         info = default;
-        if (cameraSource == null)
+        if (!SCoLInteractionInput.TryGetAimRay(cameraSource, out var ray))
             return false;
-
-        var ray = cameraSource.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
         if (!Physics.Raycast(ray, out var hit, maxDistance, hitMask, QueryTriggerInteraction.Ignore))
             return false;
 

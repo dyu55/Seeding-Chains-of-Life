@@ -29,6 +29,10 @@ namespace SCoL.Visualization
         public Vector2 mediumTreeScaleRange = new Vector2(1.10f, 1.35f);
         public Vector2 largeTreeScaleRange = new Vector2(1.35f, 1.70f);
         public Vector2 burntScaleRange = new Vector2(0.20f, 0.30f);
+        [Tooltip("Global size multiplier for small flowers/plants. 0.5 = half size.")]
+        [Range(0.1f, 2f)] public float smallPlantBaseScaleMultiplier = 0.5f;
+        [Tooltip("Max additional flower scale from watering. 0.1 = +10%.")]
+        [Range(0f, 1f)] public float wateredSmallPlantScaleBonus = 0.10f;
 
         [Header("Placement")]
         public float smallPlantYOffset = 0.00f;
@@ -64,24 +68,40 @@ namespace SCoL.Visualization
         private void AutoAssignVoxBoxDefaults()
         {
 #if UNITY_EDITOR
+            const string flowerV1FinalStagePath = "Assets/Models/Modeling/_Incoming/Flowers/FlowerV1/Flower0.obj";
+
             if (smallPlantPrefabs == null || smallPlantPrefabs.Length == 0)
             {
-                smallPlantPrefabs = LoadPrefabs(
-                    "Assets/Models/Modeling/_Incoming/Flowers/FlowerV1/Flower0.obj");
+                var stage1 = LoadPrefabs("Assets/Models/Modeling/_Incoming/Flowers/FlowerV2/Flower_Stage1.obj");
+                smallPlantPrefabs = (stage1 != null && stage1.Length > 0)
+                    ? stage1
+                    : LoadPrefabs(flowerV1FinalStagePath);
             }
 
             if (smallTreePrefabs == null || smallTreePrefabs.Length == 0)
             {
-                smallTreePrefabs = LoadPrefabs(
-                    "Assets/VoxBox/Prefabs/Trees/Tree 1.prefab",
-                    "Assets/VoxBox/Prefabs/Trees/Tree 2.prefab");
+                var stage2 = LoadPrefabs("Assets/Models/Modeling/_Incoming/Flowers/FlowerV2/Flower_Stage2.obj");
+                smallTreePrefabs = (stage2 != null && stage2.Length > 0)
+                    ? stage2
+                    : LoadPrefabs(
+                        "Assets/VoxBox/Prefabs/Trees/Tree 1.prefab",
+                        "Assets/VoxBox/Prefabs/Trees/Tree 2.prefab");
+            }
+
+            if (mediumTreePrefabs == null || mediumTreePrefabs.Length == 0)
+            {
+                // Final floral stage: prefer FlowerV1/Flower0 (team-approved final model).
+                var stage3 = LoadPrefabs(flowerV1FinalStagePath);
+                mediumTreePrefabs = (stage3 != null && stage3.Length > 0)
+                    ? stage3
+                    : LoadPrefabs("Assets/Models/Modeling/_Incoming/Flowers/FlowerV2/Flower_FinalStage.obj");
             }
 
             if (mediumTreePrefabs == null || mediumTreePrefabs.Length == 0)
             {
                 mediumTreePrefabs = LoadPrefabs(
-                    "Assets/VoxBox/Prefabs/Trees/Tree 3.prefab",
-                    "Assets/VoxBox/Prefabs/Trees/Tree 4.prefab");
+                        "Assets/VoxBox/Prefabs/Trees/Tree 3.prefab",
+                        "Assets/VoxBox/Prefabs/Trees/Tree 4.prefab");
             }
 
             if (largeTreePrefabs == null || largeTreePrefabs.Length == 0)
@@ -188,7 +208,20 @@ namespace SCoL.Visualization
             return PositiveHash(value) / (float)int.MaxValue;
         }
 
-        private float ScaleFor(PlantStage stage, int cellIndex)
+        private bool IsFlowerPrefabVariant(PlantStage stage, int variant)
+        {
+            var prefabs = PrefabsFor(stage);
+            if (prefabs == null || variant < 0 || variant >= prefabs.Length || prefabs[variant] == null)
+                return false;
+
+            string n = prefabs[variant].name;
+            if (string.IsNullOrEmpty(n))
+                return false;
+            n = n.ToLowerInvariant();
+            return n.Contains("flower") || n.Contains("daisy") || n.Contains("rose") || n.Contains("tulip");
+        }
+
+        private float ScaleFor(PlantStage stage, int cellIndex, CellState cell, int variant)
         {
             Vector2 range = stage switch
             {
@@ -202,7 +235,28 @@ namespace SCoL.Visualization
             if (range.y < range.x) range = new Vector2(range.y, range.x);
 
             float t = Hash01(cellIndex * 92821 + (int)stage * 1511);
-            return Mathf.Lerp(range.x, range.y, t);
+            float scale = Mathf.Lerp(range.x, range.y, t);
+            bool flowerStageModel = IsFlowerPrefabVariant(stage, variant);
+            if (stage == PlantStage.SmallPlant)
+            {
+                // Keep flowers smaller overall, then allow a bounded +10% bump when watered.
+                scale *= Mathf.Max(0.01f, smallPlantBaseScaleMultiplier);
+                float waterBoost = 1f + Mathf.Clamp01(cell.WaterVisual) * Mathf.Max(0f, wateredSmallPlantScaleBonus);
+                scale *= waterBoost;
+            }
+            else if (flowerStageModel && stage == PlantStage.SmallTree)
+            {
+                // Stage2 flower should stay close to Stage1 size, just visibly larger.
+                float baseSmall = Mathf.Lerp(smallPlantScaleRange.x, smallPlantScaleRange.y, t) * Mathf.Max(0.01f, smallPlantBaseScaleMultiplier);
+                scale = baseSmall * 1.25f;
+            }
+            else if (flowerStageModel && stage == PlantStage.MediumTree)
+            {
+                // Stage3 flower remains floral, not tree-sized.
+                float baseSmall = Mathf.Lerp(smallPlantScaleRange.x, smallPlantScaleRange.y, t) * Mathf.Max(0.01f, smallPlantBaseScaleMultiplier);
+                scale = baseSmall * 1.45f;
+            }
+            return scale;
         }
 
         private float YOffsetFor(PlantStage stage)
@@ -410,7 +464,7 @@ namespace SCoL.Visualization
 
                 var plantGO = active.go;
                 float yaw = (PositiveHash(idx * 834927 + (int)stage * 97) % 4) * 90f;
-                float scale = ScaleFor(stage, idx);
+                float scale = ScaleFor(stage, idx, cell, variant);
                 float targetY;
                 Vector3 targetPos;
                 if (voxelWorld != null)

@@ -46,6 +46,12 @@ namespace SCoL
         [Min(0f)] public float waterGrowthAgeBoostSeconds = 3f;
         [Tooltip("When water is applied, boost plant success (0..1) to accelerate growth checks.")]
         [Range(0f, 1f)] public float waterGrowthSuccessBoost = 0.35f;
+        [Tooltip("If true, watering promotes planted flowers one stage at a time (Stage1->Stage2->Stage3).")]
+        public bool waterPromotesFlowerStages = true;
+        [Tooltip("If true, only player-seeded lineage plants can be promoted by watering.")]
+        public bool waterPromotionOnlyForPlayerLineage = true;
+        [Tooltip("If true, watering stops at Stage3 (MediumTree) and will not promote to LargeTree.")]
+        public bool waterPromotionClampToStage3 = true;
 
         [Header("Lineage CA")]
         [Tooltip("If true, only plants seeded by player (and descendants) can spread via CA.")]
@@ -64,6 +70,10 @@ namespace SCoL
         [Header("Wind CA")]
         [Tooltip("If enabled, CA spread can only move from source to target along current wind direction.")]
         public bool constrainCASpreadToWindDirection = true;
+        [Tooltip("If enabled, wind weather increases CA spread chance.")]
+        public bool accelerateCASpreadInWindWeather = true;
+        [Tooltip("Spread multiplier applied while weather is Wind.")]
+        [Range(1f, 5f)] public float windWeatherSpreadMultiplier = 1.6f;
         [Tooltip("Wind direction index (0=E, 1=NE, 2=N, 3=NW, 4=W, 5=SW, 6=S, 7=SE).")]
         [Range(0, 7)] public int windDirectionIndex = 0;
         [Tooltip("If enabled, wind direction rotates over time.")]
@@ -613,12 +623,14 @@ namespace SCoL
                         // Neighborhood factor: more neighbors => higher chance, but diminishing returns.
                         float neighCount = constrainCASpreadToWindDirection ? windSourcePlants : anyPlants;
                         float neigh = Mathf.Clamp01(neighCount / 6f);
+                        float weatherSpreadMultiplier = GetWeatherSpreadMultiplier();
                         float chance = Config.stochasticSproutChance * env * (0.35f + 0.65f * neigh);
                         chance *= flowerSpreadMultiplier;
+                        chance *= weatherSpreadMultiplier;
                         if (onlyPlayerSeededLineageCA && lineagePlants > 0)
                         {
                             chance *= lineageSpreadChanceMultiplier;
-                            chance = Mathf.Max(chance, lineageMinSproutChance);
+                            chance = Mathf.Max(chance, lineageMinSproutChance * weatherSpreadMultiplier);
                         }
                         chance = Mathf.Clamp(chance, 0f, 0.95f);
 
@@ -635,13 +647,14 @@ namespace SCoL
                 }
 
                 // Strict CA birth (classic Life-style)
+                float strictSpreadChance = Mathf.Clamp01(flowerSpreadMultiplier * GetWeatherSpreadMultiplier());
                 if (smallPlants == 3 &&
                     waterOk &&
                     sunOk &&
                     heatOk &&
                     IsPlantableColumn(x, y) &&
                     (!constrainCASpreadToWindDirection || windSourcePlants > 0) &&
-                    _rng.NextDouble() < flowerSpreadMultiplier)
+                    _rng.NextDouble() < strictSpreadChance)
                 {
                     n.PlantStage = PlantStage.SmallPlant;
                     n.PlantAgeSeconds = 0f;
@@ -857,6 +870,7 @@ namespace SCoL
             cell.Water = Mathf.Clamp01(cell.Water + amount);
             // Stronger, more readable visual
             cell.WaterVisual = Mathf.Clamp01(cell.WaterVisual + amount);
+            TryPromotePlantStageByWater(ref cell);
             ApplyWaterGrowthBoost(ref cell);
 
             // Ensure readable view
@@ -893,6 +907,7 @@ namespace SCoL
                 var dst = Grid.Get(x, y);
                 dst.Water = Mathf.Clamp01(dst.Water + amount);
                 dst.WaterVisual = Mathf.Clamp01(dst.WaterVisual + amount);
+                TryPromotePlantStageByWater(ref dst);
                 ApplyWaterGrowthBoost(ref dst);
                 affected++;
             }
@@ -988,6 +1003,38 @@ namespace SCoL
             c.Success = Mathf.Clamp01(c.Success + Mathf.Max(0f, waterGrowthSuccessBoost));
             c.PlantAgeSeconds += Mathf.Max(0f, waterGrowthAgeBoostSeconds);
             PromotePlantByAge(ref c);
+        }
+
+        private void TryPromotePlantStageByWater(ref CellState c)
+        {
+            if (!waterPromotesFlowerStages)
+                return;
+            if (!c.HasPlant || c.PlantStage == PlantStage.Burnt)
+                return;
+            if (waterPromotionOnlyForPlayerLineage && !c.IsPlayerSeedLineage)
+                return;
+
+            switch (c.PlantStage)
+            {
+                case PlantStage.SmallPlant:
+                    c.PlantStage = PlantStage.SmallTree;   // Stage1 -> Stage2
+                    c.Success = Mathf.Clamp01(Mathf.Max(c.Success, 0.78f));
+                    c.PlantAgeSeconds = Mathf.Max(c.PlantAgeSeconds, Mathf.Max(0.5f, secondsPerTreeStage));
+                    break;
+                case PlantStage.SmallTree:
+                    c.PlantStage = PlantStage.MediumTree;  // Stage2 -> Stage3
+                    c.Success = Mathf.Clamp01(Mathf.Max(c.Success, 0.86f));
+                    c.PlantAgeSeconds = Mathf.Max(c.PlantAgeSeconds, Mathf.Max(0.5f, secondsPerTreeStage) * 2f);
+                    break;
+                case PlantStage.MediumTree:
+                    if (!waterPromotionClampToStage3)
+                    {
+                        c.PlantStage = PlantStage.LargeTree;
+                        c.Success = Mathf.Clamp01(Mathf.Max(c.Success, 0.92f));
+                        c.PlantAgeSeconds = Mathf.Max(c.PlantAgeSeconds, Mathf.Max(0.5f, secondsPerTreeStage) * 3f);
+                    }
+                    break;
+            }
         }
 
         private void PromotePlantByAge(ref CellState c)
@@ -1146,6 +1193,15 @@ namespace SCoL
                 return false;
 
             return true;
+        }
+
+        private float GetWeatherSpreadMultiplier()
+        {
+            if (!accelerateCASpreadInWindWeather)
+                return 1f;
+            if (CurrentWeather != WeatherType.Wind)
+                return 1f;
+            return Mathf.Max(1f, windWeatherSpreadMultiplier);
         }
 
         private void UpdateWindDirectionState(float dt)

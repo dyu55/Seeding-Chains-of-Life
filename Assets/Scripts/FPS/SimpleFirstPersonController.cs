@@ -1,8 +1,8 @@
 using UnityEngine;
-using UnityEngine.InputSystem;
 using SCoL.Voxels;
 using SCoL.Visualization;
 using SCoL.Weather;
+using SCoL.Interaction;
 
 /// <summary>
 /// Minimal FPS controller for keyboard + mouse (no XR, no Input System dependency).
@@ -95,39 +95,34 @@ public class SimpleFirstPersonController : MonoBehaviour
     {
         if (_cc == null) return;
 
-        var mouse = Mouse.current;
-        var kb = Keyboard.current;
         bool cursorLocked = Cursor.lockState == CursorLockMode.Locked;
 
-        // Look (mouse delta)
-        if (cameraPivot != null && mouse != null && cursorLocked)
+        // Look / turn from unified input (FPS today, VR later).
+        if (cameraPivot != null && cursorLocked)
         {
-            var d = mouse.delta.ReadValue();
-            float mx = d.x * mouseSensitivity * 0.02f; // scale down a bit vs legacy axes
+            var d = SCoLInteractionInput.LookDelta();
+            float mxFromLook = d.x * mouseSensitivity * 0.02f;
             float my = d.y * mouseSensitivity * 0.02f;
+            float yawDelta = SCoLInteractionInput.TurnDegreesThisFrame();
+            if (Mathf.Abs(yawDelta) < 0.0001f)
+                yawDelta = mxFromLook;
 
-            transform.Rotate(0f, mx, 0f, Space.Self);
+            transform.Rotate(0f, yawDelta, 0f, Space.Self);
 
             _pitch -= my;
             _pitch = Mathf.Clamp(_pitch, -maxPitch, maxPitch);
             cameraPivot.localRotation = Quaternion.Euler(_pitch, 0f, 0f);
         }
 
-        // Move (WASD / arrows)
-        float x = 0f;
-        float z = 0f;
-        if (kb != null)
-        {
-            if (kb.aKey.isPressed || kb.leftArrowKey.isPressed) x -= 1f;
-            if (kb.dKey.isPressed || kb.rightArrowKey.isPressed) x += 1f;
-            if (kb.sKey.isPressed || kb.downArrowKey.isPressed) z -= 1f;
-            if (kb.wKey.isPressed || kb.upArrowKey.isPressed) z += 1f;
-        }
+        // Move
+        Vector2 moveInput = SCoLInteractionInput.Move();
+        float x = moveInput.x;
+        float z = moveInput.y;
 
         Vector3 move = (transform.right * x + transform.forward * z);
         if (move.sqrMagnitude > 1f) move.Normalize();
 
-        bool sprinting = kb != null && (kb.leftShiftKey.isPressed || kb.rightShiftKey.isPressed);
+        bool sprinting = SCoLInteractionInput.SprintHeld();
         float speed = sprinting ? sprintSpeed : walkSpeed;
         if (IsWinterActive())
             speed *= Mathf.Clamp(winterMoveMultiplier, 0.2f, 1f);
@@ -139,7 +134,7 @@ public class SimpleFirstPersonController : MonoBehaviour
             _velocity.y = -2f; // keep grounded
 
         // Jump
-        if (grounded && kb != null && kb.spaceKey.wasPressedThisFrame)
+        if (grounded && SCoLInteractionInput.JumpPressed())
         {
             // v = sqrt(h * -2g)
             _velocity.y = Mathf.Sqrt(jumpHeight * -2f * gravity);
@@ -152,14 +147,14 @@ public class SimpleFirstPersonController : MonoBehaviour
         TryRescueIfFallenBelowWorld();
 
         // Escape to unlock cursor
-        if (kb != null && kb.escapeKey.wasPressedThisFrame)
+        if (SCoLInteractionInput.PausePressed())
         {
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
         }
 
         // Re-lock on left click so players can quickly get back to controlling the camera.
-        if (lockCursor && !cursorLocked && mouse != null && mouse.leftButton.wasPressedThisFrame)
+        if (lockCursor && !cursorLocked && SCoLInteractionInput.PrimaryPressed())
         {
             Cursor.lockState = CursorLockMode.Locked;
             Cursor.visible = false;

@@ -113,7 +113,7 @@ public class FPSCrosshair : MonoBehaviour
             {
                 int required = _interactor != null ? Mathf.Max(1, _interactor.plantDestroyClicksRequired) : 4;
                 title = target.kind == FPSAimTargetKind.LegacyPlant ? "Plant" : $"Plant Cell {target.cellX},{target.cellY}";
-                detail = $"RMB x{required} to destroy";
+                detail = $"LMB uproot (+Plant)  |  RMB x{required} destroy";
                 break;
             }
 
@@ -136,7 +136,7 @@ public class FPSCrosshair : MonoBehaviour
                 else
                 {
                     title = "Item: Unknown item";
-                    detail = "You have not discovered this item yet.  [Grab]";
+                    detail = "You have not discovered this item yet.  [LMB collect]";
                 }
                 break;
             }

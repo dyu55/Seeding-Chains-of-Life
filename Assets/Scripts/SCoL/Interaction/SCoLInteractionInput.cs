@@ -1,62 +1,66 @@
 using UnityEngine;
-using UnityEngine.InputSystem;
+using SCoL.InputLayer;
 
 namespace SCoL.Interaction
 {
     /// <summary>
-    /// T09: VR migration prep.
-    /// Centralizes "core interaction" input + aim-ray generation behind preprocessor switches.
-    /// 
-    /// FPS today (mouse/keyboard). Later, define USE_VR and implement XR controller bindings
-    /// without rewriting the gameplay interaction logic.
+    /// Unified interaction input entry point for gameplay scripts.
+    /// Keeps callers agnostic to FPS vs VR control sources.
     /// </summary>
     public static class SCoLInteractionInput
     {
-        /// <summary>Primary action: harvest/assimilate/apply.</summary>
+        public static Vector2 Move() => GameplayInputFacade.Player != null ? GameplayInputFacade.Player.Move : Vector2.zero;
+        public static Vector2 LookDelta() => GameplayInputFacade.Player != null ? GameplayInputFacade.Player.Look : Vector2.zero;
+        public static float TurnDegreesThisFrame() => GameplayInputFacade.Player != null ? GameplayInputFacade.Player.TurnDegreesThisFrame : 0f;
+        public static bool JumpPressed() => GameplayInputFacade.Player != null && GameplayInputFacade.Player.JumpPressedThisFrame;
+        public static bool SprintHeld() => GameplayInputFacade.Player != null && GameplayInputFacade.Player.SprintHeld;
+
         public static bool PrimaryPressed()
         {
-#if USE_VR
-            // TODO (Quest 3): bind to XR controller trigger / primary action.
-            // Keep gameplay code calling PrimaryPressed() only.
-            return false;
-#else
-            var mouse = Mouse.current;
-            return mouse != null && mouse.leftButton.wasPressedThisFrame;
-#endif
+            return GameplayInputFacade.Player != null && GameplayInputFacade.Player.PrimaryPressedThisFrame;
         }
 
-        /// <summary>Secondary action: seed/spawn/create.</summary>
         public static bool SecondaryPressed()
         {
-#if USE_VR
-            // TODO (Quest 3): bind to XR controller secondary action.
-            return false;
-#else
-            var mouse = Mouse.current;
-            return mouse != null && mouse.rightButton.wasPressedThisFrame;
-#endif
+            return GameplayInputFacade.Player != null && GameplayInputFacade.Player.SecondaryPressedThisFrame;
         }
 
-        /// <summary>
-        /// Where interactions should originate from.
-        /// FPS: screen center ray.
-        /// VR: should become controller ray or gaze ray.
-        /// </summary>
+        public static bool ToolNextPressed()
+        {
+            return GameplayInputFacade.Player != null && GameplayInputFacade.Player.ToolNextPressedThisFrame;
+        }
+
+        public static bool ToolPrevPressed()
+        {
+            return GameplayInputFacade.Player != null && GameplayInputFacade.Player.ToolPrevPressedThisFrame;
+        }
+
+        public static bool PausePressed()
+        {
+            return GameplayInputFacade.Player != null && GameplayInputFacade.Player.PausePressedThisFrame;
+        }
+
+        public static bool ToolSlotPressed(int slot)
+        {
+            var p = GameplayInputFacade.Player;
+            if (p == null) return false;
+            return slot switch
+            {
+                1 => p.ToolSlot1PressedThisFrame,
+                2 => p.ToolSlot2PressedThisFrame,
+                3 => p.ToolSlot3PressedThisFrame,
+                4 => p.ToolSlot4PressedThisFrame,
+                _ => false
+            };
+        }
+
         public static bool TryGetAimRay(Camera fallbackCamera, out Ray ray)
         {
-#if USE_VR
-            // TODO (Quest 3): return controller ray (e.g., XRRayInteractor origin+direction).
-            // Fallback to camera center if controller not available.
-#endif
-            var cam = fallbackCamera != null ? fallbackCamera : Camera.main;
-            if (cam == null)
-            {
-                ray = default;
-                return false;
-            }
-
-            ray = cam.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
-            return true;
+            var aim = GameplayInputFacade.Aim;
+            if (aim != null && aim.TryGetAimRay(fallbackCamera, out ray))
+                return true;
+            ray = default;
+            return false;
         }
     }
 }

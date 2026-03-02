@@ -1,12 +1,12 @@
 using UnityEngine;
-#if ENABLE_INPUT_SYSTEM
-using UnityEngine.InputSystem;
-#endif
 using SCoL;
 using SCoL.Visualization;
 using SCoL.Weather;
 using SCoL.Inventory;
 using SCoL.Voxels;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 /// <summary>
 /// FPS mouse interaction: on LMB, raycast from screen center and detect objects tagged "Harvestable"
@@ -55,6 +55,8 @@ public class FPSRaycastInteractor : MonoBehaviour
     public GameObject smallStagePrefab;
     public GameObject mediumStagePrefab;
     public GameObject matureStagePrefab;
+    [Tooltip("If enabled, force final flower stage to FlowerV1/Flower0.obj.")]
+    public bool forceFlower0AsFinalStage = true;
 
     [Header("CA Runtime Integration")]
     public bool useCARuntimeSeeding = true;
@@ -90,10 +92,15 @@ public class FPSRaycastInteractor : MonoBehaviour
     [Range(0f, 1f)] public float thunderTargetIgniteChance = 0.12f;
     [Min(0.05f)] public float thunderTargetCheckIntervalSeconds = 0.35f;
 
-    [Header("RMB Collect")]
+    [Header("Primary Collect (LMB)")]
     public bool collectPickupsOnRightClick = true;
     public bool collectWaterFromRegionOnRightClick = true;
     [Min(1)] public int waterCollectAmount = 1;
+
+    [Header("Primary Plant Pickup (LMB)")]
+    [Tooltip("If enabled, LMB can uproot targeted plants (legacy + CA) and convert them into Plant inventory.")]
+    public bool pickPlantsOnPrimaryClick = true;
+    [Min(1)] public int plantPickupAmount = 1;
 
     SCoL.Inventory.SCoLInventory _inventory;
     SCoLRuntime _runtime;
@@ -120,6 +127,8 @@ public class FPSRaycastInteractor : MonoBehaviour
         if (cameraSource == null)
             cameraSource = Camera.main;
 
+        AutoAssignFinalFlowerStagePrefab();
+
         _inventory = FindFirstObjectByType<SCoL.Inventory.SCoLInventory>();
         if (_inventory == null)
         {
@@ -142,6 +151,18 @@ public class FPSRaycastInteractor : MonoBehaviour
         }
     }
 
+    private void AutoAssignFinalFlowerStagePrefab()
+    {
+#if UNITY_EDITOR
+        if (!forceFlower0AsFinalStage)
+            return;
+        const string flower0Path = "Assets/Models/Modeling/_Incoming/Flowers/FlowerV1/Flower0.obj";
+        var flower0 = AssetDatabase.LoadAssetAtPath<GameObject>(flower0Path);
+        if (flower0 != null)
+            matureStagePrefab = flower0;
+#endif
+    }
+
     void Update()
     {
         if (cameraSource == null) return;
@@ -149,7 +170,7 @@ public class FPSRaycastInteractor : MonoBehaviour
         UpdatePlantAttractor();
         TryIgniteTargetedPlantDuringThunder();
 
-        // Primary: harvest
+        // Primary: collect/pickup/harvest
         if (SCoL.Interaction.SCoLInteractionInput.PrimaryPressed())
         {
             if (!SCoL.Interaction.SCoLInteractionInput.TryGetAimRay(cameraSource, out var ray))
@@ -157,6 +178,24 @@ public class FPSRaycastInteractor : MonoBehaviour
 
             if (Physics.Raycast(ray, out var hit, maxDistance, hitMask, QueryTriggerInteraction.Ignore))
             {
+                if (_inventory == null)
+                    _inventory = FindFirstObjectByType<SCoL.Inventory.SCoLInventory>();
+
+                if (_inventory != null)
+                {
+                    // LMB priority #1: collect world pickups (seed/torch/etc).
+                    if (collectPickupsOnRightClick && TryCollectPickupAtHit(hit))
+                        return;
+
+                    // LMB priority #2: collect water from region, but not when frozen.
+                    if (collectWaterFromRegionOnRightClick && TryCollectWaterFromRegionAtHit(hit))
+                        return;
+
+                    // LMB priority #3: uproot plant into inventory.
+                    if (pickPlantsOnPrimaryClick && TryPickupPlantAtHit(hit))
+                        return;
+                }
+
                 var go = hit.collider != null ? hit.collider.gameObject : null;
 
                 // Walk up parents to find a Harvestable root (colliders are often on child meshes).
@@ -218,14 +257,6 @@ public class FPSRaycastInteractor : MonoBehaviour
             if (_inventory == null)
                 _inventory = FindFirstObjectByType<SCoL.Inventory.SCoLInventory>();
             if (_inventory == null)
-                return;
-
-            // RMB priority #1: collect world pickups (seed/torch/etc).
-            if (collectPickupsOnRightClick && TryCollectPickupAtHit(hit))
-                return;
-
-            // RMB priority #2: collect water from region, but not when frozen.
-            if (collectWaterFromRegionOnRightClick && TryCollectWaterFromRegionAtHit(hit))
                 return;
 
             if (TryHandlePlantDestroyClick(hit))
@@ -398,6 +429,55 @@ public class FPSRaycastInteractor : MonoBehaviour
         int amount = Mathf.Max(1, waterCollectAmount);
         _inventory.Add(SCoLItemType.Water, amount);
         if (logHits) Debug.Log($"[FPSRaycastInteractor] Collected water from region: +{amount}");
+        return true;
+    }
+
+    bool TryPickupPlantAtHit(RaycastHit hit)
+    {
+        if (_inventory == null)
+            return false;
+        if (hit.collider == null)
+            return false;
+
+        if (hit.collider.GetComponentInParent<SCoLPickup>() != null ||
+            hit.collider.GetComponentInParent<FPSBoidAgent>() != null ||
+            IsHarvestableHierarchy(hit.collider.transform))
+            return false;
+
+        var growth = hit.collider.GetComponentInParent<FPSSeedGrowth>();
+        if (growth != null)
+        {
+            int amount = Mathf.Max(1, plantPickupAmount);
+            _inventory.Add(SCoLItemType.Plant, amount);
+
+            VoxelAssimilator.Assimilate(growth.gameObject);
+            FPSGameFeel.VoxelBurst(hit.point, count: 10, spread: 0.9f, life: 0.7f, cubeSize: 0.05f);
+            FPSGameFeel.Shake(0.04f, 0.08f);
+            DayNightLightingController.PlayInteractionSfx(DayNightLightingController.InteractionSfx.DestroySeed);
+            Destroy(growth.gameObject);
+
+            if (logHits) Debug.Log($"[FPSRaycastInteractor] Picked plant (legacy) +{amount} Plant: {growth.name}", growth);
+            return true;
+        }
+
+        if (!TryResolveCAPlantCellFromWorld(hit.point, out int cx, out int cy))
+            return false;
+
+        if (_runtime == null)
+            _runtime = FindFirstObjectByType<SCoLRuntime>();
+        if (_runtime == null)
+            return false;
+
+        if (!_runtime.TryDestroyPlantAtCell(cx, cy))
+            return false;
+
+        int caAmount = Mathf.Max(1, plantPickupAmount);
+        _inventory.Add(SCoLItemType.Plant, caAmount);
+        FPSGameFeel.VoxelBurst(hit.point, count: 9, spread: 0.85f, life: 0.65f, cubeSize: 0.05f);
+        FPSGameFeel.Shake(0.03f, 0.06f);
+        DayNightLightingController.PlayInteractionSfx(DayNightLightingController.InteractionSfx.DestroySeed);
+
+        if (logHits) Debug.Log($"[FPSRaycastInteractor] Picked plant (CA) +{caAmount} Plant: ({cx},{cy})");
         return true;
     }
 
@@ -669,19 +749,26 @@ public class FPSRaycastInteractor : MonoBehaviour
 
     void HandleToolSwitchInput()
     {
-#if ENABLE_INPUT_SYSTEM
-        var kb = Keyboard.current;
-        if (kb == null) return;
-        if (kb.digit1Key.wasPressedThisFrame || kb.numpad1Key.wasPressedThisFrame) currentTool = ApplyTool.Seed;
-        if (kb.digit2Key.wasPressedThisFrame || kb.numpad2Key.wasPressedThisFrame) currentTool = ApplyTool.Water;
-        if (kb.digit3Key.wasPressedThisFrame || kb.numpad3Key.wasPressedThisFrame) currentTool = ApplyTool.Fire;
-        if (kb.digit4Key.wasPressedThisFrame || kb.numpad4Key.wasPressedThisFrame) currentTool = ApplyTool.Plant;
-#else
-        if (Input.GetKeyDown(KeyCode.Alpha1)) currentTool = ApplyTool.Seed;
-        if (Input.GetKeyDown(KeyCode.Alpha2)) currentTool = ApplyTool.Water;
-        if (Input.GetKeyDown(KeyCode.Alpha3)) currentTool = ApplyTool.Fire;
-        if (Input.GetKeyDown(KeyCode.Alpha4)) currentTool = ApplyTool.Plant;
-#endif
+        if (SCoL.Interaction.SCoLInteractionInput.ToolSlotPressed(1)) currentTool = ApplyTool.Seed;
+        if (SCoL.Interaction.SCoLInteractionInput.ToolSlotPressed(2)) currentTool = ApplyTool.Water;
+        if (SCoL.Interaction.SCoLInteractionInput.ToolSlotPressed(3)) currentTool = ApplyTool.Fire;
+        if (SCoL.Interaction.SCoLInteractionInput.ToolSlotPressed(4)) currentTool = ApplyTool.Plant;
+
+        if (SCoL.Interaction.SCoLInteractionInput.ToolNextPressed())
+            CycleTool(+1);
+        if (SCoL.Interaction.SCoLInteractionInput.ToolPrevPressed())
+            CycleTool(-1);
+    }
+
+    void CycleTool(int delta)
+    {
+        int count = System.Enum.GetValues(typeof(ApplyTool)).Length;
+        if (count <= 0)
+            return;
+        int idx = (int)currentTool;
+        idx = (idx + delta) % count;
+        if (idx < 0) idx += count;
+        currentTool = (ApplyTool)idx;
     }
 
     System.Collections.IEnumerator SpawnTransientSpread(

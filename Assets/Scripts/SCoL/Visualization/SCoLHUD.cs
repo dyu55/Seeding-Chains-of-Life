@@ -63,7 +63,7 @@ namespace SCoL.Visualization
 
         [Header("Control Labels")]
         public string controlsVR = "VR: A/X = next tool | B/Y = prev tool | Right Trigger = apply | Aim at ball = auto-pickup";
-        public string controlsDesktop = "Desktop: 1/2/3/4 tool | LMB apply | V view | F fire overlay | H toggle HUD";
+        public string controlsDesktop = "Desktop: 1/2/3/4 tool | LMB collect/uproot | RMB apply/destroy | V view | F fire overlay | H toggle HUD";
 
         [Header("Inventory")]
         public bool showInventory = true;
