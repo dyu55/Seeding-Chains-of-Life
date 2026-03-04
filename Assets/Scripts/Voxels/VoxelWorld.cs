@@ -103,6 +103,17 @@ namespace SCoL.Voxels
         public Mesh treeMesh;
         public Material treeMaterial;
 
+        [Header("Featured Trees (Fixed Count)")]
+        [Tooltip("Spawn a fixed set of evenly distributed trees across the map.")]
+        public bool enableFeaturedTrees = true;
+        [Min(0)] public int featuredTreeCount = 20;
+        [Tooltip("Prefer grass surface for featured tree placement.")]
+        public bool featuredTreesPreferGrass = true;
+        [Min(0)] public int featuredTreeSearchRadius = 10;
+        public Vector2 featuredTreeScaleRange = new Vector2(4.8f, 5.2f);
+        [Min(-2f)] public float featuredTreeYOffset = 0f;
+        [Range(0f, 1.5f)] public float featuredTreeRootEmbedDepth = 0.22f;
+
         [Header("World Boundary")]
         [Tooltip("Create 4 border walls around the voxel map to prevent leaving the world.")]
         public bool enableWorldBoundary = true;
@@ -136,6 +147,7 @@ namespace SCoL.Voxels
         private readonly Dictionary<Vector2Int, GrassPropChunk> _chunkGrassProps = new();
         private readonly Dictionary<Vector2Int, FloraPropChunk> _chunkFloraProps = new();
         private GameObject _boundaryRoot;
+        private GameObject _featuredTreesRoot;
         private GameObject _lowPolyVisualRoot;
         private Mesh _lowPolyLandMesh;
         private Mesh _lowPolyWaterMesh;
@@ -390,7 +402,29 @@ namespace SCoL.Voxels
             }
             if (treeMesh == null)
             {
-                var mesh = UnityEditor.AssetDatabase.LoadAssetAtPath<Mesh>("Assets/Models/Modeling/_Incoming/Tree 1 Growth/Tree Growth.obj");
+                const string newTreeObjPath = "Assets/Models/Modeling/_Incoming/Vegetation/Trees/Tree_New_Set/3d model.obj";
+                var model = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>(newTreeObjPath);
+                if (model != null)
+                {
+                    var mf = model.GetComponentInChildren<MeshFilter>(true);
+                    if (mf != null && mf.sharedMesh != null)
+                        treeMesh = mf.sharedMesh;
+                    else
+                    {
+                        var smr = model.GetComponentInChildren<SkinnedMeshRenderer>(true);
+                        if (smr != null && smr.sharedMesh != null)
+                            treeMesh = smr.sharedMesh;
+                    }
+                }
+            }
+            if (treeMesh == null)
+            {
+                var mesh = UnityEditor.AssetDatabase.LoadAssetAtPath<Mesh>("Assets/Models/Modeling/_Incoming/Vegetation/Trees/Tree 1 Low Poly/tree 1 low poly.glb");
+                if (mesh != null) treeMesh = mesh;
+            }
+            if (treeMesh == null)
+            {
+                var mesh = UnityEditor.AssetDatabase.LoadAssetAtPath<Mesh>("Assets/Models/Modeling/_Incoming/Vegetation/Trees/Tree 1 Growth/Tree Growth.obj");
                 if (mesh != null) treeMesh = mesh;
             }
 
@@ -410,6 +444,30 @@ namespace SCoL.Voxels
                 treeMaterial = new Material(shader) { name = "TreeProp_Mat" };
                 treeMaterial.enableInstancing = true;
                 treeMaterial.color = new Color(0.55f, 0.75f, 0.55f);
+
+                const string newTreeObjPath = "Assets/Models/Modeling/_Incoming/Vegetation/Trees/Tree_New_Set/3d model.obj";
+                var model = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>(newTreeObjPath);
+                if (model != null)
+                {
+                    var r = model.GetComponentInChildren<Renderer>(true);
+                    if (r != null && r.sharedMaterial != null)
+                    {
+                        treeMaterial = new Material(r.sharedMaterial) { name = "TreeProp_Mat_New" };
+                        treeMaterial.enableInstancing = true;
+                    }
+                }
+            }
+
+            const string newTreeTexturePath = "Assets/Models/Modeling/_Incoming/Vegetation/Trees/Tree_New_Set/mesh1.jpg";
+            var treeTex = UnityEditor.AssetDatabase.LoadAssetAtPath<Texture2D>(newTreeTexturePath);
+            if (treeTex != null && treeMaterial != null)
+            {
+                treeTex.filterMode = FilterMode.Bilinear;
+                treeTex.anisoLevel = 4;
+                if (treeMaterial.HasProperty("_BaseMap")) treeMaterial.SetTexture("_BaseMap", treeTex);
+                if (treeMaterial.HasProperty("_MainTex")) treeMaterial.SetTexture("_MainTex", treeTex);
+                if (treeMaterial.HasProperty("_BaseColor")) treeMaterial.SetColor("_BaseColor", Color.white);
+                if (treeMaterial.HasProperty("_Color")) treeMaterial.SetColor("_Color", Color.white);
             }
 #endif
         }
@@ -635,6 +693,7 @@ namespace SCoL.Voxels
                 BuildChunkGO(coords[i]);
 
             RebuildLowPolyVisuals();
+            BuildFeaturedTrees();
             BuildWorldBoundary();
             RebuildWinterOverlayMeshes();
             UpdateWinterVisualState(force: true);
@@ -664,6 +723,9 @@ namespace SCoL.Voxels
             _lowPolyWaterRenderer = null;
             _lowPolyLandCollider = null;
             _lowPolyCornerHeights = null;
+            if (_featuredTreesRoot != null)
+                Destroy(_featuredTreesRoot);
+            _featuredTreesRoot = null;
             if (_boundaryRoot != null)
                 Destroy(_boundaryRoot);
             _boundaryRoot = null;
@@ -1224,7 +1286,8 @@ namespace SCoL.Voxels
                 }
 
                 // Trees
-                if (treeMesh != null && treeMaterial != null)
+                bool allowChunkTreeProps = !(enableFeaturedTrees && featuredTreeCount > 0);
+                if (allowChunkTreeProps && treeMesh != null && treeMaterial != null)
                 {
                     props.Add(new FloraPropChunk.Prop
                     {
@@ -1633,6 +1696,170 @@ namespace SCoL.Voxels
             verts.Add(a); verts.Add(c); verts.Add(b);
             uvs.Add(uva); uvs.Add(uvc); uvs.Add(uvb);
             tris.Add(j0 + 0); tris.Add(j0 + 1); tris.Add(j0 + 2);
+        }
+
+        private void BuildFeaturedTrees()
+        {
+            if (!enableFeaturedTrees || config == null || treeMesh == null || treeMaterial == null)
+                return;
+
+            if (_featuredTreesRoot != null)
+                Destroy(_featuredTreesRoot);
+
+            _featuredTreesRoot = new GameObject("FeaturedTrees");
+            _featuredTreesRoot.transform.SetParent(transform, worldPositionStays: true);
+            _featuredTreesRoot.transform.position = OriginWorld;
+
+            int target = Mathf.Max(0, featuredTreeCount);
+            if (target <= 0)
+                return;
+
+            float aspect = config.worldDepth > 0 ? (config.worldWidth / (float)config.worldDepth) : 1f;
+            int cols = Mathf.Max(1, Mathf.RoundToInt(Mathf.Sqrt(target * Mathf.Max(0.25f, aspect))));
+            int rows = Mathf.Max(1, Mathf.CeilToInt(target / (float)cols));
+            float stepX = config.worldWidth / (float)cols;
+            float stepZ = config.worldDepth / (float)rows;
+
+            var used = new HashSet<int>(target * 2);
+            var prng = new System.Random(unchecked(_seed * 397) ^ 0x34A7F1);
+            int placed = 0;
+
+            for (int rz = 0; rz < rows && placed < target; rz++)
+            {
+                for (int cx = 0; cx < cols && placed < target; cx++)
+                {
+                    int sx = Mathf.Clamp(Mathf.FloorToInt((cx + 0.5f) * stepX), 0, config.worldWidth - 1);
+                    int sz = Mathf.Clamp(Mathf.FloorToInt((rz + 0.5f) * stepZ), 0, config.worldDepth - 1);
+
+                    if (!TryFindFeaturedTreeColumn(sx, sz, out int px, out int pz))
+                        continue;
+
+                    int key = px + pz * config.worldWidth;
+                    if (!used.Add(key))
+                        continue;
+
+                    PlaceFeaturedTree(placed, px, pz, prng);
+                    placed++;
+                }
+            }
+
+            int safety = 0;
+            int maxAttempts = Mathf.Max(64, target * 40);
+            while (placed < target && safety++ < maxAttempts)
+            {
+                int sx = prng.Next(0, Mathf.Max(1, config.worldWidth));
+                int sz = prng.Next(0, Mathf.Max(1, config.worldDepth));
+                if (!TryFindFeaturedTreeColumn(sx, sz, out int px, out int pz))
+                    continue;
+
+                int key = px + pz * config.worldWidth;
+                if (!used.Add(key))
+                    continue;
+
+                PlaceFeaturedTree(placed, px, pz, prng);
+                placed++;
+            }
+
+            if (placed < target)
+            {
+                Debug.LogWarning($"[VoxelWorld] Featured trees placed {placed}/{target}. Consider lowering constraints or search radius.", this);
+            }
+        }
+
+        private bool TryFindFeaturedTreeColumn(int centerX, int centerZ, out int outX, out int outZ)
+        {
+            outX = centerX;
+            outZ = centerZ;
+
+            int maxR = Mathf.Max(0, featuredTreeSearchRadius);
+            bool preferGrass = featuredTreesPreferGrass;
+
+            for (int pass = 0; pass < (preferGrass ? 2 : 1); pass++)
+            {
+                bool requireGrass = preferGrass && pass == 0;
+
+                for (int r = 0; r <= maxR; r++)
+                {
+                    for (int dz = -r; dz <= r; dz++)
+                    {
+                        for (int dx = -r; dx <= r; dx++)
+                        {
+                            if (r > 0 && Mathf.Max(Mathf.Abs(dx), Mathf.Abs(dz)) != r)
+                                continue;
+
+                            int x = centerX + dx;
+                            int z = centerZ + dz;
+                            if (!IsValidFeaturedTreeColumn(x, z, requireGrass))
+                                continue;
+
+                            outX = x;
+                            outZ = z;
+                            return true;
+                        }
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        private bool IsValidFeaturedTreeColumn(int x, int z, bool requireGrass)
+        {
+            if (config == null)
+                return false;
+            if (x < 0 || z < 0 || x >= config.worldWidth || z >= config.worldDepth)
+                return false;
+
+            int y = GetSurfaceY(x, z);
+            if (y <= config.seaLevel)
+                return false;
+
+            var t = GetBlock(x, y, z);
+            if (t == VoxelBlockType.Air || t == VoxelBlockType.Water)
+                return false;
+            if (requireGrass && t != VoxelBlockType.Grass)
+                return false;
+
+            int above = y + 1;
+            if (above < config.worldHeight && GetBlock(x, above, z) == VoxelBlockType.Water)
+                return false;
+
+            const int maxNeighborDelta = 3;
+            if (Mathf.Abs(GetSurfaceY(x + 1, z) - y) > maxNeighborDelta) return false;
+            if (Mathf.Abs(GetSurfaceY(x - 1, z) - y) > maxNeighborDelta) return false;
+            if (Mathf.Abs(GetSurfaceY(x, z + 1) - y) > maxNeighborDelta) return false;
+            if (Mathf.Abs(GetSurfaceY(x, z - 1) - y) > maxNeighborDelta) return false;
+
+            return true;
+        }
+
+        private void PlaceFeaturedTree(int index, int x, int z, System.Random prng)
+        {
+            float surfaceY = OriginWorld.y + GetSurfaceY(x, z) + 1f;
+            Vector3 sample = OriginWorld + new Vector3(x + 0.5f, surfaceY + 2f, z + 0.5f);
+            if (TryGetTerrainSurfaceYAtWorld(sample, out float smoothY, includeWaterSurface: false))
+                surfaceY = smoothY;
+
+            var go = new GameObject($"FeaturedTree_{index:00}");
+            go.transform.SetParent(_featuredTreesRoot.transform, worldPositionStays: true);
+
+            float s = Mathf.Lerp(featuredTreeScaleRange.x, featuredTreeScaleRange.y, (float)prng.NextDouble());
+            float yaw = (float)prng.NextDouble() * 360f;
+            go.transform.position = new Vector3(
+                OriginWorld.x + x + 0.5f,
+                surfaceY + featuredTreeYOffset - Mathf.Max(0f, featuredTreeRootEmbedDepth),
+                OriginWorld.z + z + 0.5f);
+            go.transform.rotation = Quaternion.Euler(0f, yaw, 0f);
+            go.transform.localScale = Vector3.one * Mathf.Max(0.01f, s);
+            go.isStatic = true;
+
+            var mf = go.AddComponent<MeshFilter>();
+            mf.sharedMesh = treeMesh;
+
+            var mr = go.AddComponent<MeshRenderer>();
+            mr.sharedMaterial = treeMaterial;
+            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            mr.receiveShadows = false;
         }
 
         private void BuildWorldBoundary()
