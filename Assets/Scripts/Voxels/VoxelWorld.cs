@@ -43,6 +43,36 @@ namespace SCoL.Voxels
         [Tooltip("Noise scale controlling where 2-ring vs 3-ring shoreline appears.")]
         [Min(0.001f)] public float shorelineSandNoiseScale = 0.085f;
 
+        [Header("Low Poly Terrain Visual")]
+        [Tooltip("Render a smoothed low-poly terrain/water mesh and hide voxel cube renderers.")]
+        public bool useLowPolyTerrainVisual = true;
+        [Tooltip("Use the low-poly terrain mesh collider to avoid stair-step movement on smoothed visuals.")]
+        public bool useLowPolyTerrainCollider = true;
+        public Material lowPolyTerrainMaterial;
+        public Material lowPolyWaterMaterial;
+        [Min(0f)] public float lowPolyLandYOffset = 0.02f;
+        [Min(0f)] public float lowPolyWaterYOffset = 0.01f;
+        [Min(0.01f)] public float lowPolyUVScale = 0.20f;
+        [Range(0, 6)] public int lowPolySmoothingPasses = 3;
+        [Range(0f, 1f)] public float lowPolySmoothingStrength = 0.65f;
+        [Range(0f, 1f)] public float lowPolyDiagonalSmoothingWeight = 0.50f;
+        [Range(1, 3)] public int lowPolyTerrainSubdivisions = 2;
+        [Range(1, 4)] public int lowPolyWaterSubdivisions = 4;
+        [Range(0, 8)] public int lowPolyWaterMaskSmoothingPasses = 3;
+        [Range(0f, 1f)] public float lowPolyWaterMaskSmoothingStrength = 0.70f;
+        [Range(0.10f, 0.90f)] public float lowPolyWaterMaskThreshold = 0.34f;
+        [Tooltip("Expand water mask outward before triangulation so shoreline tucks under terrain.")]
+        [Range(0, 6)] public int lowPolyWaterMaskExpandPasses = 2;
+        [Range(0f, 1f)] public float lowPolyWaterMaskExpandStrength = 0.85f;
+        [Tooltip("Expand water slightly under shoreline terrain to hide jagged edges.")]
+        [Range(0f, 1.5f)] public float lowPolyWaterHorizontalOverhang = 0.55f;
+        [Tooltip("Push water surface down slightly so shoreline is embedded into terrain.")]
+        [Range(0f, 0.6f)] public float lowPolyWaterEmbedDepth = 0.10f;
+        [Tooltip("Render terrain mesh as two-sided to avoid under-view missing faces.")]
+        public bool lowPolyDoubleSided = true;
+        [Tooltip("Render water mesh as two-sided.")]
+        public bool lowPolyWaterDoubleSided = false;
+
         [Header("Grass Props (decorations)")]
         // Default OFF: avoids auto-spawning legacy/placeholder props when entering Play mode.
         // You can re-enable in inspector if desired.
@@ -106,6 +136,12 @@ namespace SCoL.Voxels
         private readonly Dictionary<Vector2Int, GrassPropChunk> _chunkGrassProps = new();
         private readonly Dictionary<Vector2Int, FloraPropChunk> _chunkFloraProps = new();
         private GameObject _boundaryRoot;
+        private GameObject _lowPolyVisualRoot;
+        private Mesh _lowPolyLandMesh;
+        private Mesh _lowPolyWaterMesh;
+        private MeshRenderer _lowPolyWaterRenderer;
+        private MeshCollider _lowPolyLandCollider;
+        private float[,] _lowPolyCornerHeights;
         private GameObject _winterOverlayRoot;
         private GameObject _snowOverlayGO;
         private GameObject _iceOverlayGO;
@@ -120,6 +156,8 @@ namespace SCoL.Voxels
         private bool _useCubeNetGrassUV;
         private bool _useCubeNetDirtUV;
         private bool _useCubeNetStoneUV;
+        private bool _waterSurfaceVisible = true;
+        private Material _hiddenWaterMat;
 
         private float _streamT;
         private Texture2D _grassFaceAtlasRuntime;
@@ -144,6 +182,7 @@ namespace SCoL.Voxels
             _noiseOffset = new Vector2(_rng.Next(-100000, 100000), _rng.Next(-100000, 100000));
 
             EnsureDefaultMaterials();
+            EnforceWaterEdgeSmoothingDefaults();
             EnsureGrassPropAssets();
             GenerateAll();
         }
@@ -211,12 +250,53 @@ namespace SCoL.Voxels
             waterMat.color = new Color(0.18f, 0.35f, 0.85f, 0.85f);
             ApplyTextureFromResourcesIfAvailable(waterMat, "Voxels/w1");
 
+            if (lowPolyTerrainMaterial == null)
+            {
+                lowPolyTerrainMaterial = new Material(shader) { name = "LowPoly_Terrain" };
+                lowPolyTerrainMaterial.enableInstancing = true;
+            }
+            if (lowPolyTerrainMaterial.HasProperty("_BaseMap")) lowPolyTerrainMaterial.SetTexture("_BaseMap", null);
+            if (lowPolyTerrainMaterial.HasProperty("_MainTex")) lowPolyTerrainMaterial.SetTexture("_MainTex", null);
+            if (lowPolyTerrainMaterial.HasProperty("_BaseColor")) lowPolyTerrainMaterial.SetColor("_BaseColor", new Color(0.38f, 0.52f, 0.33f, 1f));
+            if (lowPolyTerrainMaterial.HasProperty("_Color")) lowPolyTerrainMaterial.SetColor("_Color", new Color(0.38f, 0.52f, 0.33f, 1f));
+            if (lowPolyTerrainMaterial.HasProperty("_Smoothness")) lowPolyTerrainMaterial.SetFloat("_Smoothness", 0.02f);
+            if (lowPolyTerrainMaterial.HasProperty("_Glossiness")) lowPolyTerrainMaterial.SetFloat("_Glossiness", 0.02f);
+            if (lowPolyTerrainMaterial.HasProperty("_Cull")) lowPolyTerrainMaterial.SetFloat("_Cull", 0f);
+            if (lowPolyTerrainMaterial.HasProperty("_CullMode")) lowPolyTerrainMaterial.SetFloat("_CullMode", 0f);
+
+            if (lowPolyWaterMaterial == null)
+            {
+                lowPolyWaterMaterial = new Material(shader) { name = "LowPoly_Water" };
+                lowPolyWaterMaterial.enableInstancing = true;
+            }
+            if (lowPolyWaterMaterial.HasProperty("_BaseMap")) lowPolyWaterMaterial.SetTexture("_BaseMap", null);
+            if (lowPolyWaterMaterial.HasProperty("_MainTex")) lowPolyWaterMaterial.SetTexture("_MainTex", null);
+            if (lowPolyWaterMaterial.HasProperty("_BaseColor")) lowPolyWaterMaterial.SetColor("_BaseColor", new Color(0.22f, 0.42f, 0.72f, 0.88f));
+            if (lowPolyWaterMaterial.HasProperty("_Color")) lowPolyWaterMaterial.SetColor("_Color", new Color(0.22f, 0.42f, 0.72f, 0.88f));
+            if (lowPolyWaterMaterial.HasProperty("_Smoothness")) lowPolyWaterMaterial.SetFloat("_Smoothness", 0.06f);
+            if (lowPolyWaterMaterial.HasProperty("_Glossiness")) lowPolyWaterMaterial.SetFloat("_Glossiness", 0.06f);
+            if (lowPolyWaterMaterial.HasProperty("_Cull")) lowPolyWaterMaterial.SetFloat("_Cull", 0f);
+            if (lowPolyWaterMaterial.HasProperty("_CullMode")) lowPolyWaterMaterial.SetFloat("_CullMode", 0f);
+
             if (showBoundaryWalls && boundaryWallMaterial == null)
             {
                 boundaryWallMaterial = new Material(shader) { name = "Voxel_BoundaryWall" };
                 boundaryWallMaterial.enableInstancing = true;
                 boundaryWallMaterial.color = new Color(0.85f, 0.25f, 0.20f, 0.30f);
             }
+        }
+
+        private void EnforceWaterEdgeSmoothingDefaults()
+        {
+            // Keep shoreline anti-aliasing defaults even if old scene serialization has weaker values.
+            lowPolyWaterSubdivisions = Mathf.Clamp(Mathf.Max(lowPolyWaterSubdivisions, 4), 1, 4);
+            lowPolyWaterMaskSmoothingPasses = Mathf.Clamp(Mathf.Max(lowPolyWaterMaskSmoothingPasses, 4), 0, 8);
+            lowPolyWaterMaskSmoothingStrength = Mathf.Clamp01(Mathf.Max(lowPolyWaterMaskSmoothingStrength, 0.78f));
+            lowPolyWaterMaskThreshold = Mathf.Clamp(Mathf.Min(lowPolyWaterMaskThreshold, 0.24f), 0.10f, 0.90f);
+            lowPolyWaterMaskExpandPasses = Mathf.Clamp(Mathf.Max(lowPolyWaterMaskExpandPasses, 2), 0, 6);
+            lowPolyWaterMaskExpandStrength = Mathf.Clamp01(Mathf.Max(lowPolyWaterMaskExpandStrength, 0.85f));
+            lowPolyWaterHorizontalOverhang = Mathf.Clamp(Mathf.Max(lowPolyWaterHorizontalOverhang, 0.90f), 0f, 1.5f);
+            lowPolyWaterEmbedDepth = Mathf.Clamp(Mathf.Max(lowPolyWaterEmbedDepth, 0.12f), 0f, 0.6f);
         }
 
         private void TryApplyVoxBoxTerrainMaterials(Shader fallbackShader)
@@ -554,6 +634,7 @@ namespace SCoL.Voxels
             for (int i = 0; i < coords.Count; i++)
                 BuildChunkGO(coords[i]);
 
+            RebuildLowPolyVisuals();
             BuildWorldBoundary();
             RebuildWinterOverlayMeshes();
             UpdateWinterVisualState(force: true);
@@ -571,6 +652,18 @@ namespace SCoL.Voxels
             _chunkColliders.Clear();
             _chunkGrassProps.Clear();
             _chunkFloraProps.Clear();
+            if (_lowPolyVisualRoot != null)
+                Destroy(_lowPolyVisualRoot);
+            _lowPolyVisualRoot = null;
+            if (_lowPolyLandMesh != null)
+                Destroy(_lowPolyLandMesh);
+            _lowPolyLandMesh = null;
+            if (_lowPolyWaterMesh != null)
+                Destroy(_lowPolyWaterMesh);
+            _lowPolyWaterMesh = null;
+            _lowPolyWaterRenderer = null;
+            _lowPolyLandCollider = null;
+            _lowPolyCornerHeights = null;
             if (_boundaryRoot != null)
                 Destroy(_boundaryRoot);
             _boundaryRoot = null;
@@ -1055,6 +1148,7 @@ namespace SCoL.Voxels
 
             _chunkSubmeshOrder[cc] = order.ToArray();
             mr.sharedMaterials = mats.ToArray();
+            ApplyWaterSurfaceVisibilityToChunk(cc, mr);
 
             if (config.generateColliders)
             {
@@ -1151,6 +1245,394 @@ namespace SCoL.Voxels
                 fp.Rebuild(_seed);
                 _chunkFloraProps[cc] = fp;
             }
+        }
+
+        private void RebuildLowPolyVisuals()
+        {
+            if (!useLowPolyTerrainVisual || config == null)
+            {
+                ApplyLowPolyChunkVisibility(false);
+                return;
+            }
+
+            if (_lowPolyVisualRoot != null)
+                Destroy(_lowPolyVisualRoot);
+            _lowPolyVisualRoot = new GameObject("LowPolyVisual");
+            _lowPolyVisualRoot.transform.SetParent(transform, worldPositionStays: true);
+            _lowPolyVisualRoot.transform.position = OriginWorld;
+
+            var landGO = new GameObject("Land");
+            landGO.transform.SetParent(_lowPolyVisualRoot.transform, worldPositionStays: false);
+            var landMF = landGO.AddComponent<MeshFilter>();
+            var landMR = landGO.AddComponent<MeshRenderer>();
+            landMR.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            landMR.receiveShadows = true;
+            landMR.sharedMaterial = lowPolyTerrainMaterial != null ? lowPolyTerrainMaterial : grassMat;
+
+            var waterGO = new GameObject("Water");
+            waterGO.transform.SetParent(_lowPolyVisualRoot.transform, worldPositionStays: false);
+            var waterMF = waterGO.AddComponent<MeshFilter>();
+            var waterMR = waterGO.AddComponent<MeshRenderer>();
+            waterMR.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            waterMR.receiveShadows = false;
+            waterMR.sharedMaterial = lowPolyWaterMaterial != null ? lowPolyWaterMaterial : waterMat;
+            _lowPolyWaterRenderer = waterMR;
+
+            if (_lowPolyLandMesh != null)
+                Destroy(_lowPolyLandMesh);
+            if (_lowPolyWaterMesh != null)
+                Destroy(_lowPolyWaterMesh);
+
+            BuildLowPolyCornerMaps(out var cornerHeights, out var cornerWaterMask);
+            _lowPolyCornerHeights = cornerHeights;
+
+            _lowPolyLandMesh = BuildLowPolyLandMesh(cornerHeights);
+            landMF.sharedMesh = _lowPolyLandMesh;
+
+            if (useLowPolyTerrainCollider)
+            {
+                _lowPolyLandCollider = landGO.AddComponent<MeshCollider>();
+                _lowPolyLandCollider.convex = false;
+                _lowPolyLandCollider.sharedMesh = _lowPolyLandMesh;
+            }
+
+            _lowPolyWaterMesh = BuildLowPolyWaterMesh(cornerWaterMask);
+            waterMF.sharedMesh = _lowPolyWaterMesh;
+
+            ApplyLowPolyChunkVisibility(true);
+            SetWaterSurfaceVisible(_waterSurfaceVisible);
+        }
+
+        private void ApplyLowPolyChunkVisibility(bool lowPolyActive)
+        {
+            foreach (var kv in _chunkGOs)
+            {
+                var go = kv.Value;
+                if (go == null)
+                    continue;
+
+                var mr = go.GetComponent<MeshRenderer>();
+                if (mr != null)
+                    mr.enabled = !lowPolyActive;
+            }
+
+            bool keepChunkCollider = !(lowPolyActive && useLowPolyTerrainCollider);
+            foreach (var kv in _chunkColliders)
+            {
+                var mc = kv.Value;
+                if (mc != null)
+                    mc.enabled = keepChunkCollider;
+            }
+        }
+
+        private void BuildLowPolyCornerMaps(out float[,] cornerHeights, out float[,] cornerWaterMask)
+        {
+            int w = config.worldWidth;
+            int d = config.worldDepth;
+            int sea = Mathf.Clamp(config.seaLevel, 0, config.worldHeight - 1);
+
+            cornerHeights = new float[w + 1, d + 1];
+            cornerWaterMask = new float[w + 1, d + 1];
+
+            for (int z = 0; z <= d; z++)
+            for (int x = 0; x <= w; x++)
+            {
+                float hSum = 0f;
+                float waterSum = 0f;
+                int count = 0;
+
+                for (int oz = -1; oz <= 0; oz++)
+                for (int ox = -1; ox <= 0; ox++)
+                {
+                    int cx = x + ox;
+                    int cz = z + oz;
+                    if (cx < 0 || cz < 0 || cx >= w || cz >= d)
+                        continue;
+
+                    hSum += GetSurfaceY(cx, cz) + 1f;
+                    waterSum += GetBlock(cx, sea, cz) == VoxelBlockType.Water ? 1f : 0f;
+                    count++;
+                }
+
+                if (count <= 0)
+                {
+                    cornerHeights[x, z] = sea + 1f;
+                    cornerWaterMask[x, z] = 0f;
+                }
+                else
+                {
+                    cornerHeights[x, z] = (hSum / count) + lowPolyLandYOffset;
+                    cornerWaterMask[x, z] = waterSum / count;
+                }
+            }
+
+            SmoothCornerHeights(cornerHeights);
+            SmoothWaterMask(cornerWaterMask);
+            ExpandWaterMask(cornerWaterMask);
+        }
+
+        private void SmoothCornerHeights(float[,] heights)
+        {
+            int passes = Mathf.Clamp(lowPolySmoothingPasses, 0, 8);
+            if (passes <= 0)
+                return;
+            SmoothScalarField(heights, passes, Mathf.Clamp01(lowPolySmoothingStrength), Mathf.Clamp01(lowPolyDiagonalSmoothingWeight));
+        }
+
+        private void SmoothWaterMask(float[,] mask)
+        {
+            int passes = Mathf.Clamp(lowPolyWaterMaskSmoothingPasses, 0, 8);
+            if (passes <= 0)
+                return;
+            SmoothScalarField(mask, passes, Mathf.Clamp01(lowPolyWaterMaskSmoothingStrength), 0.5f);
+        }
+
+        private void ExpandWaterMask(float[,] mask)
+        {
+            int passes = Mathf.Clamp(lowPolyWaterMaskExpandPasses, 0, 6);
+            if (passes <= 0)
+                return;
+
+            float strength = Mathf.Clamp01(lowPolyWaterMaskExpandStrength);
+            if (strength <= 0f)
+                return;
+
+            int w = mask.GetLength(0);
+            int d = mask.GetLength(1);
+            var tmp = new float[w, d];
+
+            for (int p = 0; p < passes; p++)
+            {
+                for (int z = 0; z < d; z++)
+                for (int x = 0; x < w; x++)
+                {
+                    float center = mask[x, z];
+                    float maxN = center;
+                    maxN = Mathf.Max(maxN, Sample(mask, x - 1, z));
+                    maxN = Mathf.Max(maxN, Sample(mask, x + 1, z));
+                    maxN = Mathf.Max(maxN, Sample(mask, x, z - 1));
+                    maxN = Mathf.Max(maxN, Sample(mask, x, z + 1));
+                    maxN = Mathf.Max(maxN, Sample(mask, x - 1, z - 1));
+                    maxN = Mathf.Max(maxN, Sample(mask, x + 1, z - 1));
+                    maxN = Mathf.Max(maxN, Sample(mask, x - 1, z + 1));
+                    maxN = Mathf.Max(maxN, Sample(mask, x + 1, z + 1));
+
+                    tmp[x, z] = Mathf.Lerp(center, maxN, strength);
+                }
+
+                for (int z = 0; z < d; z++)
+                for (int x = 0; x < w; x++)
+                    mask[x, z] = tmp[x, z];
+            }
+        }
+
+        private static float Sample(float[,] f, int x, int z)
+        {
+            int w = f.GetLength(0);
+            int d = f.GetLength(1);
+            if (x < 0 || z < 0 || x >= w || z >= d)
+                return 0f;
+            return f[x, z];
+        }
+
+        private static void SmoothScalarField(float[,] field, int passes, float strength, float diagWeight)
+        {
+            int w = field.GetLength(0);
+            int d = field.GetLength(1);
+            var tmp = new float[w, d];
+
+            for (int p = 0; p < passes; p++)
+            {
+                for (int z = 0; z < d; z++)
+                for (int x = 0; x < w; x++)
+                {
+                    float center = field[x, z];
+                    float sum = 0f;
+                    float weight = 0f;
+
+                    AddNeighbor(field, x - 1, z, 1f, ref sum, ref weight);
+                    AddNeighbor(field, x + 1, z, 1f, ref sum, ref weight);
+                    AddNeighbor(field, x, z - 1, 1f, ref sum, ref weight);
+                    AddNeighbor(field, x, z + 1, 1f, ref sum, ref weight);
+                    AddNeighbor(field, x - 1, z - 1, diagWeight, ref sum, ref weight);
+                    AddNeighbor(field, x + 1, z - 1, diagWeight, ref sum, ref weight);
+                    AddNeighbor(field, x - 1, z + 1, diagWeight, ref sum, ref weight);
+                    AddNeighbor(field, x + 1, z + 1, diagWeight, ref sum, ref weight);
+
+                    float avg = weight > 0.0001f ? (sum / weight) : center;
+                    tmp[x, z] = Mathf.Lerp(center, avg, strength);
+                }
+
+                for (int z = 0; z < d; z++)
+                for (int x = 0; x < w; x++)
+                    field[x, z] = tmp[x, z];
+            }
+        }
+
+        private static void AddNeighbor(float[,] heights, int x, int z, float w, ref float sum, ref float weight)
+        {
+            if (w <= 0f)
+                return;
+            int sx = heights.GetLength(0);
+            int sz = heights.GetLength(1);
+            if (x < 0 || z < 0 || x >= sx || z >= sz)
+                return;
+            sum += heights[x, z] * w;
+            weight += w;
+        }
+
+        private Mesh BuildLowPolyLandMesh(float[,] cornerHeights)
+        {
+            int w = config.worldWidth;
+            int d = config.worldDepth;
+            int sub = Mathf.Clamp(lowPolyTerrainSubdivisions, 1, 3);
+            float uvScale = Mathf.Max(0.01f, lowPolyUVScale);
+
+            var verts = new List<Vector3>(w * d * sub * sub * 4);
+            var uvs = new List<Vector2>(verts.Capacity);
+            var tris = new List<int>(w * d * sub * sub * 6);
+
+            for (int z = 0; z < d; z++)
+            for (int x = 0; x < w; x++)
+            {
+                for (int sz = 0; sz < sub; sz++)
+                for (int sx = 0; sx < sub; sx++)
+                {
+                    float u0 = sx / (float)sub;
+                    float u1 = (sx + 1) / (float)sub;
+                    float v0 = sz / (float)sub;
+                    float v1 = (sz + 1) / (float)sub;
+
+                    Vector3 p00 = EvalLandPoint(cornerHeights, x, z, u0, v0);
+                    Vector3 p10 = EvalLandPoint(cornerHeights, x, z, u1, v0);
+                    Vector3 p01 = EvalLandPoint(cornerHeights, x, z, u0, v1);
+                    Vector3 p11 = EvalLandPoint(cornerHeights, x, z, u1, v1);
+
+                    Vector2 uv00 = new Vector2((x + u0) * uvScale, (z + v0) * uvScale);
+                    Vector2 uv10 = new Vector2((x + u1) * uvScale, (z + v0) * uvScale);
+                    Vector2 uv01 = new Vector2((x + u0) * uvScale, (z + v1) * uvScale);
+                    Vector2 uv11 = new Vector2((x + u1) * uvScale, (z + v1) * uvScale);
+
+                    AddFlatTri(verts, tris, uvs, p00, p10, p11, uv00, uv10, uv11, lowPolyDoubleSided);
+                    AddFlatTri(verts, tris, uvs, p00, p11, p01, uv00, uv11, uv01, lowPolyDoubleSided);
+                }
+            }
+
+            var mesh = new Mesh { name = "LowPoly_Land" };
+            mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+            mesh.SetVertices(verts);
+            mesh.SetTriangles(tris, 0);
+            mesh.SetUVs(0, uvs);
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
+            return mesh;
+        }
+
+        private Vector3 EvalLandPoint(float[,] cornerHeights, int cellX, int cellZ, float u, float v)
+        {
+            float h00 = cornerHeights[cellX, cellZ];
+            float h10 = cornerHeights[cellX + 1, cellZ];
+            float h01 = cornerHeights[cellX, cellZ + 1];
+            float h11 = cornerHeights[cellX + 1, cellZ + 1];
+
+            float hx0 = Mathf.Lerp(h00, h10, u);
+            float hx1 = Mathf.Lerp(h01, h11, u);
+            float h = Mathf.Lerp(hx0, hx1, v);
+            return new Vector3(cellX + u, h, cellZ + v);
+        }
+
+        private Mesh BuildLowPolyWaterMesh(float[,] cornerWaterMask)
+        {
+            int w = config.worldWidth;
+            int d = config.worldDepth;
+            int sub = Mathf.Clamp(lowPolyWaterSubdivisions, 1, 4);
+            float threshold = Mathf.Clamp(lowPolyWaterMaskThreshold, 0.01f, 0.99f);
+            float uvScale = Mathf.Max(0.01f, lowPolyUVScale);
+            float seaY = Mathf.Clamp(config.seaLevel + 1f + lowPolyWaterYOffset - Mathf.Max(0f, lowPolyWaterEmbedDepth), 0f, config.worldHeight + 8f);
+            float overhangPerSubQuad = Mathf.Max(0f, lowPolyWaterHorizontalOverhang) / sub;
+
+            var verts = new List<Vector3>(w * d * sub * sub * 4);
+            var uvs = new List<Vector2>(verts.Capacity);
+            var tris = new List<int>(w * d * sub * sub * 6);
+
+            for (int z = 0; z < d; z++)
+            for (int x = 0; x < w; x++)
+            {
+                for (int sz = 0; sz < sub; sz++)
+                for (int sx = 0; sx < sub; sx++)
+                {
+                    float u0 = sx / (float)sub;
+                    float u1 = (sx + 1) / (float)sub;
+                    float v0 = sz / (float)sub;
+                    float v1 = (sz + 1) / (float)sub;
+
+                    float m00 = EvalMask(cornerWaterMask, x, z, u0, v0);
+                    float m10 = EvalMask(cornerWaterMask, x, z, u1, v0);
+                    float m01 = EvalMask(cornerWaterMask, x, z, u0, v1);
+                    float m11 = EvalMask(cornerWaterMask, x, z, u1, v1);
+                    float mAvg = (m00 + m10 + m01 + m11) * 0.25f;
+                    if (mAvg < threshold)
+                        continue;
+
+                    float x0 = (x + u0) - overhangPerSubQuad;
+                    float x1 = (x + u1) + overhangPerSubQuad;
+                    float z0 = (z + v0) - overhangPerSubQuad;
+                    float z1 = (z + v1) + overhangPerSubQuad;
+
+                    Vector3 p00 = new Vector3(x0, seaY, z0);
+                    Vector3 p10 = new Vector3(x1, seaY, z0);
+                    Vector3 p01 = new Vector3(x0, seaY, z1);
+                    Vector3 p11 = new Vector3(x1, seaY, z1);
+
+                    Vector2 uv00 = new Vector2((x + u0) * uvScale, (z + v0) * uvScale);
+                    Vector2 uv10 = new Vector2((x + u1) * uvScale, (z + v0) * uvScale);
+                    Vector2 uv01 = new Vector2((x + u0) * uvScale, (z + v1) * uvScale);
+                    Vector2 uv11 = new Vector2((x + u1) * uvScale, (z + v1) * uvScale);
+
+                    AddFlatTri(verts, tris, uvs, p00, p10, p11, uv00, uv10, uv11, lowPolyWaterDoubleSided);
+                    AddFlatTri(verts, tris, uvs, p00, p11, p01, uv00, uv11, uv01, lowPolyWaterDoubleSided);
+                }
+            }
+
+            var mesh = new Mesh { name = "LowPoly_Water" };
+            mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+            mesh.SetVertices(verts);
+            mesh.SetTriangles(tris, 0);
+            mesh.SetUVs(0, uvs);
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
+            return mesh;
+        }
+
+        private static float EvalMask(float[,] cornerMask, int cellX, int cellZ, float u, float v)
+        {
+            float m00 = cornerMask[cellX, cellZ];
+            float m10 = cornerMask[cellX + 1, cellZ];
+            float m01 = cornerMask[cellX, cellZ + 1];
+            float m11 = cornerMask[cellX + 1, cellZ + 1];
+            float mx0 = Mathf.Lerp(m00, m10, u);
+            float mx1 = Mathf.Lerp(m01, m11, u);
+            return Mathf.Lerp(mx0, mx1, v);
+        }
+
+        private static void AddFlatTri(
+            List<Vector3> verts, List<int> tris, List<Vector2> uvs,
+            Vector3 a, Vector3 b, Vector3 c,
+            Vector2 uva, Vector2 uvb, Vector2 uvc,
+            bool doubleSided)
+        {
+            int i0 = verts.Count;
+            verts.Add(a); verts.Add(b); verts.Add(c);
+            uvs.Add(uva); uvs.Add(uvb); uvs.Add(uvc);
+            tris.Add(i0 + 0); tris.Add(i0 + 1); tris.Add(i0 + 2);
+
+            if (!doubleSided)
+                return;
+
+            int j0 = verts.Count;
+            verts.Add(a); verts.Add(c); verts.Add(b);
+            uvs.Add(uva); uvs.Add(uvc); uvs.Add(uvb);
+            tris.Add(j0 + 0); tris.Add(j0 + 1); tris.Add(j0 + 2);
         }
 
         private void BuildWorldBoundary()
@@ -1375,6 +1857,147 @@ namespace SCoL.Voxels
             return false;
         }
 
+        /// <summary>
+        /// Returns world-space terrain surface Y at the given world position.
+        /// Surface Y is the top face (blockY + 1), not the block index itself.
+        /// </summary>
+        public bool TryGetTerrainSurfaceYAtWorld(Vector3 worldPos, out float surfaceY, bool includeWaterSurface = false)
+        {
+            surfaceY = 0f;
+            if (config == null)
+                return false;
+            if (!TryWorldToColumn(worldPos, out int x, out int z))
+                return false;
+
+            if (useLowPolyTerrainVisual &&
+                _lowPolyCornerHeights != null &&
+                TrySampleLowPolyHeightAtWorld(worldPos, out float lowPolyY))
+            {
+                surfaceY = lowPolyY;
+                return true;
+            }
+
+            for (int y = config.worldHeight - 1; y >= 0; y--)
+            {
+                var t = GetBlock(x, y, z);
+                if (t == VoxelBlockType.Air)
+                    continue;
+                if (!includeWaterSurface && t == VoxelBlockType.Water)
+                    continue;
+
+                surfaceY = OriginWorld.y + y + 1f;
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Toggle visible water surface rendering while keeping gameplay voxels/colliders intact.
+        /// </summary>
+        public void SetWaterSurfaceVisible(bool visible)
+        {
+            _waterSurfaceVisible = visible;
+            if (_lowPolyWaterRenderer != null)
+                _lowPolyWaterRenderer.enabled = visible;
+            foreach (var kv in _chunkGOs)
+            {
+                if (kv.Value == null)
+                    continue;
+                var mr = kv.Value.GetComponent<MeshRenderer>();
+                if (mr == null)
+                    continue;
+                ApplyWaterSurfaceVisibilityToChunk(kv.Key, mr);
+            }
+        }
+
+        private void ApplyWaterSurfaceVisibilityToChunk(Vector2Int cc, MeshRenderer mr)
+        {
+            if (mr == null)
+                return;
+            if (!_chunkSubmeshOrder.TryGetValue(cc, out var order) || order == null || order.Length == 0)
+                return;
+
+            var mats = mr.sharedMaterials;
+            if (mats == null || mats.Length == 0)
+                return;
+
+            bool dirty = false;
+            Material hiddenMat = null;
+            for (int i = 0; i < mats.Length && i < order.Length; i++)
+            {
+                if (order[i] != VoxelBlockType.Water)
+                    continue;
+
+                var desired = _waterSurfaceVisible ? waterMat : (hiddenMat ??= EnsureHiddenWaterMaterial());
+                if (mats[i] != desired)
+                {
+                    mats[i] = desired;
+                    dirty = true;
+                }
+            }
+
+            if (dirty)
+                mr.sharedMaterials = mats;
+        }
+
+        private Material EnsureHiddenWaterMaterial()
+        {
+            if (_hiddenWaterMat != null)
+                return _hiddenWaterMat;
+
+            Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
+            if (shader == null) shader = Shader.Find("Unlit/Transparent");
+            if (shader == null) shader = Shader.Find("Unlit/Color");
+            if (shader == null && waterMat != null) shader = waterMat.shader;
+            if (shader == null) shader = Shader.Find("Standard");
+
+            var m = new Material(shader) { name = "Voxel_Water_Hidden" };
+            m.enableInstancing = true;
+
+            Color clear = new Color(0f, 0f, 0f, 0f);
+            if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", clear);
+            if (m.HasProperty("_Color")) m.SetColor("_Color", clear);
+            if (m.HasProperty("_Surface")) m.SetFloat("_Surface", 1f); // URP Transparent
+            if (m.HasProperty("_ZWrite")) m.SetFloat("_ZWrite", 0f);
+            if (m.HasProperty("_SrcBlend")) m.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            if (m.HasProperty("_DstBlend")) m.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            m.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+
+            _hiddenWaterMat = m;
+            return _hiddenWaterMat;
+        }
+
+        private bool TrySampleLowPolyHeightAtWorld(Vector3 worldPos, out float y)
+        {
+            y = 0f;
+            if (_lowPolyCornerHeights == null || config == null)
+                return false;
+
+            Vector3 local = worldPos - OriginWorld;
+            float x = local.x;
+            float z = local.z;
+            if (x < 0f || z < 0f || x > config.worldWidth || z > config.worldDepth)
+                return false;
+
+            int x0 = Mathf.Clamp(Mathf.FloorToInt(x), 0, config.worldWidth - 1);
+            int z0 = Mathf.Clamp(Mathf.FloorToInt(z), 0, config.worldDepth - 1);
+            int x1 = Mathf.Min(x0 + 1, config.worldWidth);
+            int z1 = Mathf.Min(z0 + 1, config.worldDepth);
+            float tx = Mathf.Clamp01(x - x0);
+            float tz = Mathf.Clamp01(z - z0);
+
+            float h00 = _lowPolyCornerHeights[x0, z0];
+            float h10 = _lowPolyCornerHeights[x1, z0];
+            float h01 = _lowPolyCornerHeights[x0, z1];
+            float h11 = _lowPolyCornerHeights[x1, z1];
+
+            float hx0 = Mathf.Lerp(h00, h10, tx);
+            float hx1 = Mathf.Lerp(h01, h11, tx);
+            y = OriginWorld.y + Mathf.Lerp(hx0, hx1, tz);
+            return true;
+        }
+
         public Vector3 ColumnTopWorld(int x, int z)
         {
             int y = GetSurfaceY(x, z);
@@ -1514,6 +2137,8 @@ namespace SCoL.Voxels
                 if (!config.generateColliders) continue;
 
                 bool withinCollider = dist <= config.colliderDistanceChunks;
+                if (useLowPolyTerrainVisual && useLowPolyTerrainCollider)
+                    withinCollider = false;
                 if (_chunkColliders.TryGetValue(cc, out var mc) && mc != null)
                 {
                     if (mc.enabled != withinCollider)

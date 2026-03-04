@@ -16,6 +16,8 @@ using UnityEditor;
 /// </summary>
 public class FPSRaycastInteractor : MonoBehaviour
 {
+    const int MaxBurnTintRendererCount = 64;
+
     public enum ApplyTool
     {
         Seed,
@@ -48,6 +50,20 @@ public class FPSRaycastInteractor : MonoBehaviour
     [Min(0f)] public float surfaceOffset = 0.01f;
     public Color waterSpreadColor = new Color(0.18f, 0.45f, 0.95f, 0.95f);
     public Color fireSpreadColor = new Color(0.95f, 0.18f, 0.14f, 0.95f);
+    [Tooltip("Use circular rings (instead of square rings) for temporary water/fire spread VFX.")]
+    public bool useCircularSpreadPattern = true;
+    [Tooltip("Adds small per-tile offset for water VFX so it feels less grid-like.")]
+    [Range(0f, 0.5f)] public float waterSpreadJitter = 0.16f;
+    [Header("Spread Visual Style")]
+    [Tooltip("Use soft ground decals (quads) for temporary water/fire spread visuals.")]
+    public bool useSoftDecalSpreadVisuals = true;
+    [Tooltip("When low-poly terrain visual is active, optionally hide temporary spread visuals.")]
+    public bool suppressTempSpreadVisualsOnLowPoly = false;
+    [Range(0f, 1f)] public float spreadVisualInnerRadius = 0.20f;
+    [Range(0f, 1f)] public float spreadVisualEdgeSoftness = 0.30f;
+    [Range(0.1f, 2f)] public float waterSpreadVisualScale = 1.15f;
+    [Range(0.1f, 2f)] public float fireSpreadVisualScale = 1.00f;
+    [Min(0f)] public float spreadVisualLift = 0.02f;
 
     [Header("Seed Growth Models (Optional)")]
     public bool useImportedPlantStageModels = true;
@@ -104,8 +120,11 @@ public class FPSRaycastInteractor : MonoBehaviour
 
     SCoL.Inventory.SCoLInventory _inventory;
     SCoLRuntime _runtime;
+    PlantVoxelRenderer _plantRenderer;
     Material _waterSpreadMat;
     Material _fireSpreadMat;
+    Texture2D _waterSpreadStampTex;
+    Texture2D _fireSpreadStampTex;
     FPSSeeding.GrowthSetup _growthSetup;
     Coroutine _activeFireSpreadRoutine;
     readonly System.Collections.Generic.List<GameObject> _activeFireBlocks = new System.Collections.Generic.List<GameObject>(128);
@@ -139,6 +158,7 @@ public class FPSRaycastInteractor : MonoBehaviour
             _inventory = invGO.AddComponent<SCoL.Inventory.SCoLInventory>();
         }
         _runtime = FindFirstObjectByType<SCoLRuntime>();
+        _plantRenderer = FindFirstObjectByType<PlantVoxelRenderer>();
 
         _growthSetup = new FPSSeeding.GrowthSetup();
         RefreshGrowthSetup();
@@ -154,17 +174,20 @@ public class FPSRaycastInteractor : MonoBehaviour
 
     private void EnsureFpsFeedbackSystems()
     {
-        var crosshair = FindFirstObjectByType<FPSCrosshair>();
-        if (crosshair == null)
+        var hud = FindFirstObjectByType<SCoL.Visualization.SCoLUIToolkitHUD>();
+        if (hud == null)
         {
-            crosshair = gameObject.GetComponent<FPSCrosshair>();
-            if (crosshair == null)
-                crosshair = gameObject.AddComponent<FPSCrosshair>();
+            hud = gameObject.GetComponent<SCoL.Visualization.SCoLUIToolkitHUD>();
+            if (hud == null)
+                hud = gameObject.AddComponent<SCoL.Visualization.SCoLUIToolkitHUD>();
         }
-        crosshair.enabled = true;
-        crosshair.showTargetInfo = true;
-        if (crosshair.cameraSource == null)
-            crosshair.cameraSource = cameraSource;
+        hud.enabled = true;
+        if (hud.cameraSource == null)
+            hud.cameraSource = cameraSource;
+
+        var oldCrosshair = FindFirstObjectByType<FPSCrosshair>();
+        if (oldCrosshair != null)
+            oldCrosshair.enabled = false;
 
         var aura = FindFirstObjectByType<FPSAimAuraHighlighter>();
         if (aura == null)
@@ -623,7 +646,10 @@ public class FPSRaycastInteractor : MonoBehaviour
         bool beforePlant = before != null && before.HasPlant;
         bool beforeLineage = before != null && before.IsPlayerSeedLineage;
 
-        _runtime.PlaceSeedAt(worldPoint);
+        if (_plantRenderer == null)
+            _plantRenderer = FindFirstObjectByType<PlantVoxelRenderer>();
+        int selectedVariant = _plantRenderer != null ? _plantRenderer.GetSelectedFlowerVariantIndex() : -1;
+        _runtime.PlaceSeedAt(worldPoint, selectedVariant);
 
         var after = _runtime.Grid.Get(x, y);
         if (after == null)
@@ -722,6 +748,14 @@ public class FPSRaycastInteractor : MonoBehaviour
         ClearActiveFire();
     }
 
+    void OnDestroy()
+    {
+        if (_waterSpreadMat != null) Destroy(_waterSpreadMat);
+        if (_fireSpreadMat != null) Destroy(_fireSpreadMat);
+        if (_waterSpreadStampTex != null) Destroy(_waterSpreadStampTex);
+        if (_fireSpreadStampTex != null) Destroy(_fireSpreadStampTex);
+    }
+
     void StartFireLoopAudio()
     {
         if (fireLoopAudioSource == null || fireLoopClip == null)
@@ -776,7 +810,12 @@ public class FPSRaycastInteractor : MonoBehaviour
 
     void HandleToolSwitchInput()
     {
-        if (SCoL.Interaction.SCoLInteractionInput.ToolSlotPressed(1)) currentTool = ApplyTool.Seed;
+        if (SCoL.Interaction.SCoLInteractionInput.ToolSlotPressed(1))
+        {
+            // Key 1 always enters Seed tool and advances to next flower variant.
+            currentTool = ApplyTool.Seed;
+            TryCycleSeedFlowerVariant();
+        }
         if (SCoL.Interaction.SCoLInteractionInput.ToolSlotPressed(2)) currentTool = ApplyTool.Water;
         if (SCoL.Interaction.SCoLInteractionInput.ToolSlotPressed(3)) currentTool = ApplyTool.Fire;
         if (SCoL.Interaction.SCoLInteractionInput.ToolSlotPressed(4)) currentTool = ApplyTool.Plant;
@@ -785,6 +824,33 @@ public class FPSRaycastInteractor : MonoBehaviour
             CycleTool(+1);
         if (SCoL.Interaction.SCoLInteractionInput.ToolPrevPressed())
             CycleTool(-1);
+    }
+
+    bool TryCycleSeedFlowerVariant()
+    {
+        if (_plantRenderer == null)
+            _plantRenderer = FindFirstObjectByType<PlantVoxelRenderer>();
+        if (_plantRenderer == null)
+            return false;
+
+        bool cycled = _plantRenderer.CycleSelectedFlower(+1);
+        if (!cycled)
+            return false;
+
+        _runtime?.ForceRender();
+
+        if (logHits)
+            Debug.Log($"[FPSRaycastInteractor] Seed flower switched: {GetSelectedFlowerName()}");
+        return true;
+    }
+
+    public string GetSelectedFlowerName()
+    {
+        if (_plantRenderer == null)
+            _plantRenderer = FindFirstObjectByType<PlantVoxelRenderer>();
+        if (_plantRenderer == null)
+            return "Default Flower";
+        return _plantRenderer.GetSelectedFlowerName();
     }
 
     void CycleTool(int delta)
@@ -842,6 +908,15 @@ public class FPSRaycastInteractor : MonoBehaviour
                 if (Mathf.Abs(x) != ring && Mathf.Abs(z) != ring)
                     continue;
 
+                if (useCircularSpreadPattern)
+                {
+                    float d = Mathf.Sqrt(x * x + z * z);
+                    float inner = Mathf.Max(0f, ring - 0.85f);
+                    float outer = ring + 0.45f;
+                    if (d < inner || d > outer)
+                        continue;
+                }
+
                 SpawnBlock(center + new Vector3(x * spreadCellSize, 0f, z * spreadCellSize), mat, sink, burnTargets, waterTargets);
             }
         }
@@ -849,19 +924,14 @@ public class FPSRaycastInteractor : MonoBehaviour
 
     void SpawnBlock(Vector3 pos, Material mat, System.Collections.Generic.List<GameObject> sink, bool burnTargets, bool waterTargets)
     {
-        var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        go.name = currentTool == ApplyTool.Water ? "WaterTempBlock" : "FireTempBlock";
-        Vector3 surfacePos = ProjectToSurface(pos);
-        go.transform.position = surfacePos;
-        go.transform.localScale = new Vector3(blockScale, blockThickness, blockScale);
+        if (waterTargets && waterSpreadJitter > 0f)
+        {
+            float jitter = Mathf.Clamp(waterSpreadJitter, 0f, 0.5f) * spreadCellSize;
+            pos.x += Random.Range(-jitter, jitter);
+            pos.z += Random.Range(-jitter, jitter);
+        }
 
-        var r = go.GetComponent<Renderer>();
-        if (r != null && mat != null)
-            r.sharedMaterial = mat;
-
-        var c = go.GetComponent<Collider>();
-        if (c != null)
-            Destroy(c);
+        Vector3 surfacePos = ProjectToSurface(pos, out Vector3 surfaceNormal);
 
         if (burnTargets)
         {
@@ -874,16 +944,61 @@ public class FPSRaycastInteractor : MonoBehaviour
             WaterAffectSeedGrowthAtTile(surfacePos, Mathf.Max(0.05f, blockScale * 0.55f));
         }
 
+        if (suppressTempSpreadVisualsOnLowPoly && IsLowPolyTerrainVisualActive())
+            return;
+
+        var go = GameObject.CreatePrimitive(useSoftDecalSpreadVisuals ? PrimitiveType.Quad : (waterTargets ? PrimitiveType.Sphere : PrimitiveType.Cube));
+        go.name = currentTool == ApplyTool.Water ? "WaterTempBlock" : "FireTempBlock";
+        if (useSoftDecalSpreadVisuals)
+        {
+            Vector3 n = surfaceNormal.sqrMagnitude > 0.0001f ? surfaceNormal.normalized : Vector3.up;
+            float scale = Mathf.Max(0.1f, blockScale * (waterTargets ? waterSpreadVisualScale : fireSpreadVisualScale));
+            go.transform.position = surfacePos + n * Mathf.Max(0f, spreadVisualLift);
+            go.transform.rotation = Quaternion.FromToRotation(Vector3.forward, n) * Quaternion.AngleAxis(Random.Range(0f, 360f), n);
+            go.transform.localScale = new Vector3(scale, scale, 1f);
+        }
+        else
+        {
+            go.transform.position = surfacePos;
+            if (waterTargets)
+                go.transform.localScale = new Vector3(blockScale * 1.08f, Mathf.Max(0.01f, blockThickness * 0.45f), blockScale * 1.08f);
+            else
+                go.transform.localScale = new Vector3(blockScale, blockThickness, blockScale);
+        }
+
+        var r = go.GetComponent<Renderer>();
+        if (r != null && mat != null)
+        {
+            r.sharedMaterial = mat;
+            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            r.receiveShadows = false;
+        }
+
+        var c = go.GetComponent<Collider>();
+        if (c != null)
+            Destroy(c);
+
         sink.Add(go);
     }
 
-    Vector3 ProjectToSurface(Vector3 p)
+    bool IsLowPolyTerrainVisualActive()
     {
+        if (_voxelWorld == null || !_voxelWorld.isActiveAndEnabled)
+            _voxelWorld = FindFirstObjectByType<VoxelWorld>();
+        return _voxelWorld != null && _voxelWorld.useLowPolyTerrainVisual;
+    }
+
+    Vector3 ProjectToSurface(Vector3 p, out Vector3 normal)
+    {
+        normal = Vector3.up;
         Vector3 origin = new Vector3(p.x, p.y + Mathf.Max(0.1f, surfaceProbeHeight), p.z);
         float dist = Mathf.Max(0.2f, surfaceProbeHeight * 2f);
         if (Physics.Raycast(origin, Vector3.down, out var hit, dist, hitMask, QueryTriggerInteraction.Ignore))
         {
-            float y = hit.point.y + blockThickness * 0.5f + surfaceOffset;
+            normal = hit.normal.sqrMagnitude > 0.0001f ? hit.normal.normalized : Vector3.up;
+            float y = useSoftDecalSpreadVisuals
+                ? hit.point.y + Mathf.Max(0.0015f, surfaceOffset)
+                : hit.point.y + blockThickness * 0.5f + surfaceOffset;
             return new Vector3(p.x, y, p.z);
         }
         return p;
@@ -891,22 +1006,10 @@ public class FPSRaycastInteractor : MonoBehaviour
 
     void TryBurnTintTarget(RaycastHit hit)
     {
-        Transform target = null;
-        for (Transform t = hit.collider != null ? hit.collider.transform : null; t != null; t = t.parent)
-        {
-            if (t.CompareTag("Harvestable"))
-            {
-                target = t;
-                break;
-            }
-        }
-
-        if (target == null && hit.collider != null)
-        {
-            var anyRenderer = hit.collider.GetComponentInParent<Renderer>();
-            if (anyRenderer != null)
-                target = anyRenderer.transform;
-        }
+        if (hit.collider == null)
+            return;
+        if (!TryResolveBurnTargetRoot(hit.collider, out var target))
+            return;
 
         if (target == null)
             return;
@@ -926,22 +1029,8 @@ public class FPSRaycastInteractor : MonoBehaviour
             var col = hits[i];
             if (col == null) continue;
 
-            Transform root = null;
-            for (Transform t = col.transform; t != null; t = t.parent)
-            {
-                if (t.CompareTag("Harvestable"))
-                {
-                    root = t;
-                    break;
-                }
-            }
-
-            if (root == null)
-            {
-                var anyRenderer = col.GetComponentInParent<Renderer>();
-                if (anyRenderer != null)
-                    root = anyRenderer.transform;
-            }
+            if (!TryResolveBurnTargetRoot(col, out var root))
+                continue;
 
             if (root == null || !seen.Add(root))
                 continue;
@@ -953,6 +1042,34 @@ public class FPSRaycastInteractor : MonoBehaviour
 
             BurnTintRenderers(root.GetComponentsInChildren<Renderer>(includeInactive: true));
         }
+    }
+
+    static bool TryResolveBurnTargetRoot(Collider col, out Transform root)
+    {
+        root = null;
+        if (col == null)
+            return false;
+
+        // Prefer authored plant root if available.
+        var growth = col.GetComponentInParent<FPSSeedGrowth>();
+        if (growth != null)
+        {
+            root = growth.transform;
+            return true;
+        }
+
+        // Accept explicitly tagged gameplay entities only.
+        for (Transform t = col.transform; t != null; t = t.parent)
+        {
+            if (t.CompareTag("Harvestable"))
+            {
+                root = t;
+                return true;
+            }
+        }
+
+        // Never fall back to "any renderer" (that can blacken terrain/sky/water chunks).
+        return false;
     }
 
     void WaterAffectSeedGrowthAtTile(Vector3 tileCenter, float tileRadius)
@@ -1039,6 +1156,8 @@ public class FPSRaycastInteractor : MonoBehaviour
     {
         if (renderers == null || renderers.Length == 0)
             return;
+        if (renderers.Length > MaxBurnTintRendererCount)
+            return;
 
         for (int i = 0; i < renderers.Length; i++)
         {
@@ -1064,26 +1183,71 @@ public class FPSRaycastInteractor : MonoBehaviour
     Material GetWaterSpreadMat()
     {
         if (_waterSpreadMat != null) return _waterSpreadMat;
-        _waterSpreadMat = NewSpreadMat("TempWaterSpreadMat", waterSpreadColor);
+        _waterSpreadStampTex = BuildSpreadStampTexture("TempWaterSpreadStamp");
+        _waterSpreadMat = NewSpreadMat("TempWaterSpreadMat", waterSpreadColor, _waterSpreadStampTex);
         return _waterSpreadMat;
     }
 
     Material GetFireSpreadMat()
     {
         if (_fireSpreadMat != null) return _fireSpreadMat;
-        _fireSpreadMat = NewSpreadMat("TempFireSpreadMat", fireSpreadColor);
+        _fireSpreadStampTex = BuildSpreadStampTexture("TempFireSpreadStamp");
+        _fireSpreadMat = NewSpreadMat("TempFireSpreadMat", fireSpreadColor, _fireSpreadStampTex);
         return _fireSpreadMat;
     }
 
-    static Material NewSpreadMat(string name, Color color)
+    Texture2D BuildSpreadStampTexture(string name)
     {
-        Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+        int size = 64;
+        var tex = new Texture2D(size, size, TextureFormat.RGBA32, false, true);
+        tex.name = name;
+        tex.wrapMode = TextureWrapMode.Clamp;
+        tex.filterMode = FilterMode.Bilinear;
+
+        float inner = Mathf.Clamp01(spreadVisualInnerRadius);
+        float softness = Mathf.Clamp(spreadVisualEdgeSoftness, 0.001f, 1f);
+        float edge0 = inner;
+        float edge1 = Mathf.Clamp01(inner + softness);
+
+        for (int y = 0; y < size; y++)
+        {
+            float v = (y + 0.5f) / size * 2f - 1f;
+            for (int x = 0; x < size; x++)
+            {
+                float u = (x + 0.5f) / size * 2f - 1f;
+                float r = Mathf.Sqrt(u * u + v * v);
+                float a = 0f;
+                if (r <= 1f)
+                {
+                    float t = Mathf.InverseLerp(edge0, edge1, r);
+                    a = 1f - Mathf.SmoothStep(0f, 1f, t);
+                }
+                tex.SetPixel(x, y, new Color(1f, 1f, 1f, a));
+            }
+        }
+        tex.Apply(updateMipmaps: false, makeNoLongerReadable: false);
+        return tex;
+    }
+
+    static Material NewSpreadMat(string name, Color color, Texture2D stampTex)
+    {
+        Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
+        if (shader == null) shader = Shader.Find("Unlit/Transparent");
         if (shader == null) shader = Shader.Find("Standard");
         var mat = new Material(shader) { name = name };
         if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", color);
         if (mat.HasProperty("_Color")) mat.SetColor("_Color", color);
-        if (mat.HasProperty("_Surface")) mat.SetFloat("_Surface", 1f);
-        if (mat.HasProperty("_Blend")) mat.SetFloat("_Blend", 0f);
+        if (stampTex != null)
+        {
+            if (mat.HasProperty("_BaseMap")) mat.SetTexture("_BaseMap", stampTex);
+            if (mat.HasProperty("_MainTex")) mat.SetTexture("_MainTex", stampTex);
+        }
+        if (mat.HasProperty("_Surface")) mat.SetFloat("_Surface", 1f); // URP Transparent
+        if (mat.HasProperty("_Blend")) mat.SetFloat("_Blend", 0f); // Alpha
+        if (mat.HasProperty("_ZWrite")) mat.SetFloat("_ZWrite", 0f);
+        if (mat.HasProperty("_SrcBlend")) mat.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
+        if (mat.HasProperty("_DstBlend")) mat.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+        mat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent + 5;
         return mat;
     }
 
