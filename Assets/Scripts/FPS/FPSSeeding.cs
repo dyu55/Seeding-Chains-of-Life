@@ -238,6 +238,9 @@ public sealed class FPSSeedGrowth : MonoBehaviour
     [Min(0f)] public float stompTopTolerance = 0.15f;
     [Min(0f)] public float stompFootAllowanceAboveTop = 0.45f;
     [Min(0.05f)] public float stompHorizontalPadding = 0.20f;
+    [Header("Fire Burn Visual")]
+    [Min(0.03f)] public float fireBurnBlockWidth = 0.18f;
+    [Min(0.08f)] public float fireBurnBlockHeight = 0.48f;
 
     private int _stage; // 0=sprout, 1=small, 2=medium, 3=mature
     private float _stageTimer;
@@ -319,7 +322,7 @@ public sealed class FPSSeedGrowth : MonoBehaviour
     {
         if (_burned) return;
         _burned = true;
-        BurnTintRenderers();
+        BuildFireBurnBlock();
 
         if (destroyOnFire && Random.value <= Mathf.Clamp01(destroyChance))
             StartCoroutine(DestroyAfterDelay(Mathf.Max(0f, destroyDelaySeconds)));
@@ -586,6 +589,49 @@ public sealed class FPSSeedGrowth : MonoBehaviour
             if (m.HasProperty("_Color")) m.SetColor("_Color", Color.black);
             if (m.HasProperty("_EmissionColor")) m.SetColor("_EmissionColor", Color.black);
         }
+    }
+
+    void BuildFireBurnBlock()
+    {
+        for (int i = transform.childCount - 1; i >= 0; i--)
+            Destroy(transform.GetChild(i).gameObject);
+
+        float w = Mathf.Max(0.03f, fireBurnBlockWidth);
+        float h = Mathf.Max(0.08f, fireBurnBlockHeight);
+
+        var cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        cube.name = "BurnedByFire";
+        cube.transform.SetParent(transform, false);
+        cube.transform.localPosition = new Vector3(0f, h * 0.5f, 0f);
+        cube.transform.localRotation = Quaternion.identity;
+        cube.transform.localScale = new Vector3(w, h, w);
+
+        var r = cube.GetComponent<Renderer>();
+        if (r != null)
+        {
+            Material mat;
+            if (growthMaterial != null)
+            {
+                mat = new Material(growthMaterial) { name = "BurnedByFire_Mat" };
+            }
+            else
+            {
+                Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+                if (shader == null) shader = Shader.Find("Standard");
+                mat = new Material(shader) { name = "BurnedByFire_Mat" };
+            }
+
+            if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", Color.black);
+            if (mat.HasProperty("_Color")) mat.SetColor("_Color", Color.black);
+            if (mat.HasProperty("_EmissionColor")) mat.SetColor("_EmissionColor", Color.black);
+            r.sharedMaterial = mat;
+        }
+
+        var c = cube.GetComponent<Collider>();
+        if (c != null)
+            Destroy(c);
+
+        RefreshRootCollider();
     }
 
     System.Collections.IEnumerator DestroyAfterDelay(float seconds)

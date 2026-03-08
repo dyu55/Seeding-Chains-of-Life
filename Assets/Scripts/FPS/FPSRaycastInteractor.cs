@@ -648,8 +648,7 @@ public class FPSRaycastInteractor : MonoBehaviour
 
         if (_plantRenderer == null)
             _plantRenderer = FindFirstObjectByType<PlantVoxelRenderer>();
-        int selectedVariant = _plantRenderer != null ? _plantRenderer.GetSelectedFlowerVariantIndex() : -1;
-        _runtime.PlaceSeedAt(worldPoint, selectedVariant);
+        _runtime.PlaceSeedAt(worldPoint);
 
         var after = _runtime.Grid.Get(x, y);
         if (after == null)

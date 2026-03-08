@@ -121,6 +121,7 @@ namespace SCoL.Inventory
                     go.transform.position = pos;
                     go.transform.localScale = DefaultShapeScale(seedShape ?? PrimitiveType.Capsule);
                 }
+                SetLayerRecursive(go, 0); // Default layer for raycast pickup parity.
                 float s = Random.Range(Mathf.Min(randomScaleRange.x, randomScaleRange.y), Mathf.Max(randomScaleRange.x, randomScaleRange.y));
                 go.transform.localScale = go.transform.localScale * s * Mathf.Max(0.5f, pickupGlobalScaleMultiplier);
 
@@ -186,9 +187,22 @@ namespace SCoL.Inventory
         private static void EnsureCollider(GameObject go)
         {
             if (go == null) return;
-            var c = go.GetComponentInChildren<Collider>();
-            if (c != null) return;
-            go.AddComponent<BoxCollider>();
+            var cols = go.GetComponentsInChildren<Collider>(includeInactive: true);
+            if (cols != null && cols.Length > 0)
+            {
+                for (int i = 0; i < cols.Length; i++)
+                {
+                    var c = cols[i];
+                    if (c == null) continue;
+                    c.enabled = true;
+                    c.isTrigger = false;
+                }
+                return;
+            }
+
+            var added = go.AddComponent<BoxCollider>();
+            added.enabled = true;
+            added.isTrigger = false;
         }
 
         private bool TryFallbackSpawnNearPlayer(out Vector3 pos, int i, int count, float angleOffset)
@@ -243,6 +257,7 @@ namespace SCoL.Inventory
                 go.transform.position = pos;
                 go.transform.localScale = DefaultShapeScale(seedShape ?? PrimitiveType.Capsule) * 1.25f;
             }
+            SetLayerRecursive(go, 0);
             go.transform.localScale = go.transform.localScale * Mathf.Max(0.5f, pickupGlobalScaleMultiplier);
 
             var rb = go.GetComponent<Rigidbody>();
@@ -329,6 +344,19 @@ namespace SCoL.Inventory
                 PrimitiveType.Cylinder => new Vector3(0.13f, 0.16f, 0.13f),
                 _ => Vector3.one * 0.14f
             };
+        }
+
+        private static void SetLayerRecursive(GameObject go, int layer)
+        {
+            if (go == null) return;
+            go.layer = layer;
+            var ts = go.GetComponentsInChildren<Transform>(includeInactive: true);
+            for (int i = 0; i < ts.Length; i++)
+            {
+                var t = ts[i];
+                if (t != null)
+                    t.gameObject.layer = layer;
+            }
         }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]

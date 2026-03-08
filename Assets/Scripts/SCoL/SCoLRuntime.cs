@@ -788,6 +788,14 @@ namespace SCoL
             _plantRenderer?.RenderNow();
         }
 
+        /// <summary>
+        /// Backward-compatible overload. Variant selection is currently handled in renderer, not CA cell state.
+        /// </summary>
+        public void PlaceSeedAt(Vector3 world, int selectedVariant)
+        {
+            PlaceSeedAt(world);
+        }
+
         public bool TryDestroyPlantAtCell(int x, int y)
         {
             if (Grid == null || !Grid.InBounds(x, y))

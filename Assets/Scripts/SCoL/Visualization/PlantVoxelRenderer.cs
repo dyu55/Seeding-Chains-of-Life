@@ -55,6 +55,7 @@ namespace SCoL.Visualization
         private readonly Dictionary<int, ActivePlant> _active = new();
         private readonly Dictionary<string, Stack<GameObject>> _pool = new();
         private readonly Dictionary<PlantStage, Material> _fallbackMats = new();
+        private int _selectedFlowerVariant = 0;
 
         private void Awake()
         {
@@ -206,6 +207,49 @@ namespace SCoL.Visualization
         private static float Hash01(int value)
         {
             return PositiveHash(value) / (float)int.MaxValue;
+        }
+
+        /// <summary>
+        /// Compatibility API expected by FPSRaycastInteractor.
+        /// Returns selected flower variant index in smallPlantPrefabs.
+        /// </summary>
+        public int GetSelectedFlowerVariantIndex()
+        {
+            if (smallPlantPrefabs == null || smallPlantPrefabs.Length == 0)
+                return -1;
+            _selectedFlowerVariant = Mathf.Clamp(_selectedFlowerVariant, 0, smallPlantPrefabs.Length - 1);
+            return _selectedFlowerVariant;
+        }
+
+        /// <summary>
+        /// Compatibility API expected by FPSRaycastInteractor.
+        /// Cycles selected small flower prefab variant.
+        /// </summary>
+        public bool CycleSelectedFlower(int delta)
+        {
+            if (smallPlantPrefabs == null || smallPlantPrefabs.Length == 0)
+                return false;
+
+            int len = smallPlantPrefabs.Length;
+            if (len <= 0)
+                return false;
+
+            int next = (_selectedFlowerVariant + delta) % len;
+            if (next < 0) next += len;
+            _selectedFlowerVariant = next;
+            return true;
+        }
+
+        /// <summary>
+        /// Compatibility API expected by FPSRaycastInteractor/HUD.
+        /// </summary>
+        public string GetSelectedFlowerName()
+        {
+            int idx = GetSelectedFlowerVariantIndex();
+            if (idx < 0 || smallPlantPrefabs == null || idx >= smallPlantPrefabs.Length)
+                return "Default Flower";
+            var p = smallPlantPrefabs[idx];
+            return p != null ? p.name : "Default Flower";
         }
 
         private bool IsFlowerPrefabVariant(PlantStage stage, int variant)

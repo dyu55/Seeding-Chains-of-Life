@@ -43,6 +43,17 @@ namespace SCoL.Voxels
         [Tooltip("Noise scale controlling where 2-ring vs 3-ring shoreline appears.")]
         [Min(0.001f)] public float shorelineSandNoiseScale = 0.085f;
 
+        [Header("Terrain Shaping")]
+        [Tooltip("Keep map edges above sea level so lakes stay fully inside world bounds.")]
+        [Min(0)] public int edgeLandBufferBlocks = 4;
+        [Tooltip("Minimum terrain height above sea level inside edge buffer.")]
+        [Min(0)] public int edgeMinHeightAboveSea = 1;
+        [Tooltip("Create a few deterministic flat areas for building placement.")]
+        public bool enableFlatBuildPads = true;
+        [Min(0)] public int flatBuildPadCount = 4;
+        [Min(2f)] public float flatBuildPadRadius = 7f;
+        [Range(0f, 1f)] public float flatBuildPadBlend = 0.95f;
+
         [Header("Low Poly Terrain Visual")]
         [Tooltip("Render a smoothed low-poly terrain/water mesh and hide voxel cube renderers.")]
         public bool useLowPolyTerrainVisual = true;
@@ -170,6 +181,14 @@ namespace SCoL.Voxels
         private bool _useCubeNetStoneUV;
         private bool _waterSurfaceVisible = true;
         private Material _hiddenWaterMat;
+        private readonly List<FlatBuildPad> _flatBuildPads = new();
+
+        private struct FlatBuildPad
+        {
+            public Vector2 centerXZ;
+            public float radius;
+            public int targetHeight;
+        }
 
         private float _streamT;
         private Texture2D _grassFaceAtlasRuntime;
@@ -192,6 +211,7 @@ namespace SCoL.Voxels
             _seed = config.useFixedSeed ? config.seed : Environment.TickCount;
             _rng = new System.Random(_seed);
             _noiseOffset = new Vector2(_rng.Next(-100000, 100000), _rng.Next(-100000, 100000));
+            InitFlatBuildPads();
 
             EnsureDefaultMaterials();
             EnforceWaterEdgeSmoothingDefaults();
@@ -840,6 +860,12 @@ namespace SCoL.Voxels
 
             float inset = Mathf.Clamp(winterOverlayInset, 0.001f, 0.49f);
             float h = Mathf.Max(0.001f, winterOverlayHeightOffset);
+            float[,] landCorners = null;
+            if (!includeWaterColumns)
+            {
+                float[,] dummyWaterMask;
+                BuildLowPolyCornerMaps(out landCorners, out dummyWaterMask);
+            }
 
             var verts = new List<Vector3>(config.worldWidth * config.worldDepth * 4);
             var tris = new List<int>(config.worldWidth * config.worldDepth * 6);
@@ -855,17 +881,33 @@ namespace SCoL.Voxels
                 if (includeWaterColumns != isWater)
                     continue;
 
-                float y = yTop + 1f + h;
                 float x0 = x + inset;
                 float x1 = x + 1f - inset;
                 float z0 = z + inset;
                 float z1 = z + 1f - inset;
+                float y00;
+                float y10;
+                float y11;
+                float y01;
+                if (!includeWaterColumns && landCorners != null)
+                {
+                    // Conform snow to smoothed terrain surface so it follows curved landscape.
+                    y00 = landCorners[x, z] + h;
+                    y10 = landCorners[x + 1, z] + h;
+                    y11 = landCorners[x + 1, z + 1] + h;
+                    y01 = landCorners[x, z + 1] + h;
+                }
+                else
+                {
+                    float y = yTop + 1f + h;
+                    y00 = y10 = y11 = y01 = y;
+                }
 
                 int v = verts.Count;
-                verts.Add(new Vector3(x0, y, z0));
-                verts.Add(new Vector3(x1, y, z0));
-                verts.Add(new Vector3(x1, y, z1));
-                verts.Add(new Vector3(x0, y, z1));
+                verts.Add(new Vector3(x0, y00, z0));
+                verts.Add(new Vector3(x1, y10, z0));
+                verts.Add(new Vector3(x1, y11, z1));
+                verts.Add(new Vector3(x0, y01, z1));
 
                 uvs.Add(new Vector2(0f, 0f));
                 uvs.Add(new Vector2(1f, 0f));
@@ -1030,8 +1072,92 @@ namespace SCoL.Voxels
             float n = Noise(x, z);
             // light FBM-ish: add a smaller octave
             n = 0.75f * n + 0.25f * Mathf.PerlinNoise((x + _noiseOffset.x) * config.noiseScale * 2.2f, (z + _noiseOffset.y) * config.noiseScale * 2.2f);
-            int h = config.baseHeight + Mathf.RoundToInt((n - 0.5f) * 2f * config.heightAmplitude);
+            float hRaw = config.baseHeight + ((n - 0.5f) * 2f * config.heightAmplitude);
+            if (enableFlatBuildPads)
+                hRaw = ApplyFlatBuildPads(x, z, hRaw);
+            int h = Mathf.RoundToInt(hRaw);
+            if (IsInsideEdgeLandBuffer(x, z))
+            {
+                int minH = config.seaLevel + Mathf.Max(0, edgeMinHeightAboveSea);
+                h = Mathf.Max(h, minH);
+            }
             return Mathf.Clamp(h, 1, config.worldHeight - 2);
+        }
+
+        private bool IsInsideEdgeLandBuffer(int x, int z)
+        {
+            int b = Mathf.Max(0, edgeLandBufferBlocks);
+            if (b <= 0)
+                return false;
+            if (x < b || z < b)
+                return true;
+            if (x >= config.worldWidth - b || z >= config.worldDepth - b)
+                return true;
+            return false;
+        }
+
+        private float ApplyFlatBuildPads(int x, int z, float height)
+        {
+            if (_flatBuildPads == null || _flatBuildPads.Count == 0)
+                return height;
+
+            Vector2 p = new Vector2(x + 0.5f, z + 0.5f);
+            float outH = height;
+            float blendStrength = Mathf.Clamp01(flatBuildPadBlend);
+
+            for (int i = 0; i < _flatBuildPads.Count; i++)
+            {
+                var pad = _flatBuildPads[i];
+                float r = Mathf.Max(1f, pad.radius);
+                float d = Vector2.Distance(p, pad.centerXZ);
+                if (d > r)
+                    continue;
+
+                float t = 1f - Mathf.Clamp01(d / r);
+                // Strong flatten in center, soft blend near edge.
+                float w = t * t * blendStrength;
+                outH = Mathf.Lerp(outH, pad.targetHeight, w);
+            }
+
+            return outH;
+        }
+
+        private void InitFlatBuildPads()
+        {
+            _flatBuildPads.Clear();
+            if (!enableFlatBuildPads || config == null)
+                return;
+
+            int count = Mathf.Max(0, flatBuildPadCount);
+            if (count <= 0)
+                return;
+
+            float r = Mathf.Max(2f, flatBuildPadRadius);
+            float margin = Mathf.Max(r + 2f, edgeLandBufferBlocks + 2f);
+            float minX = margin;
+            float maxX = Mathf.Max(minX + 1f, config.worldWidth - margin);
+            float minZ = margin;
+            float maxZ = Mathf.Max(minZ + 1f, config.worldDepth - margin);
+            int minH = Mathf.Clamp(config.seaLevel + Mathf.Max(2, edgeMinHeightAboveSea + 1), 1, config.worldHeight - 2);
+
+            for (int i = 0; i < count; i++)
+            {
+                float cx = Mathf.Lerp(minX, maxX, (i + 1f) / (count + 1f));
+                float cz = Mathf.Lerp(minZ, maxZ, Mathf.Repeat((i * 0.37f) + 0.23f, 1f));
+                // small deterministic jitter from seeded RNG
+                cx += (float)(_rng.NextDouble() * 2.0 - 1.0) * Mathf.Min(6f, r * 0.6f);
+                cz += (float)(_rng.NextDouble() * 2.0 - 1.0) * Mathf.Min(6f, r * 0.6f);
+                cx = Mathf.Clamp(cx, minX, maxX);
+                cz = Mathf.Clamp(cz, minZ, maxZ);
+
+                int target = Mathf.Clamp(config.baseHeight + _rng.Next(-1, 2), minH, config.worldHeight - 2);
+                _flatBuildPads.Add(new FlatBuildPad
+                {
+                    centerXZ = new Vector2(cx, cz),
+                    radius = r,
+                    targetHeight = target
+                });
+            }
         }
 
         private void FillChunkTerrain(VoxelChunk chunk)
