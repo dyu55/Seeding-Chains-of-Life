@@ -17,6 +17,10 @@ public class VoxBoxFishSchool : MonoBehaviour
     [Min(1)] public int fishCount = 24;
     [Min(1)] public int waterSampleStep = 3;
     public Vector2 spawnScaleRange = new Vector2(0.45f, 0.75f);
+    [Tooltip("Prefer enclosed inland lakes (water regions not connected to map edge).")]
+    public bool spawnOnlyInEnclosedLakes = true;
+    [Tooltip("If true and no enclosed lakes exist, fall back to any water region.")]
+    public bool fallbackToAnyWaterIfNoLakes = true;
     [Header("Runtime Multipliers")]
     [Tooltip("Final spawned fish count = fishCount * fishCountMultiplier.")]
     [Min(0.1f)] public float fishCountMultiplier = 4f;
@@ -35,6 +39,7 @@ public class VoxBoxFishSchool : MonoBehaviour
     public bool logSpawnInfo = false;
 
     private readonly List<Vector3> _waterAnchors = new List<Vector3>(512);
+    private bool[,] _allowedWaterColumns;
     private readonly List<VoxBoxFishBoidAgent> _spawned = new List<VoxBoxFishBoidAgent>(64);
     private Bounds _waterBounds;
     private bool _hasWaterBounds;
@@ -201,6 +206,7 @@ public class VoxBoxFishSchool : MonoBehaviour
     {
         _waterAnchors.Clear();
         _hasWaterBounds = false;
+        _allowedWaterColumns = null;
 
         if (voxelWorld == null || voxelWorld.Config == null)
             return;
@@ -218,26 +224,31 @@ public class VoxBoxFishSchool : MonoBehaviour
         Vector3 min = Vector3.zero;
         Vector3 max = Vector3.zero;
 
+        bool[,] waterMask = new bool[width, depth];
+        for (int z = 0; z < depth; z++)
+        for (int x = 0; x < width; x++)
+            waterMask[x, z] = voxelWorld.GetBlock(x, seaLevel, z) == VoxelBlockType.Water;
+
+        _allowedWaterColumns = BuildAllowedWaterMask(waterMask, spawnOnlyInEnclosedLakes, fallbackToAnyWaterIfNoLakes);
+
         for (int z = 0; z < depth; z += step)
+        for (int x = 0; x < width; x += step)
         {
-            for (int x = 0; x < width; x += step)
+            if (_allowedWaterColumns == null || !_allowedWaterColumns[x, z])
+                continue;
+
+            Vector3 anchor = voxelWorld.OriginWorld + new Vector3(x + 0.5f, seaLevel + midOffset, z + 0.5f);
+            _waterAnchors.Add(anchor);
+
+            if (!hasBounds)
             {
-                if (voxelWorld.GetBlock(x, seaLevel, z) != VoxelBlockType.Water)
-                    continue;
-
-                Vector3 anchor = voxelWorld.OriginWorld + new Vector3(x + 0.5f, seaLevel + midOffset, z + 0.5f);
-                _waterAnchors.Add(anchor);
-
-                if (!hasBounds)
-                {
-                    min = max = anchor;
-                    hasBounds = true;
-                }
-                else
-                {
-                    min = Vector3.Min(min, anchor);
-                    max = Vector3.Max(max, anchor);
-                }
+                min = max = anchor;
+                hasBounds = true;
+            }
+            else
+            {
+                min = Vector3.Min(min, anchor);
+                max = Vector3.Max(max, anchor);
             }
         }
 
@@ -258,6 +269,80 @@ public class VoxBoxFishSchool : MonoBehaviour
         _hasWaterBounds = true;
     }
 
+    private static bool[,] BuildAllowedWaterMask(bool[,] waterMask, bool enclosedOnly, bool fallbackAny)
+    {
+        if (waterMask == null)
+            return null;
+
+        int width = waterMask.GetLength(0);
+        int depth = waterMask.GetLength(1);
+        if (width <= 0 || depth <= 0)
+            return waterMask;
+
+        if (!enclosedOnly)
+            return waterMask;
+
+        bool[,] visited = new bool[width, depth];
+        bool[,] allowed = new bool[width, depth];
+        var queue = new Queue<Vector2Int>(256);
+        var region = new List<Vector2Int>(512);
+        bool hasEnclosed = false;
+        var dirs = new[]
+        {
+            new Vector2Int(1, 0),
+            new Vector2Int(-1, 0),
+            new Vector2Int(0, 1),
+            new Vector2Int(0, -1),
+        };
+
+        for (int z = 0; z < depth; z++)
+        for (int x = 0; x < width; x++)
+        {
+            if (visited[x, z] || !waterMask[x, z])
+                continue;
+
+            region.Clear();
+            queue.Clear();
+            queue.Enqueue(new Vector2Int(x, z));
+            visited[x, z] = true;
+            bool touchesEdge = false;
+
+            while (queue.Count > 0)
+            {
+                var p = queue.Dequeue();
+                region.Add(p);
+                if (p.x == 0 || p.y == 0 || p.x == width - 1 || p.y == depth - 1)
+                    touchesEdge = true;
+
+                for (int i = 0; i < dirs.Length; i++)
+                {
+                    int nx = p.x + dirs[i].x;
+                    int nz = p.y + dirs[i].y;
+                    if (nx < 0 || nz < 0 || nx >= width || nz >= depth)
+                        continue;
+                    if (visited[nx, nz] || !waterMask[nx, nz])
+                        continue;
+                    visited[nx, nz] = true;
+                    queue.Enqueue(new Vector2Int(nx, nz));
+                }
+            }
+
+            if (!touchesEdge)
+            {
+                hasEnclosed = true;
+                for (int i = 0; i < region.Count; i++)
+                {
+                    var p = region[i];
+                    allowed[p.x, p.y] = true;
+                }
+            }
+        }
+
+        if (!hasEnclosed && fallbackAny)
+            return waterMask;
+        return hasEnclosed ? allowed : waterMask;
+    }
+
     private void TryAutoAssignFishPrefab()
     {
         if (fishPrefab != null) return;
@@ -273,6 +358,14 @@ public class VoxBoxFishSchool : MonoBehaviour
 
         if (!voxelWorld.TryWorldToColumn(worldPos, out int x, out int z))
             return false;
+
+        if (_allowedWaterColumns != null)
+        {
+            int w = _allowedWaterColumns.GetLength(0);
+            int d = _allowedWaterColumns.GetLength(1);
+            if (x < 0 || z < 0 || x >= w || z >= d || !_allowedWaterColumns[x, z])
+                return false;
+        }
 
         int localY = Mathf.Clamp(
             Mathf.FloorToInt(worldPos.y - voxelWorld.OriginWorld.y),
@@ -359,6 +452,10 @@ public class VoxBoxFishBoidAgent : MonoBehaviour
     public float drag = 0.35f;
     public float rotationLerp = 8f;
     public float cruiseDepthBelowSea = 0.55f;
+    [Header("Lake Clamp")]
+    [Tooltip("Hard-correct fish back toward nearest valid water anchor when they leave water.")]
+    public bool hardClampToLake = true;
+    [Range(1f, 30f)] public float hardClampLerpSpeed = 10f;
 
     [HideInInspector] public VoxelWorld voxelWorld;
     [HideInInspector] public VoxBoxFishSchool school;
@@ -401,6 +498,17 @@ public class VoxBoxFishBoidAgent : MonoBehaviour
             velocity = velocity.sqrMagnitude > 0.0001f ? velocity.normalized * minSpeed : transform.forward * minSpeed;
 
         transform.position += velocity * Time.deltaTime;
+
+        if (school != null && hardClampToLake && !school.IsInWaterColumn(transform.position))
+        {
+            if (school.TryGetNearestWaterAnchor(transform.position, out var nearest))
+            {
+                transform.position = Vector3.Lerp(
+                    transform.position,
+                    nearest,
+                    Mathf.Clamp01(Time.deltaTime * Mathf.Max(1f, hardClampLerpSpeed)));
+            }
+        }
 
         if (velocity.sqrMagnitude > 0.0001f)
         {
