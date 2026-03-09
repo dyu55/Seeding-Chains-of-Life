@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: 9e0c87d391070424fb28975cd9d3bd5f
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 284292
+  packageName: Simple UI Kit
+  packageVersion: 1.0.1
+  assetPath: Assets/SimpleUIKit/Scripts/Interface/Elemets/WindowAppearance.cs
+  uploadId: 669184

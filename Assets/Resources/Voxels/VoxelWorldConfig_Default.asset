@@ -23,7 +23,7 @@ MonoBehaviour:
   useFixedSeed: 1
   seed: 12345
   generateColliders: 1
-  renderDistanceChunks: 6
-  colliderDistanceChunks: 3
+  renderDistanceChunks: 4
+  colliderDistanceChunks: 2
   frustumCullChunks: 1
   streamingUpdateSeconds: 0.25

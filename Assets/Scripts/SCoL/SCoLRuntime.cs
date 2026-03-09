@@ -125,18 +125,26 @@ namespace SCoL
 
         private void EnsureHUD()
         {
-            // Prefer the uGUI HUD (works in desktop + VR). If missing, spawn it.
-            if (FindFirstObjectByType<SCoL.Visualization.SCoLHUD>() == null)
+            // Prefer the SimpleUIKit-based runtime HUD.
+            if (FindFirstObjectByType<SCoL.Visualization.SCoLUIToolkitHUD>() == null)
             {
-                var go = new GameObject("SCoL_HUD");
+                var go = new GameObject("SCoL_SimpleUIKitHUD");
                 go.transform.SetParent(transform, worldPositionStays: false);
-                go.AddComponent<SCoL.Visualization.SCoLHUD>();
-                return;
+                go.AddComponent<SCoL.Visualization.SCoLUIToolkitHUD>();
             }
 
-            // Legacy fallback: only spawn OnGUI HUD if uGUI HUD is not present.
-            if (FindFirstObjectByType<SCoL.Visualization.SCoLOnGUIHUD>() != null)
-                return;
+            // Disable legacy HUD layers to avoid overlap.
+            var legacyHud = FindFirstObjectByType<SCoL.Visualization.SCoLHUD>();
+            if (legacyHud != null)
+                legacyHud.enabled = false;
+
+            var onGuiHud = FindFirstObjectByType<SCoL.Visualization.SCoLOnGUIHUD>();
+            if (onGuiHud != null)
+                onGuiHud.enabled = false;
+
+            var fpsCrosshair = FindFirstObjectByType<FPSCrosshair>();
+            if (fpsCrosshair != null)
+                fpsCrosshair.enabled = false;
         }
 
         private void EnsureUnderwaterEffect()
@@ -517,12 +525,14 @@ namespace SCoL
                     n.PlantAgeSeconds = cur.PlantAgeSeconds;
                     n.Success = cur.Success;
                     n.IsPlayerSeedLineage = cur.IsPlayerSeedLineage;
+                    n.FlowerVariantIndex = cur.FlowerVariantIndex;
                     return;
                 }
 
                 n.PlantAgeSeconds = 0f;
                 n.Success = Mathf.Clamp01(cur.Success + 0.01f);
                 n.IsPlayerSeedLineage = cur.IsPlayerSeedLineage;
+                n.FlowerVariantIndex = cur.FlowerVariantIndex;
                 return;
             }
 
@@ -534,6 +544,7 @@ namespace SCoL
                 n.IsOnFire = false;
                 n.FireFuel = 0f;
                 n.IsPlayerSeedLineage = false;
+                n.FlowerVariantIndex = -1;
                 n.Success = Mathf.Clamp01(cur.Success - 0.05f);
                 return;
             }
@@ -544,11 +555,13 @@ namespace SCoL
                 {
                     n.PlantAgeSeconds = 0f;
                     n.IsPlayerSeedLineage = false;
+                    n.FlowerVariantIndex = -1;
                 }
                 else
                 {
                     n.PlantAgeSeconds = cur.PlantAgeSeconds;
                     n.IsPlayerSeedLineage = cur.IsPlayerSeedLineage;
+                    n.FlowerVariantIndex = cur.FlowerVariantIndex;
                 }
                 return;
             }
@@ -565,6 +578,8 @@ namespace SCoL
 
             if (cur.PlantStage == PlantStage.Empty)
             {
+                n.FlowerVariantIndex = -1;
+
                 if (!IsPlantableColumn(x, y))
                     return;
                 if (onlyPlayerSeededLineageCA && lineagePlants <= 0)
@@ -640,6 +655,7 @@ namespace SCoL
                             n.PlantAgeSeconds = 0f;
                             n.Durability = 1.0f;
                             n.IsPlayerSeedLineage = onlyPlayerSeededLineageCA || lineagePlants > 0;
+                            n.FlowerVariantIndex = ResolveSpreadFlowerVariantIndex(x, y);
                         }
                     }
 
@@ -660,6 +676,7 @@ namespace SCoL
                     n.PlantAgeSeconds = 0f;
                     n.Durability = 1.0f;
                     n.IsPlayerSeedLineage = onlyPlayerSeededLineageCA || lineagePlants > 0;
+                    n.FlowerVariantIndex = ResolveSpreadFlowerVariantIndex(x, y);
                 }
                 return;
             }
@@ -668,8 +685,12 @@ namespace SCoL
             {
                 n.PlantAgeSeconds = 0f;
                 n.IsPlayerSeedLineage = false;
+                n.FlowerVariantIndex = -1;
                 return;
             }
+
+            // Keep the planted flower variant stable after placement.
+            n.FlowerVariantIndex = cur.FlowerVariantIndex;
 
             // Lifecycle: plant disappears after a fixed lifetime (in seconds)
             if (Config.enablePlantLifecycle)
@@ -682,6 +703,7 @@ namespace SCoL
                     n.IsOnFire = false;
                     n.FireFuel = 0f;
                     n.IsPlayerSeedLineage = false;
+                    n.FlowerVariantIndex = -1;
                     return;
                 }
 
@@ -741,7 +763,7 @@ namespace SCoL
             return Grid != null && Grid.TryWorldToCell(world, out x, out y);
         }
 
-        public void PlaceSeedAt(Vector3 world)
+        public void PlaceSeedAt(Vector3 world, int flowerVariantIndex = -1)
         {
             if (!TryWorldToCell(world, out int x, out int y)) return;
 
@@ -762,6 +784,7 @@ namespace SCoL
             c.Success = Mathf.Max(c.Success, 0.75f);
             c.WaterVisual = 0f;
             c.IsPlayerSeedLineage = true;
+            c.FlowerVariantIndex = flowerVariantIndex >= 0 ? flowerVariantIndex : -1;
 
             // Give nearby dry cells a small hydration nudge so lineage expansion is visible after seeding.
             for (int dy = -1; dy <= 1; dy++)
@@ -810,6 +833,7 @@ namespace SCoL
             c.IsOnFire = false;
             c.FireFuel = 0f;
             c.IsPlayerSeedLineage = false;
+            c.FlowerVariantIndex = -1;
             c.Success = Mathf.Clamp01(c.Success - 0.02f);
 
             _renderer?.Render(Grid);
@@ -1071,6 +1095,7 @@ namespace SCoL
             c.Durability = 0f;
             c.IsOnFire = false;
             c.FireFuel = 0f;
+            c.FlowerVariantIndex = -1;
         }
 
         public void StompAt(Vector3 world, float damage = -1f)
@@ -1314,6 +1339,7 @@ namespace SCoL
                     c.Success = Mathf.Clamp01(0.45f + (float)_rng.NextDouble() * 0.40f);
                     c.Water = Mathf.Clamp01(c.Water + 0.10f);
                     c.IsPlayerSeedLineage = false;
+                    c.FlowerVariantIndex = -1;
                     seededAny = true;
                 }
             }
@@ -1343,10 +1369,66 @@ namespace SCoL
                         c.Success = 0.65f;
                         c.Water = Mathf.Clamp01(c.Water + 0.15f);
                         c.IsPlayerSeedLineage = false;
+                        c.FlowerVariantIndex = -1;
                         return;
                     }
                 }
             }
+        }
+
+        private int ResolveSpreadFlowerVariantIndex(int x, int y)
+        {
+            if (Grid == null)
+                return -1;
+
+            int bestVariant = -1;
+            int bestCount = 0;
+
+            for (int dy = -1; dy <= 1; dy++)
+            {
+                for (int dx = -1; dx <= 1; dx++)
+                {
+                    if (dx == 0 && dy == 0) continue;
+                    int nx = x + dx;
+                    int ny = y + dy;
+                    if (!Grid.InBounds(nx, ny)) continue;
+
+                    var nb = Grid.Get(nx, ny);
+                    if (nb == null || !nb.HasPlant) continue;
+                    if (nb.FlowerVariantIndex < 0) continue;
+                    if (onlyPlayerSeededLineageCA && !nb.IsPlayerSeedLineage) continue;
+                    if (constrainCASpreadToWindDirection && !IsWindSpreadDirection(nx, ny, x, y)) continue;
+
+                    int variant = nb.FlowerVariantIndex;
+
+                    int count = 0;
+                    for (int sy = -1; sy <= 1; sy++)
+                    {
+                        for (int sx = -1; sx <= 1; sx++)
+                        {
+                            if (sx == 0 && sy == 0) continue;
+                            int tx = x + sx;
+                            int ty = y + sy;
+                            if (!Grid.InBounds(tx, ty)) continue;
+
+                            var s = Grid.Get(tx, ty);
+                            if (s == null || !s.HasPlant) continue;
+                            if (s.FlowerVariantIndex != variant) continue;
+                            if (onlyPlayerSeededLineageCA && !s.IsPlayerSeedLineage) continue;
+                            if (constrainCASpreadToWindDirection && !IsWindSpreadDirection(tx, ty, x, y)) continue;
+                            count++;
+                        }
+                    }
+
+                    if (count > bestCount || (count == bestCount && (bestVariant < 0 || variant < bestVariant)))
+                    {
+                        bestCount = count;
+                        bestVariant = variant;
+                    }
+                }
+            }
+
+            return bestVariant;
         }
     }
 }

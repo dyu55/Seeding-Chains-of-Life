@@ -13,7 +13,10 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
     public GameObject[] animalPrefabs;
 
     [Header("Spawn")]
-    [Min(1)] public int animalCount = 18;
+    [Min(1)] public int animalCount = 24;
+    [Tooltip("Guarantee a denser ecosystem even if old scene serialization still stores a lower animalCount.")]
+    public bool enforceMinimumAnimalCount = true;
+    [Min(1)] public int minimumAnimalCount = 24;
     public bool spawnOnStart = true;
     [Min(1)] public int maxSpawnAttemptsPerAnimal = 8;
     [Min(0f)] public float groundOffset = 0.02f;
@@ -77,6 +80,8 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
 
         int spawnedCount = 0;
         int target = Mathf.Max(1, animalCount);
+        if (enforceMinimumAnimalCount)
+            target = Mathf.Max(target, Mathf.Max(1, minimumAnimalCount));
         for (int i = 0; i < target; i++)
         {
             bool spawned = false;
@@ -187,8 +192,8 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
             if (!IsDryLandColumn(x, z))
                 return false;
 
-            int ySurface = voxelWorld.GetSurfaceY(x, z);
-            pos = voxelWorld.OriginWorld + new Vector3(x + 0.5f, ySurface + 1f + groundOffset, z + 0.5f);
+            Vector3 top = voxelWorld.ColumnTopWorld(x, z);
+            pos = new Vector3(top.x, top.y + groundOffset, top.z);
             return true;
         }
 
@@ -211,11 +216,15 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
             return false;
         if (x < 0 || z < 0 || x >= voxelWorld.Config.worldWidth || z >= voxelWorld.Config.worldDepth)
             return false;
-        if (!voxelWorld.IsGrassSurface(x, z))
-            return false;
 
         int surfaceY = voxelWorld.GetSurfaceY(x, z);
         if (surfaceY < voxelWorld.Config.seaLevel)
+            return false;
+
+        var surfaceType = voxelWorld.GetBlock(x, surfaceY, z);
+        if (surfaceType != VoxelBlockType.Grass &&
+            surfaceType != VoxelBlockType.Dirt &&
+            surfaceType != VoxelBlockType.Stone)
             return false;
 
         int aboveY = surfaceY + 1;
@@ -334,6 +343,13 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
             "Assets/VoxBox/Prefabs/Animals/Dog.prefab",
             "Assets/VoxBox/Prefabs/Animals/Cat.prefab",
             "Assets/VoxBox/Prefabs/Animals/Bear.prefab",
+            "Assets/VoxBox/Prefabs/Animals/Horse.prefab",
+            "Assets/VoxBox/Prefabs/Animals/Bison.prefab",
+            "Assets/VoxBox/Prefabs/Animals/Giraffe.prefab",
+            "Assets/VoxBox/Prefabs/Animals/Elephant.prefab",
+            "Assets/VoxBox/Prefabs/Animals/Lion.prefab",
+            "Assets/VoxBox/Prefabs/Animals/Tiger.prefab",
+            "Assets/VoxBox/Prefabs/Animals/Cheetah.prefab",
         };
 
         var list = new System.Collections.Generic.List<GameObject>(paths.Length);

@@ -129,7 +129,12 @@ namespace SCoL.Weather
 
         void Awake()
         {
-            _rng = deterministic ? new System.Random(randomSeed) : new System.Random(Environment.TickCount);
+            EnsureRandomInitialized();
+        }
+
+        void OnEnable()
+        {
+            EnsureRandomInitialized();
         }
 
         void Start()
@@ -218,6 +223,8 @@ namespace SCoL.Weather
 
         void ScheduleNextPhase()
         {
+            EnsureRandomInitialized();
+
             // Thunderstorm: escalation-only and only from Rain.
             if (_thunderQueued && currentPhase == WeatherPhase.Rain)
             {
@@ -298,6 +305,8 @@ namespace SCoL.Weather
 
         float SampleRange(Vector2 range)
         {
+            EnsureRandomInitialized();
+
             float a = Mathf.Min(range.x, range.y);
             float b = Mathf.Max(range.x, range.y);
             if (Mathf.Approximately(a, b)) return a;
@@ -305,6 +314,25 @@ namespace SCoL.Weather
             // System.Random -> [0,1)
             float t = (float)_rng.NextDouble();
             return Mathf.Lerp(a, b, t);
+        }
+
+        void EnsureRandomInitialized()
+        {
+            if (_rng != null)
+                return;
+
+            int seed;
+            if (deterministic)
+            {
+                seed = randomSeed;
+            }
+            else
+            {
+                // Non-deterministic but stable enough for runtime re-init after domain/script reload.
+                seed = Environment.TickCount ^ GetInstanceID();
+            }
+
+            _rng = new System.Random(seed);
         }
     }
 }

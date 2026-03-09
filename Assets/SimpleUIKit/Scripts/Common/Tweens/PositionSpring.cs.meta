@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 48dd40a43938b544389c9feb899e9f45
+MonoImporter:
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 284292
+  packageName: Simple UI Kit
+  packageVersion: 1.0.1
+  assetPath: Assets/SimpleUIKit/Scripts/Common/Tweens/PositionSpring.cs
+  uploadId: 669184

@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: bb1e492b058fe4b45b43abb515d81a58
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 284292
+  packageName: Simple UI Kit
+  packageVersion: 1.0.1
+  assetPath: Assets/SimpleUIKit/Scripts/Examples/Inventory/Item/ItemRarity.cs
+  uploadId: 669184

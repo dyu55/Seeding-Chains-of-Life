@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: d43b197232c905c4d9e681c257dc6e8b
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 284292
+  packageName: Simple UI Kit
+  packageVersion: 1.0.1
+  assetPath: Assets/SimpleUIKit/Scripts/Examples/Inventory/Item/ItemTag.cs
+  uploadId: 669184

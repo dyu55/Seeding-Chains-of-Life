@@ -262,10 +262,13 @@ MonoBehaviour:
   fireCount: 70
   seedPickupPrefab: {fileID: 0}
   firePickupPrefab: {fileID: 0}
+  seedVariantTextures: []
+  useSeedShapeVariants: 1
   scatterAcrossGrid: 1
   center: {x: 0, y: 1.1, z: 1.2}
   radius: 0.8
   yOffset: 0.25
+  pickupGlobalScaleMultiplier: 1.35
   randomScaleRange: {x: 0.75, y: 1.25}
   maxSpawnAttemptsPerItem: 18
 --- !u!4 &149690701
@@ -10462,22 +10465,22 @@ MonoBehaviour:
   heightOffset: 4
   autoScaleToVoxelWorld: 1
   referenceWorldSize: 100
-  maxAutoScale: 3
-  scaleEmissionWithAutoScale: 1
+  maxAutoScale: 1.6
+  scaleEmissionWithAutoScale: 0
   rainParticleSystem: {fileID: 1962930972}
   rainMaterial: {fileID: 2100000, guid: 11632c81217b04101b231902b4d6ab89, type: 2}
   rainAlsoInThunderstorm: 1
-  rainMaxParticles: 2500
-  rainEmissionRate: 900
-  rainBoxSize: {x: 20, y: 6, z: 20}
+  rainMaxParticles: 1200
+  rainEmissionRate: 300
+  rainBoxSize: {x: 16, y: 5, z: 16}
   rainFallSpeedRange: {x: 10, y: 18}
   rainLifetimeRange: {x: 0.8, y: 1.6}
   rainSizeRange: {x: 0.2, y: 0.5}
   snowParticleSystem: {fileID: 825973267}
   snowMaterial: {fileID: 2100000, guid: 68c58a1d2033248c59add07d9e52a3f2, type: 2}
-  snowMaxParticles: 4000
-  snowEmissionRate: 600
-  snowBoxSize: {x: 25, y: 8, z: 25}
+  snowMaxParticles: 1800
+  snowEmissionRate: 220
+  snowBoxSize: {x: 20, y: 6, z: 20}
   snowFallSpeedRange: {x: 1.5, y: 3.5}
   snowLifetimeRange: {x: 2.5, y: 4.5}
   snowSizeRange: {x: 0.08, y: 0.18}
@@ -10487,9 +10490,9 @@ MonoBehaviour:
   dayRange01: {x: 0.23, y: 0.77}
   firefliesOnlyAtNight: 1
   disableFirefliesInBadWeather: 1
-  fireflyMaxParticles: 299
-  fireflyEmissionRate: 85
-  fireflyBoxSize: {x: 18, y: 6, z: 18}
+  fireflyMaxParticles: 140
+  fireflyEmissionRate: 25
+  fireflyBoxSize: {x: 14, y: 5, z: 14}
   fireflyLifetimeRange: {x: 6, y: 14}
   fireflySpeedRange: {x: 0.15, y: 0.6}
   fireflySizeRange: {x: 0.03, y: 0.1}
@@ -17169,6 +17172,9 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 4294967295
   lockCursor: 1
+  autoTuneCharacterControllerForTerrain: 1
+  terrainSlopeLimit: 68
+  terrainStepOffset: 0.42
   enableUnderwaterView: 1
   waterlinePadding: 0.05
   underwaterFogDensity: 0.055
@@ -17242,6 +17248,7 @@ MonoBehaviour:
   smallStagePrefab: {fileID: 0}
   mediumStagePrefab: {fileID: 0}
   matureStagePrefab: {fileID: 0}
+  forceFlower0AsFinalStage: 1
   useCARuntimeSeeding: 1
   waterBoostSecondsPerTile: 3
   fireCanDestroyPlants: 0
@@ -17267,6 +17274,8 @@ MonoBehaviour:
   collectPickupsOnRightClick: 1
   collectWaterFromRegionOnRightClick: 1
   waterCollectAmount: 1
+  pickPlantsOnPrimaryClick: 1
+  plantPickupAmount: 1
 --- !u!114 &9000000007
 MonoBehaviour:
   m_ObjectHideFlags: 0

@@ -41,6 +41,12 @@ namespace SCoL.Visualization
 
         [Range(0f, 1f)] public float startTime01 = 0.5f;
 
+        [Header("Day/Night Split")]
+        [Tooltip("Daytime hours in one full cycle. Together with nightHours controls day:night ratio.")]
+        [Range(1f, 23f)] public float dayHours = 18f;
+        [Tooltip("Nighttime hours in one full cycle. Together with dayHours controls day:night ratio.")]
+        [Range(1f, 23f)] public float nightHours = 6f;
+
         [Header("Sun / Moon Light")]
         [Tooltip("Directional light to rotate and color (your Sun light).")]
         public Light directionalLight;
@@ -130,6 +136,19 @@ namespace SCoL.Visualization
 
         [Tooltip("Fog density over time (for exponential fog).")]
         public AnimationCurve fogDensity = DefaultFogDensity();
+
+        [Header("Brightness Tuning")]
+        [Tooltip("Global brightness multiplier applied to sun/ambient/reflections.")]
+        [Range(0.5f, 2.0f)] public float globalBrightnessBoost = 1.2f;
+
+        [Tooltip("Minimum ambient intensity during daytime to avoid overly dark visuals.")]
+        [Min(0f)] public float daytimeAmbientFloor = 0.42f;
+
+        [Tooltip("Minimum directional light intensity when the sun is above horizon.")]
+        [Min(0f)] public float daytimeSunFloor = 0.95f;
+
+        [Tooltip("Global multiplier for fog density; lower values brighten distant view.")]
+        [Range(0.2f, 2.0f)] public float fogDensityGlobalScale = 0.82f;
 
         [Header("Performance")]
         [Tooltip("If enabled, calls DynamicGI.UpdateEnvironment() at a throttled interval.")]
@@ -266,15 +285,21 @@ namespace SCoL.Visualization
         void Apply(bool forceGI)
         {
             float t = Mathf.Repeat(timeOfDay01, 1f);
+            float solarT = RemapToSolarTime(t);
+            float brightnessBoost = Mathf.Max(0.1f, globalBrightnessBoost);
+            bool daylight = IsDaylightByRatio(t);
 
             // --- Directional light (sun)
             if (directionalLight != null)
             {
-                float pitch = Mathf.Lerp(sunPitchRange.x, sunPitchRange.y, t);
+                float pitch = Mathf.Lerp(sunPitchRange.x, sunPitchRange.y, solarT);
                 directionalLight.transform.rotation = Quaternion.Euler(pitch, sunYaw, 0f);
 
-                directionalLight.intensity = Mathf.Max(0f, sunIntensity.Evaluate(t));
-                directionalLight.color = sunColor.Evaluate(t);
+                float sunI = Mathf.Max(0f, sunIntensity.Evaluate(solarT)) * brightnessBoost;
+                if (daylight)
+                    sunI = Mathf.Max(sunI, Mathf.Max(0f, daytimeSunFloor));
+                directionalLight.intensity = sunI;
+                directionalLight.color = sunColor.Evaluate(solarT);
 
                 // Optional thunderstorm lightning flash (visual only).
                 if (enableThunderFlash && weatherSystem != null && Application.isPlaying)
@@ -326,15 +351,19 @@ namespace SCoL.Visualization
             }
 
             // --- Ambient + reflections
-            float ambient = Mathf.Max(0f, ambientIntensity.Evaluate(t));
-            float reflections = Mathf.Max(0f, reflectionIntensity.Evaluate(t));
+            float ambient = Mathf.Max(0f, ambientIntensity.Evaluate(solarT)) * brightnessBoost;
+            float reflections = Mathf.Max(0f, reflectionIntensity.Evaluate(solarT)) * Mathf.Lerp(1f, brightnessBoost, 0.65f);
+
+            if (daylight)
+                ambient = Mathf.Max(ambient, Mathf.Max(0f, daytimeAmbientFloor));
 
             if (weatherSystem != null)
             {
                 if (weatherSystem.CurrentPhase == WeatherPhase.Rain || weatherSystem.CurrentPhase == WeatherPhase.Thunderstorm)
                 {
-                    ambient *= Mathf.Clamp01(ambientDimmingInBadWeather);
-                    reflections *= Mathf.Clamp01(ambientDimmingInBadWeather);
+                    float dim = Mathf.Clamp01(Mathf.Max(0.92f, ambientDimmingInBadWeather));
+                    ambient *= dim;
+                    reflections *= dim;
                 }
             }
 
@@ -345,9 +374,9 @@ namespace SCoL.Visualization
             if (driveFog)
             {
                 RenderSettings.fog = true;
-                RenderSettings.fogColor = fogColor.Evaluate(t);
+                RenderSettings.fogColor = fogColor.Evaluate(solarT);
 
-                float d = Mathf.Max(0f, fogDensity.Evaluate(t));
+                float d = Mathf.Max(0f, fogDensity.Evaluate(solarT));
                 if (weatherSystem != null)
                 {
                     if (weatherSystem.CurrentPhase == WeatherPhase.Rain)
@@ -356,6 +385,7 @@ namespace SCoL.Visualization
                         d *= Mathf.Max(0f, fogDensityThunderMultiplier);
                 }
 
+                d *= Mathf.Max(0.2f, fogDensityGlobalScale);
                 RenderSettings.fogDensity = d;
             }
 
@@ -375,6 +405,49 @@ namespace SCoL.Visualization
                 _giT = 0f;
                 DynamicGI.UpdateEnvironment();
             }
+        }
+
+        private float GetDayFraction()
+        {
+            float day = Mathf.Max(0.001f, dayHours);
+            float night = Mathf.Max(0.001f, nightHours);
+            return Mathf.Clamp01(day / (day + night));
+        }
+
+        // Maps cycle time (0..1) to the existing "solar curve space" where
+        // 0.25 = sunrise, 0.5 = noon, 0.75 = sunset.
+        private float RemapToSolarTime(float t)
+        {
+            t = Mathf.Repeat(t, 1f);
+            float dayFrac = GetDayFraction();
+            float nightFrac = 1f - dayFrac;
+            float halfNight = nightFrac * 0.5f;
+            float dawn = halfNight;
+            float dusk = dawn + dayFrac;
+
+            if (t < dawn)
+            {
+                float nt = dawn > 0.0001f ? t / dawn : 0f;
+                return Mathf.Lerp(0f, 0.25f, nt);
+            }
+            if (t < dusk)
+            {
+                float dt = dayFrac > 0.0001f ? (t - dawn) / dayFrac : 0f;
+                return Mathf.Lerp(0.25f, 0.75f, dt);
+            }
+
+            float nt2 = halfNight > 0.0001f ? (t - dusk) / halfNight : 0f;
+            return Mathf.Lerp(0.75f, 1f, nt2);
+        }
+
+        private bool IsDaylightByRatio(float t)
+        {
+            t = Mathf.Repeat(t, 1f);
+            float dayFrac = GetDayFraction();
+            float halfNight = (1f - dayFrac) * 0.5f;
+            float dawn = halfNight;
+            float dusk = dawn + dayFrac;
+            return t >= dawn && t < dusk;
         }
 
         void HandleWeatherPhaseStarted(WeatherPhase phase)

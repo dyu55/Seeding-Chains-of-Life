@@ -53,6 +53,7 @@ namespace SCoL.InputLayer
         private InputAction _tool2;
         private InputAction _tool3;
         private InputAction _tool4;
+        private InputAction _jumpSupplemental;
         private InputAction _primarySupplemental;
         private InputAction _secondarySupplemental;
         private InputAction _toolNextSupplemental;
@@ -66,7 +67,7 @@ namespace SCoL.InputLayer
         private InputActionMap _runtimeFallbackMap;
         private InputActionMap _resolvedMap;
         private bool _ownsResolvedMapEnable;
-        private readonly List<InputAction> _supplementalActions = new List<InputAction>(12);
+        private readonly List<InputAction> _supplementalActions = new List<InputAction>(16);
         private bool _snapReady = true;
         private Vector2 _smoothedLook;
 
@@ -74,7 +75,7 @@ namespace SCoL.InputLayer
         public Vector2 Look => _smoothedLook;
         public float TurnDegreesThisFrame { get; private set; }
 
-        public bool JumpPressedThisFrame => WasPressed(_jump);
+        public bool JumpPressedThisFrame => WasPressedAny(_jump, _jumpSupplemental);
         public bool SprintHeld => IsPressed(_sprint);
         public bool PrimaryPressedThisFrame => WasPressedAny(_primary, _primarySupplemental);
         public bool SecondaryPressedThisFrame => WasPressedAny(_secondary, _secondarySupplemental);
@@ -252,6 +253,8 @@ namespace SCoL.InputLayer
                 _primarySupplemental = CreateSupplementalAction("PrimaryMouse", "<Mouse>/leftButton");
             if (_secondary == null || !HasBindingPath(_secondary, "rightButton"))
                 _secondarySupplemental = CreateSupplementalAction("SecondaryMouse", "<Mouse>/rightButton");
+            if (_jump == null || !HasBindingPath(_jump, "space"))
+                _jumpSupplemental = CreateSupplementalAction("JumpSpace", "<Keyboard>/space");
             if (_toolNext == null || !HasBindingPath(_toolNext, "scroll"))
                 _toolNextSupplemental = CreateSupplementalAction("ToolNextScrollUp", "<Mouse>/scroll/up");
             if (_toolPrev == null || !HasBindingPath(_toolPrev, "scroll"))
@@ -277,6 +280,7 @@ namespace SCoL.InputLayer
 
         private void ClearSupplementalActions()
         {
+            _jumpSupplemental = null;
             _primarySupplemental = null;
             _secondarySupplemental = null;
             _toolNextSupplemental = null;

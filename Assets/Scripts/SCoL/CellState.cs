@@ -27,6 +27,10 @@ namespace SCoL
         // True only for plants that come from player-placed seeds (and their descendants).
         public bool IsPlayerSeedLineage = false;
 
+        // Locked flower variant index chosen at seeding time.
+        // -1 means "no locked variant" (renderer may pick by default/random policy).
+        public int FlowerVariantIndex = -1;
+
         public bool HasPlant => PlantStage != PlantStage.Empty && PlantStage != PlantStage.Burnt;
     }
 }

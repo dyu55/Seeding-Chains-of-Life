@@ -1,0 +1,19 @@
+fileFormatVersion: 2
+guid: a0b571b9054039e4599e0d695cdcab42
+timeCreated: 1508495828
+licenseType: Store
+MonoImporter:
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 284292
+  packageName: Simple UI Kit
+  packageVersion: 1.0.1
+  assetPath: Assets/SimpleUIKit/Scripts/Examples/Inventory/Equipment.cs
+  uploadId: 669184

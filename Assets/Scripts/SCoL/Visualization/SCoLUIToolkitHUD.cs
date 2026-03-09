@@ -56,6 +56,7 @@ namespace SCoL.Visualization
 
         private float _nextUpdateAt;
         private readonly StringBuilder _sb = new StringBuilder(256);
+        private static Sprite _fallbackWhiteUISprite;
 
         private static readonly Color CrosshairIdle = new Color(1f, 1f, 1f, 0.90f);
         private static readonly Color CrosshairHover = new Color(0.35f, 1f, 0.35f, 0.98f);
@@ -680,10 +681,25 @@ namespace SCoL.Visualization
 
         private static Sprite ResolveBuiltinUISprite()
         {
-            var s = Resources.GetBuiltinResource<Sprite>("UI/Skin/UISprite.psd");
-            if (s != null) return s;
-            s = Resources.GetBuiltinResource<Sprite>("UI/Skin/Background.psd");
-            return s;
+            if (_fallbackWhiteUISprite != null)
+                return _fallbackWhiteUISprite;
+
+            var tex = new Texture2D(1, 1, TextureFormat.RGBA32, mipChain: false)
+            {
+                name = "SCoL_HUD_WhiteSpriteTex",
+                filterMode = FilterMode.Point,
+                wrapMode = TextureWrapMode.Clamp
+            };
+            tex.SetPixel(0, 0, Color.white);
+            tex.Apply(updateMipmaps: false, makeNoLongerReadable: true);
+
+            _fallbackWhiteUISprite = Sprite.Create(
+                tex,
+                new Rect(0f, 0f, 1f, 1f),
+                new Vector2(0.5f, 0.5f),
+                1f);
+            _fallbackWhiteUISprite.name = "SCoL_HUD_WhiteSprite";
+            return _fallbackWhiteUISprite;
         }
     }
 }

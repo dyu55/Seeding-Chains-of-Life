@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.IO;
 using UnityEngine;
 using SCoL;
 #if UNITY_EDITOR
@@ -22,6 +23,27 @@ namespace SCoL.Visualization
         public GameObject[] smallTreePrefabs;
         public GameObject[] mediumTreePrefabs;
         public GameObject[] largeTreePrefabs;
+
+        [Header("Flower Variant Selection")]
+        [Tooltip("When enabled, seeding uses the selected flower variant instead of per-cell random flower selection.")]
+        public bool enableManualFlowerVariantSelection = true;
+        [SerializeField, Min(0)] private int selectedFlowerVariantIndex = 0;
+        [Tooltip("If enabled, start with sunflower selected as flower variant #1.")]
+        public bool defaultToSunflowerAtStart = true;
+
+        [Header("Minecraft Sunflower Variant")]
+        [Tooltip("Auto-add a Minecraft-style crossed-plane sunflower based on the imported sunflower image.")]
+        public bool addMinecraftSunflowerVariant = true;
+        [Tooltip("Asset path for the sunflower texture.")]
+        public string sunflowerTextureAssetPath = "Assets/Models/Modeling/_Incoming/Flowers/Sunflower/Sunflower_BE7.png";
+        public Vector2 sunflowerPlaneSize = new Vector2(2.70f, 4.80f);
+        public float sunflowerBottomYOffset = 0.0f;
+        [Tooltip("Remove black background from sunflower texture by converting near-black pixels to alpha.")]
+        public bool sunflowerRemoveBlackBackground = true;
+        [Range(0f, 1f)] public float sunflowerBlackCutoff = 0.20f;
+        [Range(0f, 1f)] public float sunflowerBlackSoftness = 0.08f;
+        [Tooltip("Additional chroma key tolerance from image border background color.")]
+        [Range(0f, 1f)] public float sunflowerBackgroundTolerance = 0.18f;
 
         [Header("Scale")]
         public Vector2 smallPlantScaleRange = new Vector2(0.28f, 0.45f);
@@ -55,7 +77,9 @@ namespace SCoL.Visualization
         private readonly Dictionary<int, ActivePlant> _active = new();
         private readonly Dictionary<string, Stack<GameObject>> _pool = new();
         private readonly Dictionary<PlantStage, Material> _fallbackMats = new();
-        private int _selectedFlowerVariant = 0;
+        private GameObject _sunflowerTemplate;
+        private Material _sunflowerMaterial;
+        private Texture2D _sunflowerRuntimeTexture;
 
         private void Awake()
         {
@@ -63,7 +87,20 @@ namespace SCoL.Visualization
             if (voxelWorld == null) voxelWorld = FindFirstObjectByType<SCoL.Voxels.VoxelWorld>();
 
             AutoAssignVoxBoxDefaults();
+            TryInjectMinecraftSunflowerVariant();
+            if (defaultToSunflowerAtStart && GetFlowerVariantCount() > 0)
+                selectedFlowerVariantIndex = 0;
             EnsureFallbackMaterials();
+        }
+
+        private void OnDestroy()
+        {
+            if (_sunflowerRuntimeTexture != null)
+                Destroy(_sunflowerRuntimeTexture);
+            if (_sunflowerMaterial != null)
+                Destroy(_sunflowerMaterial);
+            if (_sunflowerTemplate != null)
+                Destroy(_sunflowerTemplate);
         }
 
         private void AutoAssignVoxBoxDefaults()
@@ -127,6 +164,268 @@ namespace SCoL.Visualization
             return result.ToArray();
         }
 
+        private void TryInjectMinecraftSunflowerVariant()
+        {
+            if (!addMinecraftSunflowerVariant)
+                return;
+
+            if (_sunflowerTemplate == null)
+                _sunflowerTemplate = CreateMinecraftSunflowerTemplate();
+            if (_sunflowerTemplate == null)
+                return;
+
+            smallPlantPrefabs = PrependUnique(smallPlantPrefabs, _sunflowerTemplate);
+            smallTreePrefabs = PrependUnique(smallTreePrefabs, _sunflowerTemplate);
+            mediumTreePrefabs = PrependUnique(mediumTreePrefabs, _sunflowerTemplate);
+        }
+
+        private GameObject CreateMinecraftSunflowerTemplate()
+        {
+            var tex = LoadSunflowerTexture();
+            if (tex == null)
+                return null;
+
+            tex = BuildSunflowerTextureWithAlpha(tex);
+            tex.filterMode = FilterMode.Point;
+            tex.anisoLevel = 0;
+
+            _sunflowerMaterial = BuildSunflowerMaterial(tex);
+            if (_sunflowerMaterial == null)
+                return null;
+
+            var root = new GameObject("Minecraft_Sunflower");
+            root.transform.SetParent(transform, worldPositionStays: false);
+            root.SetActive(false);
+
+            CreateSunflowerPlane(root.transform, 0f);
+            CreateSunflowerPlane(root.transform, 90f);
+            return root;
+        }
+
+        private void CreateSunflowerPlane(Transform parent, float yaw)
+        {
+            var quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            quad.name = "SunflowerPlane";
+            quad.transform.SetParent(parent, worldPositionStays: false);
+            quad.transform.localPosition = new Vector3(0f, sunflowerBottomYOffset + sunflowerPlaneSize.y * 0.5f, 0f);
+            quad.transform.localRotation = Quaternion.Euler(0f, yaw, 0f);
+            quad.transform.localScale = new Vector3(Mathf.Max(0.01f, sunflowerPlaneSize.x), Mathf.Max(0.01f, sunflowerPlaneSize.y), 1f);
+
+            var r = quad.GetComponent<Renderer>();
+            if (r != null)
+                r.sharedMaterial = _sunflowerMaterial;
+
+            var c = quad.GetComponent<Collider>();
+            if (c != null)
+                Destroy(c);
+        }
+
+        private static GameObject[] PrependUnique(GameObject[] source, GameObject head)
+        {
+            if (head == null)
+                return source ?? System.Array.Empty<GameObject>();
+
+            int existing = -1;
+            if (source != null)
+            {
+                for (int i = 0; i < source.Length; i++)
+                {
+                    if (source[i] == head)
+                    {
+                        existing = i;
+                        break;
+                    }
+                }
+            }
+
+            if (source == null || source.Length == 0)
+                return new[] { head };
+            if (existing == 0)
+                return source;
+
+            var list = new List<GameObject>(source.Length + 1) { head };
+            for (int i = 0; i < source.Length; i++)
+            {
+                if (i == existing) continue;
+                if (source[i] == null) continue;
+                list.Add(source[i]);
+            }
+            return list.ToArray();
+        }
+
+        private Texture2D LoadSunflowerTexture()
+        {
+            Texture2D tex = null;
+#if UNITY_EDITOR
+            if (!string.IsNullOrEmpty(sunflowerTextureAssetPath))
+                tex = AssetDatabase.LoadAssetAtPath<Texture2D>(sunflowerTextureAssetPath);
+#endif
+            if (tex != null)
+                return tex;
+
+            string absPath = sunflowerTextureAssetPath;
+            if (absPath.StartsWith("Assets/"))
+            {
+                string projectRoot = Directory.GetParent(Application.dataPath)?.FullName;
+                if (!string.IsNullOrEmpty(projectRoot))
+                    absPath = Path.Combine(projectRoot, sunflowerTextureAssetPath);
+            }
+
+            if (File.Exists(absPath))
+            {
+                var bytes = File.ReadAllBytes(absPath);
+                var runtimeTex = new Texture2D(2, 2, TextureFormat.RGBA32, mipChain: false);
+                if (runtimeTex.LoadImage(bytes))
+                {
+                    runtimeTex.name = "Sunflower_BE7_Runtime";
+                    return runtimeTex;
+                }
+            }
+
+            return null;
+        }
+
+        private Texture2D BuildSunflowerTextureWithAlpha(Texture2D source)
+        {
+            if (source == null)
+                return null;
+            if (!sunflowerRemoveBlackBackground)
+                return source;
+
+            var readable = CreateReadableCopy(source);
+            if (readable == null)
+                return source;
+
+            float cutoff = Mathf.Clamp01(sunflowerBlackCutoff);
+            float softness = Mathf.Clamp01(sunflowerBlackSoftness);
+            float edge = Mathf.Clamp01(cutoff + Mathf.Max(0f, softness));
+            Color bg = EstimateBorderBackgroundColor(readable);
+            float bgTol = Mathf.Clamp01(sunflowerBackgroundTolerance);
+            float bgTolSq = bgTol * bgTol;
+
+            var px = readable.GetPixels32();
+            for (int i = 0; i < px.Length; i++)
+            {
+                float r = px[i].r / 255f;
+                float g = px[i].g / 255f;
+                float b = px[i].b / 255f;
+                float a = px[i].a / 255f;
+                float maxRgb = Mathf.Max(r, Mathf.Max(g, b));
+
+                float keep = 1f;
+                if (maxRgb <= cutoff)
+                {
+                    keep = 0f;
+                }
+                else if (maxRgb < edge && softness > 0.0001f)
+                {
+                    keep = Mathf.InverseLerp(cutoff, edge, maxRgb);
+                }
+
+                float dr = r - bg.r;
+                float dg = g - bg.g;
+                float db = b - bg.b;
+                float dSq = dr * dr + dg * dg + db * db;
+                if (dSq <= bgTolSq)
+                    keep = 0f;
+
+                byte outA = (byte)Mathf.Clamp(Mathf.RoundToInt(a * keep * 255f), 0, 255);
+                px[i].a = outA;
+            }
+
+            readable.SetPixels32(px);
+            readable.Apply(updateMipmaps: false, makeNoLongerReadable: false);
+            readable.filterMode = FilterMode.Point;
+            readable.anisoLevel = 0;
+            readable.name = "Sunflower_WithAlpha_Runtime";
+            _sunflowerRuntimeTexture = readable;
+            return readable;
+        }
+
+        private static Color EstimateBorderBackgroundColor(Texture2D tex)
+        {
+            if (tex == null || tex.width <= 0 || tex.height <= 0)
+                return Color.black;
+
+            int w = tex.width;
+            int h = tex.height;
+            Color32[] px = tex.GetPixels32();
+            int count = 0;
+            float sr = 0f, sg = 0f, sb = 0f;
+
+            // Sample all edge pixels; for cutout source images this approximates background color.
+            for (int x = 0; x < w; x++)
+            {
+                int i0 = x;
+                int i1 = (h - 1) * w + x;
+                sr += px[i0].r / 255f; sg += px[i0].g / 255f; sb += px[i0].b / 255f; count++;
+                if (h > 1)
+                {
+                    sr += px[i1].r / 255f; sg += px[i1].g / 255f; sb += px[i1].b / 255f; count++;
+                }
+            }
+            for (int y = 1; y < h - 1; y++)
+            {
+                int il = y * w;
+                int ir = y * w + (w - 1);
+                sr += px[il].r / 255f; sg += px[il].g / 255f; sb += px[il].b / 255f; count++;
+                if (w > 1)
+                {
+                    sr += px[ir].r / 255f; sg += px[ir].g / 255f; sb += px[ir].b / 255f; count++;
+                }
+            }
+
+            if (count <= 0)
+                return Color.black;
+            return new Color(sr / count, sg / count, sb / count, 1f);
+        }
+
+        private static Texture2D CreateReadableCopy(Texture2D src)
+        {
+            if (src == null)
+                return null;
+
+            var prev = RenderTexture.active;
+            var rt = RenderTexture.GetTemporary(src.width, src.height, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Linear);
+            Graphics.Blit(src, rt);
+            RenderTexture.active = rt;
+
+            var copy = new Texture2D(src.width, src.height, TextureFormat.RGBA32, mipChain: false);
+            copy.ReadPixels(new Rect(0, 0, src.width, src.height), 0, 0, false);
+            copy.Apply(updateMipmaps: false, makeNoLongerReadable: false);
+
+            RenderTexture.active = prev;
+            RenderTexture.ReleaseTemporary(rt);
+            return copy;
+        }
+
+        private static Material BuildSunflowerMaterial(Texture2D tex)
+        {
+            Shader shader = Shader.Find("Sprites/Default");
+            if (shader == null) shader = Shader.Find("Universal Render Pipeline/Unlit");
+            if (shader == null) shader = Shader.Find("Unlit/Transparent");
+            if (shader == null) shader = Shader.Find("Unlit/Transparent Cutout");
+            if (shader == null) shader = Shader.Find("Standard");
+            if (shader == null) return null;
+
+            var mat = new Material(shader) { name = "Minecraft_Sunflower_Mat" };
+            mat.enableInstancing = true;
+
+            if (mat.HasProperty("_BaseMap")) mat.SetTexture("_BaseMap", tex);
+            if (mat.HasProperty("_MainTex")) mat.SetTexture("_MainTex", tex);
+            if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", Color.white);
+            if (mat.HasProperty("_Color")) mat.SetColor("_Color", Color.white);
+
+            if (mat.HasProperty("_AlphaClip")) mat.SetFloat("_AlphaClip", 1f);
+            if (mat.HasProperty("_Cutoff")) mat.SetFloat("_Cutoff", 0.32f);
+            if (mat.HasProperty("_Cull")) mat.SetFloat("_Cull", 0f);
+            if (mat.HasProperty("_CullMode")) mat.SetFloat("_CullMode", 0f);
+            if (mat.HasProperty("_Surface")) mat.SetFloat("_Surface", 1f);
+            if (mat.HasProperty("_Blend")) mat.SetFloat("_Blend", 0f);
+            if (mat.HasProperty("_ZWrite")) mat.SetFloat("_ZWrite", 1f);
+            return mat;
+        }
+
         private void EnsureFallbackMaterials()
         {
             Shader shader = Shader.Find("Universal Render Pipeline/Lit");
@@ -145,6 +444,118 @@ namespace SCoL.Visualization
             if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", color);
             if (mat.HasProperty("_Color")) mat.SetColor("_Color", color);
             return mat;
+        }
+
+        public int GetFlowerVariantCount()
+        {
+            int small = CountValidPrefabs(smallPlantPrefabs);
+            if (small > 0) return small;
+
+            int stage2 = CountValidPrefabs(smallTreePrefabs);
+            if (stage2 > 0) return stage2;
+
+            int stage3 = CountValidPrefabs(mediumTreePrefabs);
+            return stage3;
+        }
+
+        public string GetSelectedFlowerName()
+        {
+            return GetFlowerVariantName(selectedFlowerVariantIndex);
+        }
+
+        public int GetSelectedFlowerVariantIndex()
+        {
+            return Mathf.Max(0, selectedFlowerVariantIndex);
+        }
+
+        public bool CycleSelectedFlower(int delta)
+        {
+            int count = GetFlowerVariantCount();
+            if (count <= 0)
+                return false;
+
+            int idx = selectedFlowerVariantIndex + delta;
+            idx %= count;
+            if (idx < 0) idx += count;
+            selectedFlowerVariantIndex = idx;
+            RenderNow();
+            return true;
+        }
+
+        private static int CountValidPrefabs(GameObject[] prefabs)
+        {
+            if (prefabs == null || prefabs.Length == 0) return 0;
+            int c = 0;
+            for (int i = 0; i < prefabs.Length; i++)
+                if (prefabs[i] != null) c++;
+            return c;
+        }
+
+        private string GetFlowerVariantName(int globalIndex)
+        {
+            string name = TryGetFlowerNameFromStage(PlantStage.SmallPlant, globalIndex);
+            if (!string.IsNullOrEmpty(name)) return name;
+
+            name = TryGetFlowerNameFromStage(PlantStage.SmallTree, globalIndex);
+            if (!string.IsNullOrEmpty(name)) return name;
+
+            name = TryGetFlowerNameFromStage(PlantStage.MediumTree, globalIndex);
+            if (!string.IsNullOrEmpty(name)) return name;
+
+            return "Default Flower";
+        }
+
+        private string TryGetFlowerNameFromStage(PlantStage stage, int globalIndex)
+        {
+            int i = ResolveManualVariantIndex(stage, globalIndex);
+            if (i < 0) return null;
+
+            var prefabs = PrefabsFor(stage);
+            if (prefabs == null || i >= prefabs.Length) return null;
+            var p = prefabs[i];
+            if (p == null) return null;
+            return ToDisplayName(p.name);
+        }
+
+        private static string ToDisplayName(string raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+                return "Flower";
+
+            string s = raw.Replace('_', ' ').Replace('-', ' ').Trim();
+            s = s.Replace("Flower Stage1", "Flower");
+            s = s.Replace("Flower Stage2", "Flower");
+            s = s.Replace("Flower FinalStage", "Flower");
+            s = s.Replace("Minecraft ", "");
+            return s;
+        }
+
+        private static bool IsFlowerVisualStage(PlantStage stage)
+        {
+            return stage == PlantStage.SmallPlant || stage == PlantStage.SmallTree || stage == PlantStage.MediumTree;
+        }
+
+        private int ResolveManualVariantIndex(PlantStage stage, int globalIndex)
+        {
+            var prefabs = PrefabsFor(stage);
+            if (prefabs == null || prefabs.Length == 0)
+                return -1;
+
+            int validCount = CountValidPrefabs(prefabs);
+            if (validCount <= 0)
+                return -1;
+
+            int ordinal = globalIndex % validCount;
+            if (ordinal < 0) ordinal += validCount;
+
+            int seen = 0;
+            for (int i = 0; i < prefabs.Length; i++)
+            {
+                if (prefabs[i] == null) continue;
+                if (seen == ordinal) return i;
+                seen++;
+            }
+            return -1;
         }
 
         private static bool IsRenderableStage(PlantStage stage)
@@ -169,10 +580,27 @@ namespace SCoL.Visualization
             };
         }
 
-        private int PickPrefabIndex(PlantStage stage, int cellIndex)
+        private int PickPrefabIndex(PlantStage stage, int cellIndex, CellState cell)
         {
             var prefabs = PrefabsFor(stage);
             if (prefabs == null || prefabs.Length == 0) return -1;
+
+            if (IsFlowerVisualStage(stage))
+            {
+                if (cell != null && cell.FlowerVariantIndex >= 0)
+                {
+                    int locked = ResolveManualVariantIndex(stage, cell.FlowerVariantIndex);
+                    if (locked >= 0)
+                        return locked;
+                }
+
+                if (enableManualFlowerVariantSelection)
+                {
+                    int manual = ResolveManualVariantIndex(stage, selectedFlowerVariantIndex);
+                    if (manual >= 0)
+                        return manual;
+                }
+            }
 
             int validCount = 0;
             for (int i = 0; i < prefabs.Length; i++)
@@ -209,49 +637,6 @@ namespace SCoL.Visualization
             return PositiveHash(value) / (float)int.MaxValue;
         }
 
-        /// <summary>
-        /// Compatibility API expected by FPSRaycastInteractor.
-        /// Returns selected flower variant index in smallPlantPrefabs.
-        /// </summary>
-        public int GetSelectedFlowerVariantIndex()
-        {
-            if (smallPlantPrefabs == null || smallPlantPrefabs.Length == 0)
-                return -1;
-            _selectedFlowerVariant = Mathf.Clamp(_selectedFlowerVariant, 0, smallPlantPrefabs.Length - 1);
-            return _selectedFlowerVariant;
-        }
-
-        /// <summary>
-        /// Compatibility API expected by FPSRaycastInteractor.
-        /// Cycles selected small flower prefab variant.
-        /// </summary>
-        public bool CycleSelectedFlower(int delta)
-        {
-            if (smallPlantPrefabs == null || smallPlantPrefabs.Length == 0)
-                return false;
-
-            int len = smallPlantPrefabs.Length;
-            if (len <= 0)
-                return false;
-
-            int next = (_selectedFlowerVariant + delta) % len;
-            if (next < 0) next += len;
-            _selectedFlowerVariant = next;
-            return true;
-        }
-
-        /// <summary>
-        /// Compatibility API expected by FPSRaycastInteractor/HUD.
-        /// </summary>
-        public string GetSelectedFlowerName()
-        {
-            int idx = GetSelectedFlowerVariantIndex();
-            if (idx < 0 || smallPlantPrefabs == null || idx >= smallPlantPrefabs.Length)
-                return "Default Flower";
-            var p = smallPlantPrefabs[idx];
-            return p != null ? p.name : "Default Flower";
-        }
-
         private bool IsFlowerPrefabVariant(PlantStage stage, int variant)
         {
             var prefabs = PrefabsFor(stage);
@@ -262,7 +647,7 @@ namespace SCoL.Visualization
             if (string.IsNullOrEmpty(n))
                 return false;
             n = n.ToLowerInvariant();
-            return n.Contains("flower") || n.Contains("daisy") || n.Contains("rose") || n.Contains("tulip");
+            return n.Contains("flower") || n.Contains("daisy") || n.Contains("rose") || n.Contains("tulip") || n.Contains("sunflower");
         }
 
         private float ScaleFor(PlantStage stage, int cellIndex, CellState cell, int variant)
@@ -373,6 +758,11 @@ namespace SCoL.Visualization
 
             if (go == null)
                 go = CreateFallback(stage);
+
+            // Runtime sunflower template is stored as inactive. Instantiated clones inherit inactive state,
+            // so force activation here to guarantee newly planted variants are visible.
+            if (!go.activeSelf)
+                go.SetActive(true);
 
             go.transform.SetParent(transform, worldPositionStays: true);
             DisableCollisions(go);
@@ -485,8 +875,17 @@ namespace SCoL.Visualization
                 if (voxelWorld != null && !IsDryPlantableColumn(x, y))
                     continue;
 
+                // Backward-compat: lock variant for already-existing flower cells that were created
+                // before FlowerVariantIndex was introduced.
+                if (IsFlowerVisualStage(stage) &&
+                    enableManualFlowerVariantSelection &&
+                    cell.FlowerVariantIndex < 0)
+                {
+                    cell.FlowerVariantIndex = GetSelectedFlowerVariantIndex();
+                }
+
                 int idx = y * w + x;
-                int variant = PickPrefabIndex(stage, idx);
+                int variant = PickPrefabIndex(stage, idx, cell);
                 stale.Remove(idx);
 
                 if (!_active.TryGetValue(idx, out var active) || active.go == null || active.stage != stage || active.variant != variant)

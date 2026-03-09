@@ -302,6 +302,7 @@ public class FPSCrosshair : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void EnsureExists()
     {
+        if (FindFirstObjectByType<SCoL.Visualization.SCoLUIToolkitHUD>() != null) return;
         if (FindFirstObjectByType<FPSCrosshair>() != null) return;
         var go = new GameObject("FPSCrosshair (Runtime)");
         DontDestroyOnLoad(go);

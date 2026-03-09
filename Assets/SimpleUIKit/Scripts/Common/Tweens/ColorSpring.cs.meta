@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 9267848c0f4c1a644b052a60d257be22
+MonoImporter:
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 284292
+  packageName: Simple UI Kit
+  packageVersion: 1.0.1
+  assetPath: Assets/SimpleUIKit/Scripts/Common/Tweens/ColorSpring.cs
+  uploadId: 669184

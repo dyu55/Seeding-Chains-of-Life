@@ -82,6 +82,12 @@ public class FPSBoidAgent : MonoBehaviour
     [Min(0.1f)] public float waterEdgeLookAheadDistance = 1.1f;
     [Min(0.1f)] public float waterEdgeTurnSpeedMultiplier = 1.2f;
     [Min(0f)] public float waterEdgeExtraAvoidWeight = 3.0f;
+    [Tooltip("If true, land animals are forcefully pushed back to nearest dry column when they enter water.")]
+    public bool hardEjectFromWater = true;
+    [Tooltip("If true, snap directly to nearest dry column instead of slowly lerping while in water.")]
+    public bool instantEjectFromWater = true;
+    [Min(1f)] public float waterEjectLerpSpeed = 12f;
+    [Min(0f)] public float waterEjectHeightOffset = 0.08f;
 
     [Header("Plant Eating")]
     public bool canEatMaturePlants = false;
@@ -168,8 +174,14 @@ public class FPSBoidAgent : MonoBehaviour
 
         transform.position += velocity * Time.deltaTime;
 
+        if (avoidWaterColumns && hardEjectFromWater)
+            EjectFromWaterIfNeeded();
+
         if (constrainToGround)
             SnapToGround();
+
+        if (avoidWaterColumns && hardEjectFromWater)
+            EjectFromWaterIfNeeded();
 
         ApplyFeedReactionHop();
 
@@ -425,6 +437,25 @@ public class FPSBoidAgent : MonoBehaviour
 
     void SnapToGround()
     {
+        if (voxelWorld == null)
+            voxelWorld = FindFirstObjectByType<VoxelWorld>();
+
+        if (avoidWaterColumns && voxelWorld != null && IsWaterColumnAtWorld(transform.position))
+        {
+            // Do not stick to seabed/surface while in water; first force return to dry land.
+            EjectFromWaterIfNeeded();
+            return;
+        }
+
+        if (voxelWorld != null && voxelWorld.TryGetTerrainSurfaceYAtWorld(transform.position, out float surfaceY, includeWaterSurface: false))
+        {
+            Vector3 p0 = transform.position;
+            float targetY0 = surfaceY + groundOffset;
+            p0.y = Mathf.Lerp(p0.y, targetY0, Mathf.Clamp01(groundSnapSpeed * Time.deltaTime));
+            transform.position = p0;
+            return;
+        }
+
         Vector3 p = transform.position;
         Vector3 origin = new Vector3(p.x, p.y + Mathf.Max(0.1f, groundRaycastHeight), p.z);
         float dist = Mathf.Max(0.2f, groundRaycastHeight * 2f);
@@ -477,6 +508,19 @@ public class FPSBoidAgent : MonoBehaviour
     bool TryGetGroundY(out float groundY)
     {
         groundY = transform.position.y;
+
+        if (voxelWorld == null)
+            voxelWorld = FindFirstObjectByType<VoxelWorld>();
+
+        if (avoidWaterColumns && voxelWorld != null && IsWaterColumnAtWorld(transform.position))
+            return false;
+
+        if (voxelWorld != null && voxelWorld.TryGetTerrainSurfaceYAtWorld(transform.position, out float surfaceY, includeWaterSurface: false))
+        {
+            groundY = surfaceY + groundOffset;
+            return true;
+        }
+
         Vector3 p = transform.position;
         Vector3 origin = new Vector3(p.x, p.y + Mathf.Max(0.1f, groundRaycastHeight), p.z);
         float dist = Mathf.Max(0.2f, groundRaycastHeight * 2f);
@@ -505,6 +549,58 @@ public class FPSBoidAgent : MonoBehaviour
         }
 
         return false;
+    }
+
+    void EjectFromWaterIfNeeded()
+    {
+        if (!avoidWaterColumns || voxelWorld == null || voxelWorld.Config == null)
+            return;
+        if (!IsWaterColumnAtWorld(transform.position))
+            return;
+        if (!TryFindNearestDryColumnWorld(transform.position, out var dryWorld))
+        {
+            // Fallback: if we somehow cannot find dry land in search radius, force a turn-around.
+            Vector3 planar = new Vector3(velocity.x, 0f, velocity.z);
+            if (planar.sqrMagnitude > 0.0001f)
+            {
+                Vector3 away = -planar.normalized * Mathf.Max(0.2f, maxSpeed * 0.8f);
+                velocity.x = away.x;
+                velocity.z = away.z;
+            }
+            return;
+        }
+
+        Vector3 current = transform.position;
+        Vector3 p = current;
+        Vector3 toDryPlanar = dryWorld - current;
+        toDryPlanar.y = 0f;
+        if (instantEjectFromWater)
+        {
+            p.x = dryWorld.x;
+            p.z = dryWorld.z;
+        }
+        else
+        {
+            float t = Mathf.Clamp01(Time.deltaTime * Mathf.Max(1f, waterEjectLerpSpeed));
+            p.x = Mathf.Lerp(p.x, dryWorld.x, t);
+            p.z = Mathf.Lerp(p.z, dryWorld.z, t);
+        }
+
+        if (voxelWorld.TryGetTerrainSurfaceYAtWorld(dryWorld, out float drySurfaceY, includeWaterSurface: false))
+            p.y = Mathf.Max(p.y, drySurfaceY + groundOffset + Mathf.Max(0f, waterEjectHeightOffset));
+        else
+            p.y = Mathf.Max(p.y, dryWorld.y + Mathf.Max(0f, waterEjectHeightOffset));
+
+        transform.position = p;
+
+        if (toDryPlanar.sqrMagnitude > 0.0001f)
+        {
+            Vector3 dir = toDryPlanar.normalized;
+            float speed = Mathf.Max(0.2f, maxSpeed * 0.75f);
+            velocity.x = dir.x * speed;
+            velocity.z = dir.z * speed;
+            if (velocity.y > 0f) velocity.y = 0f;
+        }
     }
 
     bool TryEnsureEatTarget()
@@ -684,11 +780,13 @@ public class FPSBoidAgent : MonoBehaviour
             return false;
         if (x < 0 || z < 0 || x >= voxelWorld.Config.worldWidth || z >= voxelWorld.Config.worldDepth)
             return false;
-        if (!voxelWorld.IsGrassSurface(x, z))
-            return false;
 
         int surfaceY = voxelWorld.GetSurfaceY(x, z);
         if (surfaceY < voxelWorld.Config.seaLevel)
+            return false;
+
+        var surfaceType = voxelWorld.GetBlock(x, surfaceY, z);
+        if (!IsLandSurfaceType(surfaceType))
             return false;
 
         int aboveY = surfaceY + 1;
@@ -712,7 +810,7 @@ public class FPSBoidAgent : MonoBehaviour
         float bestSq = float.PositiveInfinity;
         int maxR = Mathf.Max(1, waterSearchRadius);
 
-        for (int r = 1; r <= maxR; r++)
+        for (int r = 0; r <= maxR; r++)
         {
             bool foundThisRing = false;
             for (int dz = -r; dz <= r; dz++)
@@ -746,6 +844,11 @@ public class FPSBoidAgent : MonoBehaviour
         int y = voxelWorld.GetSurfaceY(bestX, bestZ);
         dryWorld = voxelWorld.OriginWorld + new Vector3(bestX + 0.5f, y + 1f, bestZ + 0.5f);
         return true;
+    }
+
+    static bool IsLandSurfaceType(VoxelBlockType t)
+    {
+        return t == VoxelBlockType.Grass || t == VoxelBlockType.Dirt || t == VoxelBlockType.Stone;
     }
 
     Vector3 SteerTowards(Vector3 desired)

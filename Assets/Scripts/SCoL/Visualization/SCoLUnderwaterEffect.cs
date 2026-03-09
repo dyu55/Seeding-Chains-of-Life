@@ -33,6 +33,10 @@ namespace SCoL.Visualization
         [Min(5f)] public float underwaterFarClip = 28f;
         public Color underwaterBackgroundColor = new Color(0.05f, 0.18f, 0.28f, 1f);
 
+        [Header("Water Visibility")]
+        [Tooltip("When underwater, hide voxel water surface mesh (Minecraft-like underwater view).")]
+        public bool hideWaterSurfaceWhenUnderwater = true;
+
         private bool _active;
         private bool _savedFogEnabled;
         private FogMode _savedFogMode;
@@ -75,7 +79,8 @@ namespace SCoL.Visualization
             else
                 byHeight = y < (waterY - waterlineHysteresis);
 
-            bool shouldBeActive = inWaterVoxel || byHeight;
+            bool inWaterColumn = voxelWorld.IsWaterColumnAtWorld(camPos);
+            bool shouldBeActive = inWaterVoxel || (inWaterColumn && byHeight);
 
             if (shouldBeActive == _active)
             {
@@ -105,6 +110,8 @@ namespace SCoL.Visualization
             _savedBackgroundColor = targetCamera.backgroundColor;
             _savedFarClip = targetCamera.farClipPlane;
             _active = true;
+            if (hideWaterSurfaceWhenUnderwater && voxelWorld != null)
+                voxelWorld.SetWaterSurfaceVisible(false);
             ApplyUnderwaterState();
         }
 
@@ -112,6 +119,8 @@ namespace SCoL.Visualization
         {
             if (!_active) return;
             _active = false;
+            if (hideWaterSurfaceWhenUnderwater && voxelWorld != null)
+                voxelWorld.SetWaterSurfaceVisible(true);
             RenderSettings.fog = _savedFogEnabled;
             RenderSettings.fogMode = _savedFogMode;
             RenderSettings.fogColor = _savedFogColor;
