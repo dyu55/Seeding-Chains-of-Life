@@ -452,6 +452,7 @@ public class VoxBoxFishBoidAgent : MonoBehaviour
     public float drag = 0.35f;
     public float rotationLerp = 8f;
     public float cruiseDepthBelowSea = 0.55f;
+    [Range(0f, 35f)] public float maxPitchAngle = 12f;
     [Header("Lake Clamp")]
     [Tooltip("Hard-correct fish back toward nearest valid water anchor when they leave water.")]
     public bool hardClampToLake = true;
@@ -506,7 +507,17 @@ public class VoxBoxFishBoidAgent : MonoBehaviour
 
         if (velocity.sqrMagnitude > 0.0001f)
         {
-            var targetRot = Quaternion.LookRotation(velocity.normalized, Vector3.up);
+            Vector3 planar = new Vector3(velocity.x, 0f, velocity.z);
+            if (planar.sqrMagnitude < 0.0001f)
+                planar = transform.forward;
+            else
+                planar.Normalize();
+
+            float planarSpeed = Mathf.Max(0.0001f, new Vector2(velocity.x, velocity.z).magnitude);
+            float pitch = Mathf.Atan2(velocity.y, planarSpeed) * Mathf.Rad2Deg;
+            pitch = Mathf.Clamp(pitch, -Mathf.Abs(maxPitchAngle), Mathf.Abs(maxPitchAngle));
+
+            var targetRot = Quaternion.LookRotation(planar, Vector3.up) * Quaternion.Euler(-pitch, 0f, 0f);
             transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, rotationLerp * Time.deltaTime);
         }
     }
