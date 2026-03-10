@@ -156,8 +156,12 @@ namespace SCoL.Voxels
         [Min(0.02f)] public float winterSnowBuildSpeed = 0.30f;
         [Min(0.02f)] public float winterSnowMeltSpeed = 0.18f;
         [Range(0.1f, 1f)] public float winterIceFrozenThreshold = 0.82f;
-        [Range(0f, 0.6f)] public float winterIceExtraOverhang = 0.22f;
-        [Range(0f, 0.2f)] public float winterIceExtraEmbed = 0.03f;
+        [Range(0f, 0.8f)] public float winterIceExtraOverhang = 0.34f;
+        [Range(0f, 0.2f)] public float winterIceExtraEmbed = 0.04f;
+        [Range(-0.25f, 0.1f)] public float winterIceThresholdBias = -0.08f;
+        [Range(0, 6)] public int winterIceMaskExpandPasses = 2;
+        [Range(0, 8)] public int winterIceMaskSmoothingPasses = 3;
+        [Range(0f, 1f)] public float winterIceMaskSmoothingStrength = 0.82f;
         public Color snowOverlayColor = new Color(0.98f, 0.98f, 1.0f, 0.92f);
         public Color iceOverlayColor = new Color(0.70f, 0.90f, 1.0f, 0.84f);
 
@@ -1325,11 +1329,13 @@ namespace SCoL.Voxels
                 _lowPolyWaterMesh.vertexCount > 0)
             {
                 BuildLowPolyCornerMaps(out _, out var iceWaterMask);
+                PrepareWinterIceMask(iceWaterMask);
                 var iceMesh = BuildLowPolyWaterMesh(
                     iceWaterMask,
                     extraOverhang: Mathf.Max(0f, winterIceExtraOverhang),
                     extraEmbedDepth: Mathf.Max(0f, winterIceExtraEmbed),
-                    additionalYOffset: Mathf.Max(0.001f, winterOverlayHeightOffset) + 0.012f);
+                    additionalYOffset: Mathf.Max(0.001f, winterOverlayHeightOffset) + 0.012f,
+                    thresholdBias: winterIceThresholdBias);
                 CopyMeshInto(mesh, iceMesh);
                 Destroy(iceMesh);
                 return;
@@ -1428,11 +1434,13 @@ namespace SCoL.Voxels
                 _lowPolyWaterMesh.vertexCount > 0)
             {
                 BuildLowPolyCornerMaps(out _, out var iceWaterMask);
+                PrepareWinterIceMask(iceWaterMask);
                 var iceMesh = BuildLowPolyWaterMesh(
                     iceWaterMask,
                     extraOverhang: Mathf.Max(0f, winterIceExtraOverhang),
                     extraEmbedDepth: Mathf.Max(0f, winterIceExtraEmbed),
-                    additionalYOffset: Mathf.Max(0.001f, winterOverlayHeightOffset) + 0.015f);
+                    additionalYOffset: Mathf.Max(0.001f, winterOverlayHeightOffset) + 0.015f,
+                    thresholdBias: winterIceThresholdBias);
                 CopyMeshInto(mesh, iceMesh);
                 Destroy(iceMesh);
                 mc.sharedMesh = null;
@@ -2369,12 +2377,30 @@ namespace SCoL.Voxels
 
         private void ExpandWaterMask(float[,] mask)
         {
-            int passes = Mathf.Clamp(lowPolyWaterMaskExpandPasses, 0, 6);
-            if (passes <= 0)
+            ExpandWaterMask(mask, Mathf.Clamp(lowPolyWaterMaskExpandPasses, 0, 6), Mathf.Clamp01(lowPolyWaterMaskExpandStrength));
+        }
+
+        private void PrepareWinterIceMask(float[,] mask)
+        {
+            if (mask == null)
                 return;
 
-            float strength = Mathf.Clamp01(lowPolyWaterMaskExpandStrength);
-            if (strength <= 0f)
+            ExpandWaterMask(mask, Mathf.Clamp(winterIceMaskExpandPasses, 0, 6), Mathf.Clamp01(Mathf.Max(lowPolyWaterMaskExpandStrength, 0.9f)));
+
+            int smoothPasses = Mathf.Clamp(winterIceMaskSmoothingPasses, 0, 8);
+            if (smoothPasses > 0)
+            {
+                SmoothScalarField(
+                    mask,
+                    smoothPasses,
+                    Mathf.Clamp01(winterIceMaskSmoothingStrength),
+                    Mathf.Max(0.5f, lowPolyDiagonalSmoothingWeight));
+            }
+        }
+
+        private void ExpandWaterMask(float[,] mask, int passes, float strength)
+        {
+            if (mask == null || passes <= 0 || strength <= 0f)
                 return;
 
             int w = mask.GetLength(0);
@@ -2521,12 +2547,12 @@ namespace SCoL.Voxels
             return new Vector3(cellX + u, h, cellZ + v);
         }
 
-        private Mesh BuildLowPolyWaterMesh(float[,] cornerWaterMask, float extraOverhang = 0f, float extraEmbedDepth = 0f, float additionalYOffset = 0f)
+        private Mesh BuildLowPolyWaterMesh(float[,] cornerWaterMask, float extraOverhang = 0f, float extraEmbedDepth = 0f, float additionalYOffset = 0f, float thresholdBias = 0f)
         {
             int w = config.worldWidth;
             int d = config.worldDepth;
             int sub = Mathf.Clamp(lowPolyWaterSubdivisions, 1, 4);
-            float threshold = Mathf.Clamp(lowPolyWaterMaskThreshold, 0.01f, 0.99f);
+            float threshold = Mathf.Clamp(lowPolyWaterMaskThreshold + thresholdBias, 0.01f, 0.99f);
             float uvScale = Mathf.Max(0.01f, lowPolyUVScale);
             float seaY = Mathf.Clamp(
                 config.seaLevel + 1f + lowPolyWaterYOffset + additionalYOffset - Mathf.Max(0f, lowPolyWaterEmbedDepth + extraEmbedDepth),

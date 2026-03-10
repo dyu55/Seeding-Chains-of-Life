@@ -20,6 +20,8 @@ public class FPSSpawnOnVoxel : MonoBehaviour
     public float retrySeconds = 2f;
     public int forceEnableRenderRadiusChunks = 1;
     public int forceEnableColliderRadiusChunks = 2;
+    public int settleChecks = 8;
+    public float settleCheckDelay = 0.08f;
 
     CharacterController _cc;
     VoxelWorld _voxelWorld;
@@ -28,6 +30,18 @@ public class FPSSpawnOnVoxel : MonoBehaviour
     {
         _cc = GetComponent<CharacterController>();
         _voxelWorld = FindFirstObjectByType<VoxelWorld>();
+
+        if (_voxelWorld != null &&
+            _voxelWorld.Config != null &&
+            TryFindDryLandSpawnPoint(_voxelWorld, out var immediatePoint))
+        {
+            _voxelWorld.ForceEnableChunksAtWorld(
+                immediatePoint,
+                renderRadiusChunks: Mathf.Max(0, forceEnableRenderRadiusChunks),
+                colliderRadiusChunks: Mathf.Max(0, forceEnableColliderRadiusChunks));
+            Teleport(immediatePoint + Vector3.up * spawnOffsetY);
+            ForceEnableNearbyVoxelChunks(transform.position);
+        }
 
         // Wait one frame so runtime-generated voxel chunks/colliders can appear.
         yield return null;
@@ -52,6 +66,7 @@ public class FPSSpawnOnVoxel : MonoBehaviour
                 var snapped = point + Vector3.up * spawnOffsetY;
                 Teleport(snapped);
                 ForceEnableNearbyVoxelChunks(snapped);
+                yield return StabilizeSpawn(snapped);
                 yield break;
             }
             yield return null;
@@ -65,7 +80,9 @@ public class FPSSpawnOnVoxel : MonoBehaviour
             int y = _voxelWorld.GetSurfaceY(x, z);
             Vector3 fallback = _voxelWorld.OriginWorld + new Vector3(x + 0.5f, y + 1f, z + 0.5f);
             _voxelWorld.ForceEnableChunksAtWorld(fallback, renderRadiusChunks: 2, colliderRadiusChunks: 2);
-            Teleport(fallback + Vector3.up * spawnOffsetY);
+            var snapped = fallback + Vector3.up * spawnOffsetY;
+            Teleport(snapped);
+            yield return StabilizeSpawn(snapped);
         }
     }
 
@@ -209,6 +226,11 @@ public class FPSSpawnOnVoxel : MonoBehaviour
             _cc.enabled = false;
             transform.position = worldPos;
             _cc.enabled = wasEnabled;
+            if (wasEnabled)
+            {
+                float settleDistance = Mathf.Max(0.02f, spawnOffsetY + _cc.skinWidth + 0.02f);
+                _cc.Move(Vector3.down * settleDistance);
+            }
             return;
         }
 
@@ -225,5 +247,35 @@ public class FPSSpawnOnVoxel : MonoBehaviour
             worldPos,
             renderRadiusChunks: Mathf.Max(0, forceEnableRenderRadiusChunks),
             colliderRadiusChunks: Mathf.Max(0, forceEnableColliderRadiusChunks));
+    }
+
+    IEnumerator StabilizeSpawn(Vector3 desiredWorldPos)
+    {
+        int checks = Mathf.Max(1, settleChecks);
+        float delay = Mathf.Max(0.01f, settleCheckDelay);
+
+        for (int i = 0; i < checks; i++)
+        {
+            ForceEnableNearbyVoxelChunks(transform.position);
+
+            Vector3 probePoint = transform.position;
+            if (!TryProjectToColliderSurface(probePoint, out var groundedPoint) &&
+                !TryProjectToColliderSurface(desiredWorldPos, out groundedPoint))
+            {
+                yield return new WaitForSeconds(delay);
+                continue;
+            }
+
+            Vector3 corrected = groundedPoint + Vector3.up * spawnOffsetY;
+            bool belowGround = transform.position.y < corrected.y - 0.02f;
+            bool largeOffset = Mathf.Abs(transform.position.y - corrected.y) > 0.18f;
+            if (belowGround || largeOffset)
+                Teleport(corrected);
+
+            if (_cc == null || _cc.isGrounded)
+                yield break;
+
+            yield return new WaitForSeconds(delay);
+        }
     }
 }

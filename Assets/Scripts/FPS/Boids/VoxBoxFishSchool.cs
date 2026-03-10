@@ -397,6 +397,55 @@ public class VoxBoxFishSchool : MonoBehaviour
         return true;
     }
 
+    public bool TryGetRoamWaterAnchor(Vector3 worldPos, Vector3 preferredForward, float minDistance, float maxDistance, out Vector3 anchor)
+    {
+        anchor = worldPos;
+        if (_waterAnchors.Count == 0)
+            return false;
+
+        float minDistSq = Mathf.Max(0.01f, minDistance) * Mathf.Max(0.01f, minDistance);
+        float maxDist = Mathf.Max(minDistance + 0.25f, maxDistance);
+        float maxDistSq = maxDist * maxDist;
+
+        Vector3 planarForward = new Vector3(preferredForward.x, 0f, preferredForward.z);
+        if (planarForward.sqrMagnitude > 0.0001f)
+            planarForward.Normalize();
+        else
+            planarForward = Random.insideUnitSphere;
+
+        bool foundPreferred = false;
+        float bestScore = float.NegativeInfinity;
+        int samples = Mathf.Clamp(_waterAnchors.Count, 10, 36);
+
+        for (int i = 0; i < samples; i++)
+        {
+            Vector3 candidate = _waterAnchors[Random.Range(0, _waterAnchors.Count)];
+            Vector3 delta = candidate - worldPos;
+            float distSq = delta.sqrMagnitude;
+            if (distSq < minDistSq || distSq > maxDistSq)
+                continue;
+
+            Vector3 planarDelta = new Vector3(delta.x, 0f, delta.z);
+            if (planarDelta.sqrMagnitude < 0.0001f)
+                continue;
+
+            float heading = Vector3.Dot(planarForward, planarDelta.normalized);
+            float distScore = Mathf.InverseLerp(minDistSq, maxDistSq, distSq);
+            float score = heading * 1.35f + distScore * 0.65f + Random.Range(0f, 0.25f);
+            if (score <= bestScore)
+                continue;
+
+            bestScore = score;
+            anchor = candidate;
+            foundPreferred = true;
+        }
+
+        if (foundPreferred)
+            return true;
+
+        return TryGetNearestWaterAnchor(worldPos, out anchor);
+    }
+
     private static void DisableAllColliders(GameObject go)
     {
         var colliders = go.GetComponentsInChildren<Collider>(includeInactive: true);
@@ -460,6 +509,11 @@ public class VoxBoxFishBoidAgent : MonoBehaviour
     [Min(0.05f)] public float terrainClearance = 0.28f;
     [Min(0.05f)] public float surfaceClearance = 0.18f;
     [Min(0.05f)] public float horizontalRecenterDistance = 0.85f;
+    [Min(0.1f)] public float anchorReachDistance = 0.75f;
+    [Min(0.1f)] public float retargetAnchorInterval = 3.5f;
+    [Min(0.25f)] public float anchorMinTravelDistance = 2.5f;
+    [Min(0.5f)] public float anchorMaxTravelDistance = 10f;
+    [Min(0.25f)] public float stuckRetargetSeconds = 1.25f;
 
     [HideInInspector] public VoxelWorld voxelWorld;
     [HideInInspector] public VoxBoxFishSchool school;
@@ -468,6 +522,10 @@ public class VoxBoxFishBoidAgent : MonoBehaviour
 
     private static readonly List<VoxBoxFishBoidAgent> Active = new List<VoxBoxFishBoidAgent>(256);
     private float _wanderSeed;
+    private Vector3 _currentAnchor;
+    private float _nextAnchorRetargetAt;
+    private Vector3 _lastSamplePosition;
+    private float _stuckTimer;
 
     private void OnEnable()
     {
@@ -486,6 +544,10 @@ public class VoxBoxFishBoidAgent : MonoBehaviour
             velocity = Random.onUnitSphere * (maxSpeed * 0.6f);
 
         _wanderSeed = Random.Range(1f, 10000f);
+        _currentAnchor = homeAnchor;
+        _nextAnchorRetargetAt = Time.time + Random.Range(0.5f, Mathf.Max(0.6f, retargetAnchorInterval));
+        _lastSamplePosition = transform.position;
+        _stuckTimer = 0f;
     }
 
     private void Update()
@@ -505,6 +567,19 @@ public class VoxBoxFishBoidAgent : MonoBehaviour
 
         if (school != null && hardClampToLake)
             EnforceWaterVolume();
+
+        Vector3 planarDelta = Vector3.ProjectOnPlane(transform.position - _lastSamplePosition, Vector3.up);
+        if (planarDelta.sqrMagnitude < 0.0008f)
+            _stuckTimer += Time.deltaTime;
+        else
+            _stuckTimer = Mathf.Max(0f, _stuckTimer - Time.deltaTime * 2.5f);
+        _lastSamplePosition = transform.position;
+
+        if (_stuckTimer >= Mathf.Max(0.25f, stuckRetargetSeconds))
+        {
+            ForceRetargetAnchor(transform.position, boostVelocity: true);
+            _stuckTimer = 0f;
+        }
 
         if (velocity.sqrMagnitude > 0.0001f)
         {
@@ -587,13 +662,11 @@ public class VoxBoxFishBoidAgent : MonoBehaviour
                 accel += SteerTowards(school.WaterBounds.center - myPos) * boundsWeight;
             }
 
-            if (!school.IsInWaterColumn(myPos))
-            {
-                if (school.TryGetNearestWaterAnchor(myPos, out var anchor))
-                    accel += SteerTowards(anchor - myPos) * waterReturnWeight;
-                else
-                    accel += SteerTowards(homeAnchor - myPos) * waterReturnWeight;
-            }
+            UpdateAnchorTarget(myPos);
+            Vector3 toAnchor = _currentAnchor - myPos;
+            toAnchor.y *= 0.35f;
+            if (toAnchor.sqrMagnitude > Mathf.Max(0.1f, anchorReachDistance) * Mathf.Max(0.1f, anchorReachDistance))
+                accel += SteerTowards(toAnchor) * (waterReturnWeight * 0.42f);
         }
 
         if (voxelWorld != null && voxelWorld.Config != null)
@@ -632,6 +705,8 @@ public class VoxBoxFishBoidAgent : MonoBehaviour
         {
             if (school.TryGetNearestWaterAnchor(p, out var nearest))
             {
+                _currentAnchor = nearest;
+                _nextAnchorRetargetAt = Time.time + Mathf.Max(0.5f, retargetAnchorInterval * 0.5f);
                 float t = Mathf.Clamp01(Time.deltaTime * Mathf.Max(1f, hardClampLerpSpeed));
                 if (needsHorizontalRecovery)
                 {
@@ -678,6 +753,60 @@ public class VoxBoxFishBoidAgent : MonoBehaviour
 
         p.y = Mathf.Clamp(p.y, minY, waterSurfaceY);
         transform.position = p;
+    }
+
+    private void UpdateAnchorTarget(Vector3 myPos)
+    {
+        if (school == null)
+            return;
+
+        if (_currentAnchor == Vector3.zero)
+            _currentAnchor = homeAnchor;
+
+        float reach = Mathf.Max(0.1f, anchorReachDistance);
+        float reachSq = reach * reach;
+        bool reached = (_currentAnchor - myPos).sqrMagnitude <= reachSq;
+        bool timedOut = Time.time >= _nextAnchorRetargetAt;
+
+        if (!reached && !timedOut)
+            return;
+
+        ForceRetargetAnchor(myPos, boostVelocity: false);
+    }
+
+    private void ForceRetargetAnchor(Vector3 myPos, bool boostVelocity)
+    {
+        Vector3 preferredForward = velocity.sqrMagnitude > 0.001f ? velocity : transform.forward;
+        if (!school.TryGetRoamWaterAnchor(
+                myPos,
+                preferredForward,
+                Mathf.Max(0.25f, anchorMinTravelDistance),
+                Mathf.Max(anchorMinTravelDistance + 0.25f, anchorMaxTravelDistance),
+                out var nextAnchor))
+        {
+            nextAnchor = homeAnchor;
+        }
+
+        Vector3 jitter = new Vector3(
+            Random.Range(-0.55f, 0.55f),
+            Random.Range(-0.08f, 0.08f),
+            Random.Range(-0.55f, 0.55f));
+        _currentAnchor = nextAnchor + jitter;
+        _nextAnchorRetargetAt = Time.time + Random.Range(
+            Mathf.Max(0.8f, retargetAnchorInterval * 0.65f),
+            Mathf.Max(1.0f, retargetAnchorInterval * 1.35f));
+
+        if (!boostVelocity)
+            return;
+
+        Vector3 toAnchor = _currentAnchor - myPos;
+        Vector3 planar = new Vector3(toAnchor.x, 0f, toAnchor.z);
+        if (planar.sqrMagnitude < 0.001f)
+            return;
+
+        Vector3 dir = planar.normalized;
+        float speed = Mathf.Clamp(Mathf.Max(minSpeed * 1.2f, velocity.magnitude), minSpeed, maxSpeed);
+        velocity = new Vector3(dir.x * speed, Mathf.Clamp(velocity.y, -0.18f, 0.18f), dir.z * speed);
     }
 
     private Vector3 SteerTowards(Vector3 desired)
