@@ -21,17 +21,17 @@ namespace SCoL.Visualization
         [Range(0f, 1f)] public float waterlineHysteresis = 0.00f;
 
         [Header("Fog Override")]
-        public Color underwaterFogColor = new Color(0.10f, 0.32f, 0.52f, 1f);
+        public Color underwaterFogColor = new Color(0.12f, 0.28f, 0.40f, 1f);
         public FogMode underwaterFogMode = FogMode.ExponentialSquared;
-        [Range(0f, 0.2f)] public float underwaterFogDensity = 0.065f;
+        [Range(0f, 0.2f)] public float underwaterFogDensity = 0.032f;
 
         [Header("Camera Override")]
         [Tooltip("Use solid-color background underwater to hide skybox seams at the waterline.")]
         public bool overrideCameraClear = true;
         [Tooltip("Reduces distant terrain leaks while submerged.")]
         public bool overrideFarClip = true;
-        [Min(5f)] public float underwaterFarClip = 28f;
-        public Color underwaterBackgroundColor = new Color(0.05f, 0.18f, 0.28f, 1f);
+        [Min(5f)] public float underwaterFarClip = 42f;
+        public Color underwaterBackgroundColor = new Color(0.10f, 0.22f, 0.30f, 1f);
 
         [Header("Water Visibility")]
         [Tooltip("When underwater, hide voxel water surface mesh (Minecraft-like underwater view).")]

@@ -456,6 +456,8 @@ public class VoxBoxFishBoidAgent : MonoBehaviour
     [Tooltip("Hard-correct fish back toward nearest valid water anchor when they leave water.")]
     public bool hardClampToLake = true;
     [Range(1f, 30f)] public float hardClampLerpSpeed = 10f;
+    [Min(0.05f)] public float terrainClearance = 0.28f;
+    [Min(0.05f)] public float surfaceClearance = 0.18f;
 
     [HideInInspector] public VoxelWorld voxelWorld;
     [HideInInspector] public VoxBoxFishSchool school;
@@ -499,16 +501,8 @@ public class VoxBoxFishBoidAgent : MonoBehaviour
 
         transform.position += velocity * Time.deltaTime;
 
-        if (school != null && hardClampToLake && !school.IsInWaterColumn(transform.position))
-        {
-            if (school.TryGetNearestWaterAnchor(transform.position, out var nearest))
-            {
-                transform.position = Vector3.Lerp(
-                    transform.position,
-                    nearest,
-                    Mathf.Clamp01(Time.deltaTime * Mathf.Max(1f, hardClampLerpSpeed)));
-            }
-        }
+        if (school != null && hardClampToLake)
+            EnforceWaterVolume();
 
         if (velocity.sqrMagnitude > 0.0001f)
         {
@@ -601,6 +595,64 @@ public class VoxBoxFishBoidAgent : MonoBehaviour
             accel = accel.normalized * maxForce;
 
         return accel;
+    }
+
+    private void EnforceWaterVolume()
+    {
+        if (school == null || voxelWorld == null || voxelWorld.Config == null)
+            return;
+
+        Vector3 p = transform.position;
+        bool inWater = school.IsInWaterColumn(p);
+
+        float waterSurfaceY = voxelWorld.OriginWorld.y + voxelWorld.Config.seaLevel - Mathf.Max(0.05f, surfaceClearance);
+        float terrainY = float.NegativeInfinity;
+        bool hasTerrain = voxelWorld.TryGetTerrainSurfaceYAtWorld(p, out terrainY, includeWaterSurface: false);
+        float minY = hasTerrain ? terrainY + Mathf.Max(0.05f, terrainClearance) : float.NegativeInfinity;
+        bool tooLow = hasTerrain && p.y < minY;
+        bool tooHigh = p.y > waterSurfaceY;
+        bool invalidShallowColumn = hasTerrain && minY >= waterSurfaceY - 0.02f;
+
+        if (!inWater || tooLow || tooHigh || invalidShallowColumn)
+        {
+            if (school.TryGetNearestWaterAnchor(p, out var nearest))
+            {
+                float t = Mathf.Clamp01(Time.deltaTime * Mathf.Max(1f, hardClampLerpSpeed));
+                p = Vector3.Lerp(p, nearest, t);
+
+                if (voxelWorld.TryGetTerrainSurfaceYAtWorld(nearest, out float nearestTerrainY, includeWaterSurface: false))
+                {
+                    float nearestMinY = nearestTerrainY + Mathf.Max(0.05f, terrainClearance);
+                    p.y = Mathf.Clamp(p.y, nearestMinY, waterSurfaceY);
+                }
+                else
+                {
+                    p.y = Mathf.Min(p.y, waterSurfaceY);
+                }
+
+                transform.position = p;
+
+                Vector3 toAnchor = nearest - transform.position;
+                if (toAnchor.sqrMagnitude > 0.0001f)
+                {
+                    Vector3 dir = toAnchor.normalized;
+                    float speed = Mathf.Max(minSpeed, velocity.magnitude);
+                    velocity = Vector3.Lerp(velocity, dir * speed, t);
+                }
+            }
+            else
+            {
+                if (tooHigh)
+                    p.y = waterSurfaceY;
+                if (tooLow)
+                    p.y = minY;
+                transform.position = p;
+            }
+            return;
+        }
+
+        p.y = Mathf.Clamp(p.y, minY, waterSurfaceY);
+        transform.position = p;
     }
 
     private Vector3 SteerTowards(Vector3 desired)

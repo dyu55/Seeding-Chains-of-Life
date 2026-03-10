@@ -11,6 +11,13 @@ namespace SCoL.Voxels
     [DisallowMultipleComponent]
     public class FloraPropChunk : MonoBehaviour
     {
+        public enum ColliderMode
+        {
+            None,
+            Box,
+            Mesh
+        }
+
         [Serializable]
         public class Prop
         {
@@ -39,6 +46,15 @@ namespace SCoL.Voxels
             public bool avoidSteepSlopes = false;
             [Tooltip("Max allowed neighbor height delta (in blocks) between adjacent columns.")]
             public int maxNeighborDelta = 1;
+
+            [Header("Optional instance object mode")]
+            [Tooltip("If true, spawn per-instance GameObjects instead of GPU instancing. Use for collidable rocks.")]
+            public bool instantiateAsObject = false;
+            public ColliderMode colliderMode = ColliderMode.None;
+            [Tooltip("Sink prop slightly into the ground to avoid floating on slopes.")]
+            public float embedDepth = 0f;
+            [Tooltip("Sample smoothed terrain height when available.")]
+            public bool alignToSmoothedTerrain = true;
         }
 
         public VoxelWorld world;
@@ -49,12 +65,14 @@ namespace SCoL.Voxels
 
         private readonly Dictionary<Mesh, List<Matrix4x4>> _matricesByMesh = new();
         private readonly Dictionary<Mesh, Material> _materialByMesh = new();
+        private readonly List<GameObject> _spawnedObjects = new();
 
         // Reused per-frame buffer to avoid allocations (Unity limit: 1023 instances per call).
         private readonly Matrix4x4[] _batchBuffer = new Matrix4x4[1023];
 
         public void Rebuild(int seed)
         {
+            ClearSpawnedObjects();
             _matricesByMesh.Clear();
             _materialByMesh.Clear();
 
@@ -72,6 +90,7 @@ namespace SCoL.Voxels
                 if (p.density <= 0f || p.maxPerChunk <= 0) continue;
 
                 var matrices = new List<Matrix4x4>(Mathf.Min(p.maxPerChunk, 64));
+                int placedCount = 0;
                 var rng = new System.Random(Hash(seed, chunkCoord.x, chunkCoord.y, pi));
 
                 for (int lz = 0; lz < cs; lz++)
@@ -109,11 +128,23 @@ namespace SCoL.Voxels
                     }
 
                     Vector3 pos = world.OriginWorld + new Vector3(x + 0.5f + ox, ySurface + 1.0f, z + 0.5f + oz);
+                    if (p.alignToSmoothedTerrain && world.TryGetTerrainSurfaceYAtWorld(pos + Vector3.up * 2f, out float smoothY, includeWaterSurface: false))
+                        pos.y = smoothY;
+                    pos.y -= Mathf.Max(0f, p.embedDepth);
                     var rot = Quaternion.Euler(0f, yaw, 0f);
                     var scale = Vector3.one * s;
 
-                    matrices.Add(Matrix4x4.TRS(pos, rot, scale));
-                    if (matrices.Count >= p.maxPerChunk)
+                    if (p.instantiateAsObject)
+                    {
+                        SpawnPropObject(p, pos, rot, scale);
+                    }
+                    else
+                    {
+                        matrices.Add(Matrix4x4.TRS(pos, rot, scale));
+                    }
+                    placedCount++;
+
+                    if (placedCount >= p.maxPerChunk)
                         break;
                 }
 
@@ -122,6 +153,97 @@ namespace SCoL.Voxels
                     _matricesByMesh[p.mesh] = matrices;
                     _materialByMesh[p.mesh] = p.material;
                 }
+            }
+        }
+
+        private void SpawnPropObject(Prop p, Vector3 pos, Quaternion rot, Vector3 scale)
+        {
+            var go = new GameObject(string.IsNullOrEmpty(p.name) ? "FloraProp" : p.name);
+            go.transform.SetParent(transform, worldPositionStays: false);
+            go.transform.position = pos;
+            go.transform.rotation = rot;
+            go.transform.localScale = scale;
+            go.layer = gameObject.layer;
+
+            var mf = go.AddComponent<MeshFilter>();
+            mf.sharedMesh = p.mesh;
+
+            var mr = go.AddComponent<MeshRenderer>();
+            mr.sharedMaterial = p.material;
+            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            mr.receiveShadows = false;
+
+            SnapObjectBottomToGround(go, p.mesh, pos.y);
+
+            switch (p.colliderMode)
+            {
+                case ColliderMode.Box:
+                    AddBoxCollider(go, p.mesh);
+                    break;
+                case ColliderMode.Mesh:
+                    var mc = go.AddComponent<MeshCollider>();
+                    mc.sharedMesh = p.mesh;
+                    mc.convex = false;
+                    break;
+            }
+
+            _spawnedObjects.Add(go);
+        }
+
+        private static void AddBoxCollider(GameObject go, Mesh mesh)
+        {
+            if (go == null || mesh == null)
+                return;
+
+            var bc = go.AddComponent<BoxCollider>();
+            var bounds = mesh.bounds;
+            bc.center = bounds.center + new Vector3(0f, bounds.size.y * 0.02f, 0f);
+            bc.size = new Vector3(
+                bounds.size.x * 0.48f,
+                bounds.size.y * 0.58f,
+                bounds.size.z * 0.48f);
+        }
+
+        private static void SnapObjectBottomToGround(GameObject go, Mesh mesh, float groundY)
+        {
+            if (go == null || mesh == null)
+                return;
+
+            float minY = mesh.bounds.min.y * go.transform.lossyScale.y;
+            var pos = go.transform.position;
+            pos.y = groundY - minY;
+            go.transform.position = pos;
+        }
+
+        private void ClearSpawnedObjects()
+        {
+            for (int i = 0; i < _spawnedObjects.Count; i++)
+            {
+                if (_spawnedObjects[i] != null)
+                    Destroy(_spawnedObjects[i]);
+            }
+            _spawnedObjects.Clear();
+        }
+
+        public void RemoveSpawnedObjects(Predicate<GameObject> predicate)
+        {
+            if (predicate == null || _spawnedObjects.Count == 0)
+                return;
+
+            for (int i = _spawnedObjects.Count - 1; i >= 0; i--)
+            {
+                var go = _spawnedObjects[i];
+                if (go == null)
+                {
+                    _spawnedObjects.RemoveAt(i);
+                    continue;
+                }
+
+                if (!predicate(go))
+                    continue;
+
+                _spawnedObjects.RemoveAt(i);
+                Destroy(go);
             }
         }
 
@@ -175,6 +297,11 @@ namespace SCoL.Voxels
                 h = (h * 397) ^ salt;
                 return h;
             }
+        }
+
+        private void OnDestroy()
+        {
+            ClearSpawnedObjects();
         }
     }
 }

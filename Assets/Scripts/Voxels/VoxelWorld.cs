@@ -115,15 +115,26 @@ namespace SCoL.Voxels
         public Material treeMaterial;
 
         [Header("Featured Trees (Fixed Count)")]
-        [Tooltip("Spawn a fixed set of evenly distributed trees across the map.")]
+        [Tooltip("Spawn a fixed set of randomly distributed trees across the map.")]
         public bool enableFeaturedTrees = true;
-        [Min(0)] public int featuredTreeCount = 20;
+        [Min(0)] public int featuredTreeCount = 100;
         [Tooltip("Prefer grass surface for featured tree placement.")]
         public bool featuredTreesPreferGrass = true;
         [Min(0)] public int featuredTreeSearchRadius = 10;
+        [Tooltip("Target world-space height range for imported featured tree variants.")]
+        public Vector2 featuredTreeTargetHeightRange = new Vector2(7.5f, 9.0f);
         public Vector2 featuredTreeScaleRange = new Vector2(4.8f, 5.2f);
         [Min(-2f)] public float featuredTreeYOffset = 0f;
-        [Range(0f, 1.5f)] public float featuredTreeRootEmbedDepth = 0.22f;
+        [Range(0f, 1.5f)] public float featuredTreeRootEmbedDepth = 0.55f;
+        [Header("Featured Tree Clusters")]
+        [Range(0f, 1f)] public float featuredTreeClusterChance = 0.32f;
+        [Min(2)] public int featuredTreeClusterSameMin = 4;
+        [Min(2)] public int featuredTreeClusterSameMax = 5;
+        [Min(0)] public int featuredTreeClusterAccentCount = 1;
+        [Min(1)] public int featuredTreeClusterRadius = 5;
+        [Min(0.5f)] public float featuredTreeMinSpacing = 2.6f;
+        [Min(0)] public int featuredTreeWaterBufferRadius = 2;
+        [Min(0.5f)] public float featuredTreeRockClearRadius = 2.2f;
 
         [Header("World Boundary")]
         [Tooltip("Create 4 border walls around the voxel map to prevent leaving the world.")]
@@ -141,6 +152,10 @@ namespace SCoL.Voxels
         public bool enableWinterSnowAndIce = true;
         [Min(0.001f)] public float winterOverlayHeightOffset = 0.02f;
         [Min(0.001f)] public float winterOverlayInset = 0.015f;
+        [Min(0.001f)] public float winterOverlayUvScale = 0.085f;
+        [Min(0.02f)] public float winterSnowBuildSpeed = 0.30f;
+        [Min(0.02f)] public float winterSnowMeltSpeed = 0.18f;
+        [Range(0.1f, 1f)] public float winterIceFrozenThreshold = 0.82f;
         public Color snowOverlayColor = new Color(0.98f, 0.98f, 1.0f, 0.92f);
         public Color iceOverlayColor = new Color(0.70f, 0.90f, 1.0f, 0.84f);
 
@@ -171,10 +186,13 @@ namespace SCoL.Voxels
         private GameObject _iceColliderGO;
         private Material _snowOverlayMat;
         private Material _iceOverlayMat;
+        private Texture2D _snowOverlayTex;
+        private Texture2D _iceOverlayTex;
         private SeasonSkyboxController _seasonSkybox;
         private WeatherSystem _weatherSystem;
         private SCoL.SCoLRuntime _runtime;
         private float _nextSeasonLookupAt;
+        private float _winterVisualAmount;
         private bool _winterVisualsActive;
         private bool _useCubeNetGrassUV;
         private bool _useCubeNetDirtUV;
@@ -182,6 +200,20 @@ namespace SCoL.Voxels
         private bool _waterSurfaceVisible = true;
         private Material _hiddenWaterMat;
         private readonly List<FlatBuildPad> _flatBuildPads = new();
+        private Mesh[] _stylizedGrassMeshes;
+        private Mesh[] _stylizedFlowerMeshes;
+        private Mesh[] _stylizedBushMeshes;
+        private Mesh[] _stylizedPlantMeshes;
+        private Mesh[] _stylizedMushroomMeshes;
+        private Mesh[] _stylizedRockMeshes;
+        private Mesh[] _stylizedPebbleMeshes;
+        private Mesh[] _stylizedPathRockMeshes;
+        private Material _stylizedGrassMaterial;
+        private Material _stylizedFlowerMaterial;
+        private Material _stylizedLeafMaterial;
+        private Material _stylizedMushroomMaterial;
+        private Material _stylizedRockMaterial;
+        private Material _stylizedPathRockMaterial;
 
         private struct FlatBuildPad
         {
@@ -190,8 +222,17 @@ namespace SCoL.Voxels
             public int targetHeight;
         }
 
+        private struct TreeVariant
+        {
+            public GameObject prefab;
+            public float sourceHeight;
+            public Material materialOverride;
+            public Texture2D textureOverride;
+        }
+
         private float _streamT;
         private Texture2D _grassFaceAtlasRuntime;
+        private TreeVariant[] _featuredTreeVariants;
 
         public Vector3 OriginWorld => useTransformAsOrigin ? transform.position : Vector3.zero;
 
@@ -227,12 +268,14 @@ namespace SCoL.Voxels
         private void Update()
         {
             if (config == null) return;
+
+            UpdateWinterVisualState();
+
             _streamT += Time.unscaledDeltaTime;
             if (_streamT < config.streamingUpdateSeconds) return;
             _streamT = 0f;
 
             StreamAroundCamera();
-            UpdateWinterVisualState();
         }
 
         private void EnsureDefaultMaterials()
@@ -281,6 +324,17 @@ namespace SCoL.Voxels
             waterMat.enableInstancing = true;
             waterMat.color = new Color(0.18f, 0.35f, 0.85f, 0.85f);
             ApplyTextureFromResourcesIfAvailable(waterMat, "Voxels/w1");
+            if (waterMat.HasProperty("_Surface")) waterMat.SetFloat("_Surface", 1f);
+            if (waterMat.HasProperty("_Blend")) waterMat.SetFloat("_Blend", 0f);
+            if (waterMat.HasProperty("_SrcBlend")) waterMat.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            if (waterMat.HasProperty("_DstBlend")) waterMat.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            if (waterMat.HasProperty("_ZWrite")) waterMat.SetFloat("_ZWrite", 0f);
+            if (waterMat.HasProperty("_Smoothness")) waterMat.SetFloat("_Smoothness", 0.10f);
+            if (waterMat.HasProperty("_Glossiness")) waterMat.SetFloat("_Glossiness", 0.10f);
+            if (waterMat.HasProperty("_Cull")) waterMat.SetFloat("_Cull", 0f);
+            if (waterMat.HasProperty("_CullMode")) waterMat.SetFloat("_CullMode", 0f);
+            waterMat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+            ApplyPlaneWaterAnimatedMaterial(waterMat, "Voxel_Water_Animated");
 
             if (lowPolyTerrainMaterial == null)
             {
@@ -309,6 +363,7 @@ namespace SCoL.Voxels
             if (lowPolyWaterMaterial.HasProperty("_Glossiness")) lowPolyWaterMaterial.SetFloat("_Glossiness", 0.06f);
             if (lowPolyWaterMaterial.HasProperty("_Cull")) lowPolyWaterMaterial.SetFloat("_Cull", 0f);
             if (lowPolyWaterMaterial.HasProperty("_CullMode")) lowPolyWaterMaterial.SetFloat("_CullMode", 0f);
+            ApplyPlaneWaterAnimatedMaterial(lowPolyWaterMaterial, "LowPoly_Water_Animated");
 
             if (showBoundaryWalls && boundaryWallMaterial == null)
             {
@@ -374,6 +429,28 @@ namespace SCoL.Voxels
         private void EnsureGrassPropAssets()
         {
 #if UNITY_EDITOR
+            EnsureStylizedNatureAssets();
+
+            if (_stylizedGrassMeshes != null && _stylizedGrassMeshes.Length > 0)
+            {
+                enableGrassProps = true;
+                grassPropMesh = _stylizedGrassMeshes[0];
+                grassPropMaterial = _stylizedGrassMaterial;
+                grassPropDensity = Mathf.Max(grassPropDensity, 0.16f);
+                grassPropsMaxPerChunk = Mathf.Max(grassPropsMaxPerChunk, 180);
+            }
+
+            if ((_stylizedFlowerMeshes != null && _stylizedFlowerMeshes.Length > 0) ||
+                (_stylizedBushMeshes != null && _stylizedBushMeshes.Length > 0) ||
+                (_stylizedPlantMeshes != null && _stylizedPlantMeshes.Length > 0) ||
+                (_stylizedMushroomMeshes != null && _stylizedMushroomMeshes.Length > 0) ||
+                (_stylizedRockMeshes != null && _stylizedRockMeshes.Length > 0) ||
+                (_stylizedPebbleMeshes != null && _stylizedPebbleMeshes.Length > 0) ||
+                (_stylizedPathRockMeshes != null && _stylizedPathRockMeshes.Length > 0))
+            {
+                enableFloraProps = true;
+            }
+
             // Auto-load meshes/materials in editor for quick iteration.
             // Prefer the newer low-poly grass patch as the main grass prop.
             if (grassPropMesh == null)
@@ -448,6 +525,8 @@ namespace SCoL.Voxels
                 if (mesh != null) treeMesh = mesh;
             }
 
+            EnsureFeaturedTreeVariants();
+
             if (flowerMaterial == null)
             {
                 Shader shader = Shader.Find("Universal Render Pipeline/Lit");
@@ -491,6 +570,369 @@ namespace SCoL.Voxels
             }
 #endif
         }
+
+#if UNITY_EDITOR
+        private void EnsureStylizedNatureAssets()
+        {
+            if (_stylizedGrassMeshes != null && _stylizedGrassMeshes.Length > 0)
+                return;
+
+            _stylizedGrassMeshes = LoadStylizedNatureMeshes(
+                "Assets/Models/Modeling/_Incoming/StylizedNature/FBX/Grass_Common_Short.fbx",
+                "Assets/Models/Modeling/_Incoming/StylizedNature/FBX/Grass_Wispy_Short.fbx");
+
+            _stylizedFlowerMeshes = LoadStylizedNatureMeshes(
+                "Assets/Models/Modeling/_Incoming/StylizedNature/FBX/Flower_3_Group.fbx",
+                "Assets/Models/Modeling/_Incoming/StylizedNature/FBX/Flower_4_Group.fbx");
+
+            _stylizedBushMeshes = LoadStylizedNatureMeshes(
+                "Assets/Models/Modeling/_Incoming/StylizedNature/FBX/Bush_Common.fbx",
+                "Assets/Models/Modeling/_Incoming/StylizedNature/FBX/Bush_Common_Flowers.fbx");
+
+            _stylizedPlantMeshes = LoadStylizedNatureMeshes(
+                "Assets/Models/Modeling/_Incoming/StylizedNature/FBX/Clover_1.fbx",
+                "Assets/Models/Modeling/_Incoming/StylizedNature/FBX/Clover_2.fbx",
+                "Assets/Models/Modeling/_Incoming/StylizedNature/FBX/Fern_1.fbx",
+                "Assets/Models/Modeling/_Incoming/StylizedNature/FBX/Plant_1.fbx",
+                "Assets/Models/Modeling/_Incoming/StylizedNature/FBX/Plant_7.fbx");
+
+            _stylizedMushroomMeshes = LoadStylizedNatureMeshes(
+                "Assets/Models/Modeling/_Incoming/StylizedNature/FBX/Mushroom_Common.fbx",
+                "Assets/Models/Modeling/_Incoming/StylizedNature/FBX/Mushroom_Laetiporus.fbx");
+
+            _stylizedRockMeshes = LoadStylizedNatureMeshes(
+                "Assets/Models/Modeling/_Incoming/StylizedNature/FBX/Rock_Medium_1.fbx",
+                "Assets/Models/Modeling/_Incoming/StylizedNature/FBX/Rock_Medium_2.fbx",
+                "Assets/Models/Modeling/_Incoming/StylizedNature/FBX/Rock_Medium_3.fbx");
+
+            _stylizedPebbleMeshes = LoadStylizedNatureMeshes(
+                "Assets/Models/Modeling/_Incoming/StylizedNature/FBX/Pebble_Round_1.fbx",
+                "Assets/Models/Modeling/_Incoming/StylizedNature/FBX/Pebble_Round_2.fbx",
+                "Assets/Models/Modeling/_Incoming/StylizedNature/FBX/Pebble_Round_3.fbx");
+
+            _stylizedPathRockMeshes = LoadStylizedNatureMeshes(
+                "Assets/Models/Modeling/_Incoming/StylizedNature/FBX/RockPath_Round_Thin.fbx",
+                "Assets/Models/Modeling/_Incoming/StylizedNature/FBX/RockPath_Round_Wide.fbx",
+                "Assets/Models/Modeling/_Incoming/StylizedNature/FBX/RockPath_Square_Thin.fbx",
+                "Assets/Models/Modeling/_Incoming/StylizedNature/FBX/RockPath_Square_Wide.fbx");
+
+            _stylizedGrassMaterial = CreateStylizedNatureMaterial(
+                "StylizedNature_Grass",
+                "Assets/Models/Modeling/_Incoming/StylizedNature/Textures/Grass.png",
+                new Color(0.95f, 1f, 0.95f),
+                alphaClipped: true);
+
+            _stylizedFlowerMaterial = CreateStylizedNatureMaterial(
+                "StylizedNature_Flowers",
+                "Assets/Models/Modeling/_Incoming/StylizedNature/Textures/Flowers.png",
+                Color.white,
+                alphaClipped: true);
+
+            _stylizedLeafMaterial = CreateStylizedNatureMaterial(
+                "StylizedNature_Leaves",
+                "Assets/Models/Modeling/_Incoming/StylizedNature/Textures/Leaves.png",
+                Color.white,
+                alphaClipped: true);
+
+            _stylizedMushroomMaterial = CreateStylizedNatureMaterial(
+                "StylizedNature_Mushrooms",
+                "Assets/Models/Modeling/_Incoming/StylizedNature/Textures/Mushrooms.png",
+                Color.white,
+                alphaClipped: true);
+
+            _stylizedRockMaterial = CreateStylizedNatureMaterial(
+                "StylizedNature_Rocks",
+                "Assets/Models/Modeling/_Incoming/StylizedNature/Textures/Rocks_Diffuse.png",
+                Color.white);
+
+            _stylizedPathRockMaterial = CreateStylizedNatureMaterial(
+                "StylizedNature_PathRocks",
+                "Assets/Models/Modeling/_Incoming/StylizedNature/Textures/PathRocks_Diffuse.png",
+                Color.white);
+        }
+
+        private static Mesh[] LoadStylizedNatureMeshes(params string[] assetPaths)
+        {
+            var meshes = new List<Mesh>();
+            if (assetPaths == null)
+                return meshes.ToArray();
+
+            for (int i = 0; i < assetPaths.Length; i++)
+            {
+                var mesh = LoadFirstMeshFromModel(assetPaths[i]);
+                if (mesh != null && !meshes.Contains(mesh))
+                    meshes.Add(mesh);
+            }
+
+            return meshes.ToArray();
+        }
+
+        private static Mesh LoadFirstMeshFromModel(string assetPath)
+        {
+            if (string.IsNullOrEmpty(assetPath))
+                return null;
+
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(assetPath);
+            if (prefab != null)
+            {
+                var mf = prefab.GetComponentInChildren<MeshFilter>(true);
+                if (mf != null && mf.sharedMesh != null)
+                    return mf.sharedMesh;
+
+                var smr = prefab.GetComponentInChildren<SkinnedMeshRenderer>(true);
+                if (smr != null && smr.sharedMesh != null)
+                    return smr.sharedMesh;
+            }
+
+            var directMesh = AssetDatabase.LoadAssetAtPath<Mesh>(assetPath);
+            if (directMesh != null)
+                return directMesh;
+
+            var assets = AssetDatabase.LoadAllAssetsAtPath(assetPath);
+            for (int i = 0; i < assets.Length; i++)
+            {
+                if (assets[i] is Mesh mesh)
+                    return mesh;
+            }
+
+            return null;
+        }
+
+        private static Material CreateStylizedNatureMaterial(string matName, string texturePath, Color tint, bool alphaClipped = false)
+        {
+            Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+            if (shader == null) shader = Shader.Find("Standard");
+
+            var mat = new Material(shader) { name = matName };
+            mat.enableInstancing = true;
+
+            var tex = AssetDatabase.LoadAssetAtPath<Texture2D>(texturePath);
+            if (tex != null)
+            {
+                tex.filterMode = FilterMode.Bilinear;
+                tex.anisoLevel = 4;
+                if (mat.HasProperty("_BaseMap")) mat.SetTexture("_BaseMap", tex);
+                if (mat.HasProperty("_MainTex")) mat.SetTexture("_MainTex", tex);
+            }
+
+            if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", tint);
+            if (mat.HasProperty("_Color")) mat.SetColor("_Color", tint);
+
+            if (alphaClipped)
+            {
+                if (mat.HasProperty("_AlphaClip")) mat.SetFloat("_AlphaClip", 1f);
+                if (mat.HasProperty("_Cutoff")) mat.SetFloat("_Cutoff", 0.35f);
+                if (mat.HasProperty("_Cull")) mat.SetFloat("_Cull", 0f);
+                mat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.AlphaTest;
+            }
+
+            return mat;
+        }
+
+        private static void ApplyPlaneWaterAnimatedMaterial(Material mat, string matName)
+        {
+            if (mat == null)
+                return;
+
+            var shader = Shader.Find("SCoL/StylizedAnimatedWater");
+            if (shader != null && mat.shader != shader)
+            {
+                mat.shader = shader;
+                mat.name = matName;
+            }
+
+            var normalTex = LoadAnimatedWaterNormalTexture();
+
+            if (normalTex != null)
+            {
+                normalTex.filterMode = FilterMode.Bilinear;
+                normalTex.anisoLevel = 2;
+                if (mat.HasProperty("_NormalMap")) mat.SetTexture("_NormalMap", normalTex);
+                if (mat.HasProperty("_BumpMap")) mat.SetTexture("_BumpMap", normalTex);
+            }
+
+            if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", new Color(0.10f, 0.24f, 0.44f, 1f));
+            if (mat.HasProperty("_Color")) mat.SetColor("_Color", new Color(0.10f, 0.24f, 0.44f, 1f));
+            if (mat.HasProperty("_NormalStrength")) mat.SetFloat("_NormalStrength", 0.38f);
+            if (mat.HasProperty("_NormalTiling")) mat.SetFloat("_NormalTiling", 0.42f);
+            if (mat.HasProperty("_Opacity")) mat.SetFloat("_Opacity", 0.64f);
+            if (mat.HasProperty("_HighlightStrength")) mat.SetFloat("_HighlightStrength", 0.06f);
+            if (mat.HasProperty("_FresnelPower")) mat.SetFloat("_FresnelPower", 5.5f);
+            if (mat.HasProperty("_FlowContrast")) mat.SetFloat("_FlowContrast", 0.32f);
+            if (mat.HasProperty("_ScrollA")) mat.SetVector("_ScrollA", new Vector4(0.115f, 0.035f, 0f, 0f));
+            if (mat.HasProperty("_ScrollB")) mat.SetVector("_ScrollB", new Vector4(-0.075f, 0.085f, 0f, 0f));
+            mat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+        }
+
+        private static Texture2D LoadAnimatedWaterNormalTexture()
+        {
+            var tex = Resources.Load<Texture2D>("Water/plane_water_normal");
+            if (tex != null)
+            {
+                tex.filterMode = FilterMode.Bilinear;
+                tex.anisoLevel = 2;
+                return tex;
+            }
+
+#if UNITY_EDITOR
+            tex = AssetDatabase.LoadAssetAtPath<Texture2D>(
+                "Assets/Models/Modeling/_Incoming/Water/plane_water_low_gltf/textures/water_normal.png");
+            if (tex != null)
+            {
+                tex.filterMode = FilterMode.Bilinear;
+                tex.anisoLevel = 2;
+            }
+            return tex;
+#else
+            return null;
+#endif
+        }
+
+        private void EnsureFeaturedTreeVariants()
+        {
+            if (_featuredTreeVariants != null && _featuredTreeVariants.Length > 0)
+                return;
+
+            string[] paths =
+            {
+                "Assets/Models/Modeling/_Incoming/tree1/smalltree.obj",
+                "Assets/Models/Modeling/_Incoming/tree2/small tree 2.obj",
+                "Assets/Models/Modeling/_Incoming/tree3/tree3.obj",
+                "Assets/Models/Modeling/_Incoming/tree4/tree4.obj",
+                "Assets/Models/Modeling/_Incoming/tree5/3d model.obj",
+                "Assets/Models/Modeling/_Incoming/tree6/tree6.obj",
+                "Assets/Models/Modeling/_Incoming/tree7/tree7.obj",
+                "Assets/Models/Modeling/_Incoming/tree8/tree8.obj"
+            };
+
+            var variants = new List<TreeVariant>(paths.Length);
+            for (int i = 0; i < paths.Length; i++)
+            {
+                var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(paths[i]);
+                if (prefab == null)
+                    continue;
+
+                float height = EstimatePrefabHeight(prefab);
+                if (height <= 0.01f)
+                    continue;
+
+                variants.Add(new TreeVariant
+                {
+                    prefab = prefab,
+                    sourceHeight = height,
+                    materialOverride = BuildTreeVariantMaterial(prefab),
+                    textureOverride = FindTreeVariantTexture(prefab)
+                });
+            }
+
+            _featuredTreeVariants = variants.ToArray();
+
+            if ((treeMesh == null || treeMaterial == null) && _featuredTreeVariants.Length > 0)
+            {
+                var samplePrefab = _featuredTreeVariants[0].prefab;
+                if (samplePrefab != null)
+                {
+                    if (treeMesh == null)
+                    {
+                        var mf = samplePrefab.GetComponentInChildren<MeshFilter>(true);
+                        if (mf != null && mf.sharedMesh != null)
+                            treeMesh = mf.sharedMesh;
+                        else
+                        {
+                            var smr = samplePrefab.GetComponentInChildren<SkinnedMeshRenderer>(true);
+                            if (smr != null && smr.sharedMesh != null)
+                                treeMesh = smr.sharedMesh;
+                        }
+                    }
+
+                    if (treeMaterial == null)
+                    {
+                        var r = samplePrefab.GetComponentInChildren<Renderer>(true);
+                        if (r != null && r.sharedMaterial != null)
+                        {
+                            treeMaterial = new Material(r.sharedMaterial) { name = "TreeProp_Mat_FromVariant" };
+                            treeMaterial.enableInstancing = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        private static float EstimatePrefabHeight(GameObject prefab)
+        {
+            if (!TryGetRenderableBounds(prefab, out Bounds bounds))
+                return 0f;
+            return Mathf.Max(0.01f, bounds.size.y);
+        }
+
+        private static Material BuildTreeVariantMaterial(GameObject prefab)
+        {
+            if (prefab == null)
+                return null;
+
+            var r = prefab.GetComponentInChildren<Renderer>(true);
+            if (r == null || r.sharedMaterial == null)
+                return null;
+
+            var mat = new Material(r.sharedMaterial)
+            {
+                name = $"{prefab.name}_RuntimeTreeMat",
+                enableInstancing = true
+            };
+
+            var tex = FindTreeVariantTexture(prefab);
+            if (tex != null)
+            {
+                tex.filterMode = FilterMode.Bilinear;
+                tex.anisoLevel = 4;
+                if (mat.HasProperty("_BaseMap")) mat.SetTexture("_BaseMap", tex);
+                if (mat.HasProperty("_MainTex")) mat.SetTexture("_MainTex", tex);
+            }
+            if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", Color.white);
+            if (mat.HasProperty("_Color")) mat.SetColor("_Color", Color.white);
+            return mat;
+        }
+
+        private static Texture2D FindTreeVariantTexture(GameObject prefab)
+        {
+            if (prefab == null)
+                return null;
+
+            string prefabPath = AssetDatabase.GetAssetPath(prefab);
+            if (string.IsNullOrEmpty(prefabPath))
+                return null;
+
+            string dir = System.IO.Path.GetDirectoryName(prefabPath);
+            if (string.IsNullOrEmpty(dir))
+                return null;
+
+            string[] candidates =
+            {
+                System.IO.Path.Combine(dir, "material_BaseColor.jpg").Replace("\\", "/"),
+                System.IO.Path.Combine(dir, "mesh1.jpg").Replace("\\", "/"),
+                System.IO.Path.Combine(dir, "material_BaseColor.png").Replace("\\", "/"),
+                System.IO.Path.Combine(dir, "mesh1.png").Replace("\\", "/")
+            };
+
+            for (int i = 0; i < candidates.Length; i++)
+            {
+                var tex = AssetDatabase.LoadAssetAtPath<Texture2D>(candidates[i]);
+                if (tex != null)
+                    return tex;
+            }
+
+            string[] guids = AssetDatabase.FindAssets("t:Texture2D", new[] { dir });
+            for (int i = 0; i < guids.Length; i++)
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guids[i]);
+                var tex = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+                if (tex != null)
+                    return tex;
+            }
+
+            return null;
+        }
+#endif
 
         private static void ApplyTextureFromResourcesIfAvailable(Material m, params string[] resourcePaths)
         {
@@ -714,6 +1156,7 @@ namespace SCoL.Voxels
 
             RebuildLowPolyVisuals();
             BuildFeaturedTrees();
+            PruneRockTreeOverlaps();
             BuildWorldBoundary();
             RebuildWinterOverlayMeshes();
             UpdateWinterVisualState(force: true);
@@ -755,6 +1198,12 @@ namespace SCoL.Voxels
             _snowOverlayGO = null;
             _iceOverlayGO = null;
             _iceColliderGO = null;
+            if (_snowOverlayTex != null)
+                Destroy(_snowOverlayTex);
+            _snowOverlayTex = null;
+            if (_iceOverlayTex != null)
+                Destroy(_iceOverlayTex);
+            _iceOverlayTex = null;
         }
 
         private void RebuildWinterOverlayMeshes()
@@ -786,16 +1235,24 @@ namespace SCoL.Voxels
                 _snowOverlayMat = new Material(shader) { name = "Winter_SnowOverlay" };
                 _snowOverlayMat.enableInstancing = true;
             }
-            if (_snowOverlayMat.HasProperty("_BaseColor")) _snowOverlayMat.SetColor("_BaseColor", snowOverlayColor);
-            if (_snowOverlayMat.HasProperty("_Color")) _snowOverlayMat.SetColor("_Color", snowOverlayColor);
+            if (_snowOverlayTex == null)
+                _snowOverlayTex = CreateWinterOverlayTexture(
+                    "Winter_SnowOverlayTex",
+                    new Color(0.88f, 0.90f, 0.95f, 0.72f),
+                    new Color(1f, 1f, 1f, 1f));
+            ConfigureWinterOverlayMaterial(_snowOverlayMat, snowOverlayColor, _snowOverlayTex, 0.18f);
 
             if (_iceOverlayMat == null)
             {
                 _iceOverlayMat = new Material(shader) { name = "Winter_IceOverlay" };
                 _iceOverlayMat.enableInstancing = true;
             }
-            if (_iceOverlayMat.HasProperty("_BaseColor")) _iceOverlayMat.SetColor("_BaseColor", iceOverlayColor);
-            if (_iceOverlayMat.HasProperty("_Color")) _iceOverlayMat.SetColor("_Color", iceOverlayColor);
+            if (_iceOverlayTex == null)
+                _iceOverlayTex = CreateWinterOverlayTexture(
+                    "Winter_IceOverlayTex",
+                    new Color(0.62f, 0.78f, 0.92f, 0.62f),
+                    new Color(0.92f, 0.97f, 1f, 0.94f));
+            ConfigureWinterOverlayMaterial(_iceOverlayMat, iceOverlayColor, _iceOverlayTex, 0.28f);
 
             if (_snowOverlayGO == null)
                 _snowOverlayGO = CreateOverlayGO("SnowOverlay", _snowOverlayMat);
@@ -803,6 +1260,8 @@ namespace SCoL.Voxels
                 _iceOverlayGO = CreateOverlayGO("IceOverlay", _iceOverlayMat);
             if (_iceColliderGO == null)
                 _iceColliderGO = CreateIceColliderGO("IceCollider");
+
+            ApplyWinterOverlayAmount(_winterVisualAmount);
         }
 
         private GameObject CreateOverlayGO(string name, Material mat)
@@ -858,8 +1317,18 @@ namespace SCoL.Voxels
             mesh.Clear();
             mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
 
-            float inset = Mathf.Clamp(winterOverlayInset, 0.001f, 0.49f);
+            if (includeWaterColumns &&
+                useLowPolyTerrainVisual &&
+                _lowPolyWaterMesh != null &&
+                _lowPolyWaterMesh.vertexCount > 0)
+            {
+                CopyElevatedMeshInto(mesh, _lowPolyWaterMesh, Mathf.Max(0.001f, winterOverlayHeightOffset) + 0.01f, doubleSided: false);
+                return;
+            }
+
+            float inset = includeWaterColumns ? Mathf.Clamp(winterOverlayInset, 0.001f, 0.49f) : 0f;
             float h = Mathf.Max(0.001f, winterOverlayHeightOffset);
+            float uvScale = Mathf.Max(0.001f, winterOverlayUvScale);
             float[,] landCorners = null;
             if (!includeWaterColumns)
             {
@@ -909,10 +1378,10 @@ namespace SCoL.Voxels
                 verts.Add(new Vector3(x1, y11, z1));
                 verts.Add(new Vector3(x0, y01, z1));
 
-                uvs.Add(new Vector2(0f, 0f));
-                uvs.Add(new Vector2(1f, 0f));
-                uvs.Add(new Vector2(1f, 1f));
-                uvs.Add(new Vector2(0f, 1f));
+                uvs.Add(new Vector2(x0 * uvScale, z0 * uvScale));
+                uvs.Add(new Vector2(x1 * uvScale, z0 * uvScale));
+                uvs.Add(new Vector2(x1 * uvScale, z1 * uvScale));
+                uvs.Add(new Vector2(x0 * uvScale, z1 * uvScale));
 
                 tris.Add(v + 0);
                 tris.Add(v + 2);
@@ -944,6 +1413,16 @@ namespace SCoL.Voxels
             var mesh = mf.sharedMesh;
             mesh.Clear();
             mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+
+            if (useLowPolyTerrainVisual &&
+                _lowPolyWaterMesh != null &&
+                _lowPolyWaterMesh.vertexCount > 0)
+            {
+                CopyElevatedMeshInto(mesh, _lowPolyWaterMesh, Mathf.Max(0.001f, winterOverlayHeightOffset) + 0.015f, doubleSided: true);
+                mc.sharedMesh = null;
+                mc.sharedMesh = mesh;
+                return;
+            }
 
             float inset = Mathf.Clamp(winterOverlayInset, 0.001f, 0.49f);
             float h = Mathf.Max(0.001f, winterOverlayHeightOffset) + 0.005f;
@@ -987,6 +1466,45 @@ namespace SCoL.Voxels
             mc.sharedMesh = mesh;
         }
 
+        private static void CopyElevatedMeshInto(Mesh target, Mesh source, float yOffset, bool doubleSided)
+        {
+            if (target == null || source == null)
+                return;
+
+            var srcVerts = source.vertices;
+            var verts = new Vector3[srcVerts.Length];
+            for (int i = 0; i < srcVerts.Length; i++)
+                verts[i] = srcVerts[i] + (Vector3.up * yOffset);
+
+            target.Clear();
+            target.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+            target.vertices = verts;
+            target.uv = source.uv;
+            target.normals = null;
+
+            var srcTris = source.triangles;
+            if (!doubleSided)
+            {
+                target.triangles = srcTris;
+            }
+            else
+            {
+                var tris = new int[srcTris.Length * 2];
+                Array.Copy(srcTris, tris, srcTris.Length);
+                for (int i = 0; i < srcTris.Length; i += 3)
+                {
+                    int dst = srcTris.Length + i;
+                    tris[dst + 0] = srcTris[i + 0];
+                    tris[dst + 1] = srcTris[i + 2];
+                    tris[dst + 2] = srcTris[i + 1];
+                }
+                target.triangles = tris;
+            }
+
+            target.RecalculateNormals();
+            target.RecalculateBounds();
+        }
+
         private bool TryGetColumnTopBlock(int x, int z, out int yTop, out VoxelBlockType topType)
         {
             yTop = 0;
@@ -1012,32 +1530,47 @@ namespace SCoL.Voxels
         {
             if (!enableWinterSnowAndIce)
             {
-                SetWinterVisualActive(false);
+                _winterVisualAmount = 0f;
+                _winterVisualsActive = false;
+                SetWinterVisualState(0f, visualsActive: false, iceFrozen: false);
                 return;
             }
 
-            bool winterActive = IsWinterActive();
-            if (!force && winterActive == _winterVisualsActive)
+            float targetAmount = GetWinterTargetAmount();
+            float nextAmount = targetAmount;
+            if (!force && Application.isPlaying)
+            {
+                float speed = targetAmount >= _winterVisualAmount ? winterSnowBuildSpeed : winterSnowMeltSpeed;
+                nextAmount = Mathf.MoveTowards(_winterVisualAmount, targetAmount, Mathf.Max(0.02f, speed) * Time.unscaledDeltaTime);
+            }
+
+            bool visualsActive = nextAmount > 0.001f;
+            bool iceFrozen = nextAmount >= winterIceFrozenThreshold && targetAmount > 0.001f;
+            if (!force &&
+                Mathf.Approximately(nextAmount, _winterVisualAmount) &&
+                iceFrozen == _winterVisualsActive)
                 return;
 
-            _winterVisualsActive = winterActive;
-            SetWinterVisualActive(winterActive);
+            _winterVisualAmount = nextAmount;
+            _winterVisualsActive = iceFrozen;
+            SetWinterVisualState(nextAmount, visualsActive, iceFrozen);
         }
 
-        private void SetWinterVisualActive(bool active)
+        private void SetWinterVisualState(float amount, bool visualsActive, bool iceFrozen)
         {
-            if (_winterOverlayRoot == null && active)
+            if (_winterOverlayRoot == null && visualsActive)
                 EnsureWinterOverlayObjects();
-            if (_winterOverlayRoot != null && _winterOverlayRoot.activeSelf != active)
-                _winterOverlayRoot.SetActive(active);
+            ApplyWinterOverlayAmount(amount);
+            if (_winterOverlayRoot != null && _winterOverlayRoot.activeSelf != visualsActive)
+                _winterOverlayRoot.SetActive(visualsActive);
             if (_iceColliderGO != null)
             {
                 var mc = _iceColliderGO.GetComponent<MeshCollider>();
-                if (mc != null) mc.enabled = active;
+                if (mc != null) mc.enabled = iceFrozen;
             }
         }
 
-        private bool IsWinterActive()
+        private float GetWinterTargetAmount()
         {
             if (Time.unscaledTime >= _nextSeasonLookupAt)
             {
@@ -1050,14 +1583,90 @@ namespace SCoL.Voxels
                 _nextSeasonLookupAt = Time.unscaledTime + 1f;
             }
 
+            float target = 0f;
             if (_seasonSkybox != null && _seasonSkybox.GetCurrentSeason() == SeasonSkyboxController.Season.Winter)
-                return true;
+                target = 1f;
             if (_weatherSystem != null && _weatherSystem.CurrentPhase == WeatherPhase.Snow)
-                return true;
+                target = Mathf.Max(target, Mathf.Clamp01(Mathf.Max(0.15f, _weatherSystem.Intensity01)));
             if (_runtime != null && _runtime.CurrentSeason == SCoL.Season.Winter)
-                return true;
+                target = 1f;
 
-            return false;
+            return target;
+        }
+
+        private void ApplyWinterOverlayAmount(float amount)
+        {
+            float t = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(amount));
+            ApplyOverlayAlpha(_snowOverlayMat, snowOverlayColor, t);
+            ApplyOverlayAlpha(_iceOverlayMat, iceOverlayColor, t);
+        }
+
+        private static void ApplyOverlayAlpha(Material mat, Color baseColor, float amount)
+        {
+            if (mat == null)
+                return;
+
+            var tint = baseColor;
+            tint.a *= amount;
+            if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", tint);
+            if (mat.HasProperty("_Color")) mat.SetColor("_Color", tint);
+        }
+
+        private static void ConfigureWinterOverlayMaterial(Material mat, Color tint, Texture2D tex, float smoothness)
+        {
+            if (mat == null)
+                return;
+
+            if (tex != null)
+            {
+                if (mat.HasProperty("_BaseMap")) mat.SetTexture("_BaseMap", tex);
+                if (mat.HasProperty("_MainTex")) mat.SetTexture("_MainTex", tex);
+            }
+
+            if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", tint);
+            if (mat.HasProperty("_Color")) mat.SetColor("_Color", tint);
+            if (mat.HasProperty("_Surface")) mat.SetFloat("_Surface", 1f);
+            if (mat.HasProperty("_Blend")) mat.SetFloat("_Blend", 0f);
+            if (mat.HasProperty("_SrcBlend")) mat.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            if (mat.HasProperty("_DstBlend")) mat.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            if (mat.HasProperty("_ZWrite")) mat.SetFloat("_ZWrite", 0f);
+            if (mat.HasProperty("_Smoothness")) mat.SetFloat("_Smoothness", smoothness);
+            if (mat.HasProperty("_Glossiness")) mat.SetFloat("_Glossiness", smoothness);
+            if (mat.HasProperty("_Cull")) mat.SetFloat("_Cull", 0f);
+            if (mat.HasProperty("_CullMode")) mat.SetFloat("_CullMode", 0f);
+
+            mat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+            mat.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            mat.DisableKeyword("_ALPHATEST_ON");
+        }
+
+        private static Texture2D CreateWinterOverlayTexture(string name, Color lowColor, Color highColor)
+        {
+            const int size = 64;
+            var tex = new Texture2D(size, size, TextureFormat.RGBA32, mipChain: false)
+            {
+                name = name,
+                wrapMode = TextureWrapMode.Repeat,
+                filterMode = FilterMode.Bilinear,
+                anisoLevel = 2
+            };
+
+            var pixels = new Color[size * size];
+            for (int y = 0; y < size; y++)
+            for (int x = 0; x < size; x++)
+            {
+                float u = x / (float)(size - 1);
+                float v = y / (float)(size - 1);
+                float broad = Mathf.PerlinNoise(u * 3.7f + 11.2f, v * 3.7f + 5.4f);
+                float detail = Mathf.PerlinNoise(u * 8.1f + 3.1f, v * 8.1f + 17.7f);
+                float n = Mathf.Clamp01((broad * 0.72f) + (detail * 0.28f));
+                n = Mathf.SmoothStep(0.12f, 0.92f, n);
+                pixels[(y * size) + x] = Color.Lerp(lowColor, highColor, n);
+            }
+
+            tex.SetPixels(pixels);
+            tex.Apply(updateMipmaps: false, makeNoLongerReadable: true);
+            return tex;
         }
 
         private float Noise(float x, float z)
@@ -1356,11 +1965,15 @@ namespace SCoL.Voxels
                 gp.world = this;
                 gp.chunkCoord = cc;
                 gp.grassMesh = grassPropMesh;
-                gp.grassMeshVariants = null;
+                gp.grassMeshVariants = _stylizedGrassMeshes != null && _stylizedGrassMeshes.Length > 1
+                    ? _stylizedGrassMeshes
+                    : null;
                 gp.grassMaterial = grassPropMaterial;
                 gp.density = grassPropDensity;
                 gp.maxPerChunk = grassPropsMaxPerChunk;
-                gp.strictGridPlacement = true;
+                gp.strictGridPlacement = false;
+                gp.randomOffsetXZ = new Vector2(0.42f, 0.42f);
+                gp.scaleRange = new Vector2(0.14f, 0.24f);
                 gp.Rebuild(_seed);
                 _chunkGrassProps[cc] = gp;
             }
@@ -1374,8 +1987,170 @@ namespace SCoL.Voxels
 
                 var props = new List<FloraPropChunk.Prop>();
 
+                if (_stylizedFlowerMeshes != null && _stylizedFlowerMeshes.Length > 0 && _stylizedFlowerMaterial != null)
+                {
+                    for (int i = 0; i < _stylizedFlowerMeshes.Length; i++)
+                    {
+                        props.Add(new FloraPropChunk.Prop
+                        {
+                            name = $"StylizedFlower_{i}",
+                            mesh = _stylizedFlowerMeshes[i],
+                            material = _stylizedFlowerMaterial,
+                            density = flowerDensity * 1.15f,
+                            maxPerChunk = Mathf.Max(flowersMaxPerChunk, 10),
+                            onlyOnGrass = true,
+                            requireAboveSeaLevel = true,
+                            strictGridPlacement = false,
+                            randomOffsetXZ = new Vector2(0.35f, 0.35f),
+                            scaleRange = new Vector2(0.85f, 1.20f),
+                            avoidSteepSlopes = true,
+                            maxNeighborDelta = 1
+                        });
+                    }
+                }
+
+                if (_stylizedBushMeshes != null && _stylizedBushMeshes.Length > 0 && _stylizedLeafMaterial != null)
+                {
+                    for (int i = 0; i < _stylizedBushMeshes.Length; i++)
+                    {
+                        props.Add(new FloraPropChunk.Prop
+                        {
+                            name = $"StylizedBush_{i}",
+                            mesh = _stylizedBushMeshes[i],
+                            material = _stylizedLeafMaterial,
+                            density = 0.012f,
+                            maxPerChunk = 6,
+                            onlyOnGrass = true,
+                            requireAboveSeaLevel = true,
+                            strictGridPlacement = false,
+                            randomOffsetXZ = new Vector2(0.28f, 0.28f),
+                            scaleRange = new Vector2(0.035f, 0.055f),
+                            avoidSteepSlopes = true,
+                            maxNeighborDelta = 2
+                        });
+                    }
+                }
+
+                if (_stylizedPlantMeshes != null && _stylizedPlantMeshes.Length > 0 && _stylizedLeafMaterial != null)
+                {
+                    for (int i = 0; i < _stylizedPlantMeshes.Length; i++)
+                    {
+                        Vector2 scaleRange = i >= 3
+                            ? new Vector2(0.05f, 0.09f)
+                            : new Vector2(0.18f, 0.32f);
+
+                        props.Add(new FloraPropChunk.Prop
+                        {
+                            name = $"StylizedPlant_{i}",
+                            mesh = _stylizedPlantMeshes[i],
+                            material = _stylizedLeafMaterial,
+                            density = 0.020f,
+                            maxPerChunk = 10,
+                            onlyOnGrass = true,
+                            requireAboveSeaLevel = true,
+                            strictGridPlacement = false,
+                            randomOffsetXZ = new Vector2(0.30f, 0.30f),
+                            scaleRange = scaleRange,
+                            avoidSteepSlopes = true,
+                            maxNeighborDelta = 1
+                        });
+                    }
+                }
+
+                if (_stylizedMushroomMeshes != null && _stylizedMushroomMeshes.Length > 0 && _stylizedMushroomMaterial != null)
+                {
+                    for (int i = 0; i < _stylizedMushroomMeshes.Length; i++)
+                    {
+                        props.Add(new FloraPropChunk.Prop
+                        {
+                            name = $"StylizedMushroom_{i}",
+                            mesh = _stylizedMushroomMeshes[i],
+                            material = _stylizedMushroomMaterial,
+                            density = 0.009f,
+                            maxPerChunk = 5,
+                            onlyOnGrass = true,
+                            requireAboveSeaLevel = true,
+                            strictGridPlacement = false,
+                            randomOffsetXZ = new Vector2(0.26f, 0.26f),
+                            scaleRange = new Vector2(0.82f, 1.08f),
+                            avoidSteepSlopes = true,
+                            maxNeighborDelta = 1
+                        });
+                    }
+                }
+
+                if (_stylizedRockMeshes != null && _stylizedRockMeshes.Length > 0 && _stylizedRockMaterial != null)
+                {
+                    for (int i = 0; i < _stylizedRockMeshes.Length; i++)
+                    {
+                        props.Add(new FloraPropChunk.Prop
+                        {
+                            name = $"StylizedRock_{i}",
+                            mesh = _stylizedRockMeshes[i],
+                            material = _stylizedRockMaterial,
+                            density = 0.0025f,
+                            maxPerChunk = 5,
+                            onlyOnGrass = false,
+                            requireAboveSeaLevel = true,
+                            strictGridPlacement = false,
+                            randomOffsetXZ = new Vector2(0.40f, 0.40f),
+                            scaleRange = new Vector2(0.16f, 1.35f),
+                            avoidSteepSlopes = true,
+                            maxNeighborDelta = 1,
+                            instantiateAsObject = true,
+                            colliderMode = FloraPropChunk.ColliderMode.Box,
+                            embedDepth = 0.22f,
+                            alignToSmoothedTerrain = true
+                        });
+                    }
+                }
+
+                if (_stylizedPebbleMeshes != null && _stylizedPebbleMeshes.Length > 0 && _stylizedRockMaterial != null)
+                {
+                    for (int i = 0; i < _stylizedPebbleMeshes.Length; i++)
+                    {
+                        props.Add(new FloraPropChunk.Prop
+                        {
+                            name = $"StylizedPebble_{i}",
+                            mesh = _stylizedPebbleMeshes[i],
+                            material = _stylizedRockMaterial,
+                            density = 0.0035f,
+                            maxPerChunk = 7,
+                            onlyOnGrass = false,
+                            requireAboveSeaLevel = true,
+                            strictGridPlacement = false,
+                            randomOffsetXZ = new Vector2(0.44f, 0.44f),
+                            scaleRange = new Vector2(0.04f, 0.20f),
+                            avoidSteepSlopes = false,
+                            maxNeighborDelta = 2
+                        });
+                    }
+                }
+
+                if (_stylizedPathRockMeshes != null && _stylizedPathRockMeshes.Length > 0 && _stylizedPathRockMaterial != null)
+                {
+                    for (int i = 0; i < _stylizedPathRockMeshes.Length; i++)
+                    {
+                        props.Add(new FloraPropChunk.Prop
+                        {
+                            name = $"StylizedPathRock_{i}",
+                            mesh = _stylizedPathRockMeshes[i],
+                            material = _stylizedPathRockMaterial,
+                            density = 0.0020f,
+                            maxPerChunk = 4,
+                            onlyOnGrass = false,
+                            requireAboveSeaLevel = true,
+                            strictGridPlacement = false,
+                            randomOffsetXZ = new Vector2(0.46f, 0.46f),
+                            scaleRange = new Vector2(0.05f, 0.20f),
+                            avoidSteepSlopes = false,
+                            maxNeighborDelta = 2
+                        });
+                    }
+                }
+
                 // Flowers
-                if (flowerMaterial != null)
+                if (props.Count == 0 && flowerMaterial != null)
                 {
                     if (daisyMesh != null)
                     {
@@ -1826,7 +2601,9 @@ namespace SCoL.Voxels
 
         private void BuildFeaturedTrees()
         {
-            if (!enableFeaturedTrees || config == null || treeMesh == null || treeMaterial == null)
+            bool hasVariantPool = _featuredTreeVariants != null && _featuredTreeVariants.Length > 0;
+            bool hasFallbackTree = treeMesh != null && treeMaterial != null;
+            if (!enableFeaturedTrees || config == null || (!hasVariantPool && !hasFallbackTree))
                 return;
 
             if (_featuredTreesRoot != null)
@@ -1840,37 +2617,13 @@ namespace SCoL.Voxels
             if (target <= 0)
                 return;
 
-            float aspect = config.worldDepth > 0 ? (config.worldWidth / (float)config.worldDepth) : 1f;
-            int cols = Mathf.Max(1, Mathf.RoundToInt(Mathf.Sqrt(target * Mathf.Max(0.25f, aspect))));
-            int rows = Mathf.Max(1, Mathf.CeilToInt(target / (float)cols));
-            float stepX = config.worldWidth / (float)cols;
-            float stepZ = config.worldDepth / (float)rows;
-
             var used = new HashSet<int>(target * 2);
+            var placedPositions = new List<Vector2>(target);
             var prng = new System.Random(unchecked(_seed * 397) ^ 0x34A7F1);
             int placed = 0;
 
-            for (int rz = 0; rz < rows && placed < target; rz++)
-            {
-                for (int cx = 0; cx < cols && placed < target; cx++)
-                {
-                    int sx = Mathf.Clamp(Mathf.FloorToInt((cx + 0.5f) * stepX), 0, config.worldWidth - 1);
-                    int sz = Mathf.Clamp(Mathf.FloorToInt((rz + 0.5f) * stepZ), 0, config.worldDepth - 1);
-
-                    if (!TryFindFeaturedTreeColumn(sx, sz, out int px, out int pz))
-                        continue;
-
-                    int key = px + pz * config.worldWidth;
-                    if (!used.Add(key))
-                        continue;
-
-                    PlaceFeaturedTree(placed, px, pz, prng);
-                    placed++;
-                }
-            }
-
             int safety = 0;
-            int maxAttempts = Mathf.Max(64, target * 40);
+            int maxAttempts = Mathf.Max(256, target * 120);
             while (placed < target && safety++ < maxAttempts)
             {
                 int sx = prng.Next(0, Mathf.Max(1, config.worldWidth));
@@ -1878,11 +2631,31 @@ namespace SCoL.Voxels
                 if (!TryFindFeaturedTreeColumn(sx, sz, out int px, out int pz))
                     continue;
 
-                int key = px + pz * config.worldWidth;
+                int clusterPlaced = 0;
+                if (hasVariantPool &&
+                    placed < target - 2 &&
+                    prng.NextDouble() < Mathf.Clamp01(featuredTreeClusterChance))
+                {
+                    clusterPlaced = TryPlaceFeaturedTreeCluster(placed, px, pz, prng, used, placedPositions, target - placed);
+                }
+
+                if (clusterPlaced > 0)
+                {
+                    placed += clusterPlaced;
+                    continue;
+                }
+
+                int key = ColumnKey(px, pz);
                 if (!used.Add(key))
                     continue;
+                if (!HasTreeSpacing(px, pz, placedPositions))
+                {
+                    used.Remove(key);
+                    continue;
+                }
 
-                PlaceFeaturedTree(placed, px, pz, prng);
+                PlaceFeaturedTree(placed, px, pz, prng, null);
+                placedPositions.Add(new Vector2(px, pz));
                 placed++;
             }
 
@@ -1955,37 +2728,403 @@ namespace SCoL.Voxels
             if (Mathf.Abs(GetSurfaceY(x - 1, z) - y) > maxNeighborDelta) return false;
             if (Mathf.Abs(GetSurfaceY(x, z + 1) - y) > maxNeighborDelta) return false;
             if (Mathf.Abs(GetSurfaceY(x, z - 1) - y) > maxNeighborDelta) return false;
+            if (IsNearWaterColumn(x, z, Mathf.Max(0, featuredTreeWaterBufferRadius))) return false;
 
             return true;
         }
 
-        private void PlaceFeaturedTree(int index, int x, int z, System.Random prng)
+        private bool IsNearWaterColumn(int centerX, int centerZ, int radius)
+        {
+            if (config == null || radius <= 0)
+                return false;
+
+            for (int dz = -radius; dz <= radius; dz++)
+            {
+                for (int dx = -radius; dx <= radius; dx++)
+                {
+                    int x = centerX + dx;
+                    int z = centerZ + dz;
+                    if (x < 0 || z < 0 || x >= config.worldWidth || z >= config.worldDepth)
+                        continue;
+
+                    int y = GetSurfaceY(x, z);
+                    if (y < 0 || y >= config.worldHeight)
+                        continue;
+
+                    if (GetBlock(x, y, z) == VoxelBlockType.Water)
+                        return true;
+
+                    int above = y + 1;
+                    if (above < config.worldHeight && GetBlock(x, above, z) == VoxelBlockType.Water)
+                        return true;
+
+                    int sea = Mathf.Clamp(config.seaLevel, 0, config.worldHeight - 1);
+                    if (GetBlock(x, sea, z) == VoxelBlockType.Water)
+                        return true;
+                }
+            }
+
+            return false;
+        }
+
+        private int TryPlaceFeaturedTreeCluster(int startIndex, int centerX, int centerZ, System.Random prng, HashSet<int> used, List<Vector2> placedPositions, int remainingCapacity)
+        {
+            if (_featuredTreeVariants == null || _featuredTreeVariants.Length <= 1 || remainingCapacity <= 0)
+                return 0;
+
+            int sameMin = Mathf.Max(2, featuredTreeClusterSameMin);
+            int sameMax = Mathf.Max(sameMin, featuredTreeClusterSameMax);
+            int sameCount = prng.Next(sameMin, sameMax + 1);
+            int accentCount = Mathf.Max(0, featuredTreeClusterAccentCount);
+            int desired = Mathf.Min(remainingCapacity, sameCount + accentCount);
+            if (desired <= 1)
+                return 0;
+
+            int mainVariantIndex = prng.Next(0, _featuredTreeVariants.Length);
+            int accentVariantIndex = (mainVariantIndex + 1 + prng.Next(0, _featuredTreeVariants.Length - 1)) % _featuredTreeVariants.Length;
+
+            var candidates = new List<(int x, int z)>(desired + 3);
+            int maxOffset = Mathf.Max(1, featuredTreeClusterRadius);
+            int localSafety = 0;
+            int localMax = Mathf.Max(32, desired * 20);
+
+            int centerKey = ColumnKey(centerX, centerZ);
+            if (!used.Contains(centerKey) && HasTreeSpacing(centerX, centerZ, placedPositions))
+                candidates.Add((centerX, centerZ));
+
+            while (candidates.Count < desired && localSafety++ < localMax)
+            {
+                int ox = prng.Next(-maxOffset, maxOffset + 1);
+                int oz = prng.Next(-maxOffset, maxOffset + 1);
+                if (ox == 0 && oz == 0)
+                    continue;
+
+                int sx = centerX + ox;
+                int sz = centerZ + oz;
+                if (!TryFindFeaturedTreeColumn(sx, sz, out int px, out int pz))
+                    continue;
+
+                int key = ColumnKey(px, pz);
+                if (used.Contains(key))
+                    continue;
+                if (!HasTreeSpacing(px, pz, placedPositions))
+                    continue;
+
+                bool duplicate = false;
+                for (int i = 0; i < candidates.Count; i++)
+                {
+                    if (candidates[i].x == px && candidates[i].z == pz)
+                    {
+                        duplicate = true;
+                        break;
+                    }
+                }
+                if (duplicate)
+                    continue;
+                if (!HasTreeSpacing(px, pz, candidates))
+                    continue;
+
+                candidates.Add((px, pz));
+            }
+
+            if (candidates.Count < Mathf.Min(3, desired))
+                return 0;
+
+            int placed = 0;
+            int sameToPlace = Mathf.Min(sameCount, candidates.Count);
+            int accentToPlace = Mathf.Min(accentCount, candidates.Count - sameToPlace);
+
+            for (int i = 0; i < sameToPlace; i++)
+            {
+                int key = ColumnKey(candidates[i].x, candidates[i].z);
+                if (!used.Add(key))
+                    continue;
+                PlaceFeaturedTree(startIndex + placed, candidates[i].x, candidates[i].z, prng, _featuredTreeVariants[mainVariantIndex]);
+                placedPositions.Add(new Vector2(candidates[i].x, candidates[i].z));
+                placed++;
+            }
+
+            for (int i = 0; i < accentToPlace; i++)
+            {
+                int idx = sameToPlace + i;
+                if (idx >= candidates.Count)
+                    break;
+                int key = ColumnKey(candidates[idx].x, candidates[idx].z);
+                if (!used.Add(key))
+                    continue;
+                PlaceFeaturedTree(startIndex + placed, candidates[idx].x, candidates[idx].z, prng, _featuredTreeVariants[accentVariantIndex]);
+                placedPositions.Add(new Vector2(candidates[idx].x, candidates[idx].z));
+                placed++;
+            }
+
+            return placed;
+        }
+
+        private static int ColumnKey(int x, int z)
+        {
+            unchecked
+            {
+                return (x * 73856093) ^ (z * 19349663);
+            }
+        }
+
+        private bool HasTreeSpacing(int x, int z, List<Vector2> placedPositions)
+        {
+            float minSpacing = Mathf.Max(0.5f, featuredTreeMinSpacing);
+            float minSq = minSpacing * minSpacing;
+            var p = new Vector2(x, z);
+            for (int i = 0; i < placedPositions.Count; i++)
+            {
+                if ((placedPositions[i] - p).sqrMagnitude < minSq)
+                    return false;
+            }
+            return true;
+        }
+
+        private bool HasTreeSpacing(int x, int z, List<(int x, int z)> candidates)
+        {
+            float minSpacing = Mathf.Max(0.5f, featuredTreeMinSpacing);
+            float minSq = minSpacing * minSpacing;
+            var p = new Vector2(x, z);
+            for (int i = 0; i < candidates.Count; i++)
+            {
+                var c = new Vector2(candidates[i].x, candidates[i].z);
+                if ((c - p).sqrMagnitude < minSq)
+                    return false;
+            }
+            return true;
+        }
+
+        private void PlaceFeaturedTree(int index, int x, int z, System.Random prng, TreeVariant? forcedVariant)
         {
             float surfaceY = OriginWorld.y + GetSurfaceY(x, z) + 1f;
             Vector3 sample = OriginWorld + new Vector3(x + 0.5f, surfaceY + 2f, z + 0.5f);
             if (TryGetTerrainSurfaceYAtWorld(sample, out float smoothY, includeWaterSurface: false))
                 surfaceY = smoothY;
-
-            var go = new GameObject($"FeaturedTree_{index:00}");
-            go.transform.SetParent(_featuredTreesRoot.transform, worldPositionStays: true);
-
-            float s = Mathf.Lerp(featuredTreeScaleRange.x, featuredTreeScaleRange.y, (float)prng.NextDouble());
             float yaw = (float)prng.NextDouble() * 360f;
-            go.transform.position = new Vector3(
+            Vector3 targetPos = new Vector3(
                 OriginWorld.x + x + 0.5f,
                 surfaceY + featuredTreeYOffset - Mathf.Max(0f, featuredTreeRootEmbedDepth),
                 OriginWorld.z + z + 0.5f);
-            go.transform.rotation = Quaternion.Euler(0f, yaw, 0f);
-            go.transform.localScale = Vector3.one * Mathf.Max(0.01f, s);
-            go.isStatic = true;
 
-            var mf = go.AddComponent<MeshFilter>();
+            if (_featuredTreeVariants != null && _featuredTreeVariants.Length > 0)
+            {
+                var variant = forcedVariant ?? _featuredTreeVariants[prng.Next(0, _featuredTreeVariants.Length)];
+                if (variant.prefab != null)
+                {
+                    var go = Instantiate(variant.prefab, _featuredTreesRoot.transform);
+                    go.name = $"FeaturedTree_{index:000}_{variant.prefab.name}";
+                    go.transform.SetPositionAndRotation(targetPos, Quaternion.Euler(0f, yaw, 0f));
+
+                    float desiredHeight = Mathf.Lerp(
+                        Mathf.Min(featuredTreeTargetHeightRange.x, featuredTreeTargetHeightRange.y),
+                        Mathf.Max(featuredTreeTargetHeightRange.x, featuredTreeTargetHeightRange.y),
+                        (float)prng.NextDouble());
+                    float normalizeScale = desiredHeight / Mathf.Max(0.01f, variant.sourceHeight);
+                    go.transform.localScale = Vector3.one * Mathf.Max(0.01f, normalizeScale);
+
+                    SnapInstanceBottomToY(go, targetPos.y);
+                    DisableInstancePhysics(go);
+                    AddTreeCollider(go);
+                    ApplyTreeVariantMaterial(go, variant);
+                    ApplyTreeInstanceRenderSettings(go);
+                    go.isStatic = true;
+                    return;
+                }
+            }
+
+            var fallback = new GameObject($"FeaturedTree_{index:000}");
+            fallback.transform.SetParent(_featuredTreesRoot.transform, worldPositionStays: true);
+            fallback.transform.position = targetPos;
+            fallback.transform.rotation = Quaternion.Euler(0f, yaw, 0f);
+            float s = Mathf.Lerp(featuredTreeScaleRange.x, featuredTreeScaleRange.y, (float)prng.NextDouble());
+            fallback.transform.localScale = Vector3.one * Mathf.Max(0.01f, s);
+            fallback.isStatic = true;
+
+            var mf = fallback.AddComponent<MeshFilter>();
             mf.sharedMesh = treeMesh;
 
-            var mr = go.AddComponent<MeshRenderer>();
+            var mr = fallback.AddComponent<MeshRenderer>();
             mr.sharedMaterial = treeMaterial;
             mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             mr.receiveShadows = false;
+            AddTreeCollider(fallback);
+        }
+
+        private static void DisableInstancePhysics(GameObject go)
+        {
+            if (go == null)
+                return;
+
+            var colliders = go.GetComponentsInChildren<Collider>(includeInactive: true);
+            for (int i = 0; i < colliders.Length; i++)
+                if (colliders[i] != null)
+                    colliders[i].enabled = false;
+
+            var rigidbodies = go.GetComponentsInChildren<Rigidbody>(includeInactive: true);
+            for (int i = 0; i < rigidbodies.Length; i++)
+                if (rigidbodies[i] != null)
+                    Destroy(rigidbodies[i]);
+        }
+
+        private static void AddTreeCollider(GameObject go)
+        {
+            if (go == null || !TryGetRenderableBounds(go, out Bounds bounds))
+                return;
+
+            var existing = go.GetComponentsInChildren<Collider>(includeInactive: true);
+            for (int i = 0; i < existing.Length; i++)
+            {
+                if (existing[i] != null)
+                    Destroy(existing[i]);
+            }
+
+            var cc = go.AddComponent<CapsuleCollider>();
+            float trunkRadius = Mathf.Clamp(Mathf.Min(bounds.size.x, bounds.size.z) * 0.055f, 0.14f, 0.30f);
+            float trunkHeight = Mathf.Clamp(bounds.size.y * 0.34f, 1.5f, 2.6f);
+
+            Vector3 localCenter = go.transform.InverseTransformPoint(new Vector3(
+                bounds.center.x,
+                bounds.min.y + trunkHeight * 0.5f,
+                bounds.center.z));
+
+            cc.center = localCenter;
+            cc.radius = trunkRadius;
+            cc.height = Mathf.Max(trunkHeight, trunkRadius * 2f + 0.05f);
+            cc.direction = 1;
+            cc.isTrigger = false;
+        }
+
+        private static void ApplyTreeInstanceRenderSettings(GameObject go)
+        {
+            if (go == null)
+                return;
+
+            var renderers = go.GetComponentsInChildren<Renderer>(includeInactive: true);
+            for (int i = 0; i < renderers.Length; i++)
+            {
+                if (renderers[i] == null)
+                    continue;
+                renderers[i].shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                renderers[i].receiveShadows = false;
+            }
+        }
+
+        private static void ApplyTreeVariantMaterial(GameObject go, TreeVariant variant)
+        {
+            if (go == null)
+                return;
+
+            var renderers = go.GetComponentsInChildren<Renderer>(includeInactive: true);
+            for (int i = 0; i < renderers.Length; i++)
+            {
+                var r = renderers[i];
+                if (r == null)
+                    continue;
+
+                Material source = variant.materialOverride != null ? variant.materialOverride : r.sharedMaterial;
+                if (source == null)
+                    continue;
+
+                var mat = new Material(source) { name = $"{source.name}_Instance" };
+                mat.enableInstancing = true;
+                if (variant.textureOverride != null)
+                {
+                    if (mat.HasProperty("_BaseMap")) mat.SetTexture("_BaseMap", variant.textureOverride);
+                    if (mat.HasProperty("_MainTex")) mat.SetTexture("_MainTex", variant.textureOverride);
+                }
+                if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", Color.white);
+                if (mat.HasProperty("_Color")) mat.SetColor("_Color", Color.white);
+                r.sharedMaterial = mat;
+            }
+        }
+
+        private static bool TryGetRenderableBounds(GameObject go, out Bounds bounds)
+        {
+            bounds = default;
+            if (go == null)
+                return false;
+
+            var renderers = go.GetComponentsInChildren<Renderer>(includeInactive: true);
+            bool hasAny = false;
+            for (int i = 0; i < renderers.Length; i++)
+            {
+                var r = renderers[i];
+                if (r == null)
+                    continue;
+                if (!hasAny)
+                {
+                    bounds = r.bounds;
+                    hasAny = true;
+                }
+                else
+                {
+                    bounds.Encapsulate(r.bounds);
+                }
+            }
+
+            return hasAny;
+        }
+
+        private static void SnapInstanceBottomToY(GameObject go, float targetY)
+        {
+            if (!TryGetRenderableBounds(go, out Bounds bounds))
+                return;
+
+            float dy = targetY - bounds.min.y;
+            if (Mathf.Abs(dy) > 0.0005f)
+                go.transform.position += Vector3.up * dy;
+        }
+
+        private void PruneRockTreeOverlaps()
+        {
+            if (_featuredTreesRoot == null || _chunkFloraProps.Count == 0)
+                return;
+
+            float clearRadius = Mathf.Max(0.5f, featuredTreeRockClearRadius);
+            float baseSq = clearRadius * clearRadius;
+            var treePositions = new List<Vector2>(_featuredTreesRoot.transform.childCount);
+
+            for (int i = 0; i < _featuredTreesRoot.transform.childCount; i++)
+            {
+                var child = _featuredTreesRoot.transform.GetChild(i);
+                if (child == null)
+                    continue;
+                treePositions.Add(new Vector2(child.position.x, child.position.z));
+            }
+
+            if (treePositions.Count == 0)
+                return;
+
+            foreach (var kv in _chunkFloraProps)
+            {
+                var flora = kv.Value;
+                if (flora == null)
+                    continue;
+
+                flora.RemoveSpawnedObjects(go =>
+                {
+                    if (go == null || !go.name.StartsWith("StylizedRock_", StringComparison.Ordinal))
+                        return false;
+
+                    float thresholdSq = baseSq;
+                    if (TryGetRenderableBounds(go, out Bounds rockBounds))
+                    {
+                        float rockRadius = Mathf.Max(rockBounds.extents.x, rockBounds.extents.z);
+                        float threshold = clearRadius + rockRadius * 0.45f;
+                        thresholdSq = threshold * threshold;
+                    }
+
+                    Vector2 rockPos = new Vector2(go.transform.position.x, go.transform.position.z);
+                    for (int i = 0; i < treePositions.Count; i++)
+                    {
+                        if ((treePositions[i] - rockPos).sqrMagnitude < thresholdSq)
+                            return true;
+                    }
+
+                    return false;
+                });
+            }
         }
 
         private void BuildWorldBoundary()
