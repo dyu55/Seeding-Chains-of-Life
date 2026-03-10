@@ -156,6 +156,8 @@ namespace SCoL.Voxels
         [Min(0.02f)] public float winterSnowBuildSpeed = 0.30f;
         [Min(0.02f)] public float winterSnowMeltSpeed = 0.18f;
         [Range(0.1f, 1f)] public float winterIceFrozenThreshold = 0.82f;
+        [Range(0f, 0.6f)] public float winterIceExtraOverhang = 0.22f;
+        [Range(0f, 0.2f)] public float winterIceExtraEmbed = 0.03f;
         public Color snowOverlayColor = new Color(0.98f, 0.98f, 1.0f, 0.92f);
         public Color iceOverlayColor = new Color(0.70f, 0.90f, 1.0f, 0.84f);
 
@@ -1322,7 +1324,14 @@ namespace SCoL.Voxels
                 _lowPolyWaterMesh != null &&
                 _lowPolyWaterMesh.vertexCount > 0)
             {
-                CopyElevatedMeshInto(mesh, _lowPolyWaterMesh, Mathf.Max(0.001f, winterOverlayHeightOffset) + 0.01f, doubleSided: false);
+                BuildLowPolyCornerMaps(out _, out var iceWaterMask);
+                var iceMesh = BuildLowPolyWaterMesh(
+                    iceWaterMask,
+                    extraOverhang: Mathf.Max(0f, winterIceExtraOverhang),
+                    extraEmbedDepth: Mathf.Max(0f, winterIceExtraEmbed),
+                    additionalYOffset: Mathf.Max(0.001f, winterOverlayHeightOffset) + 0.012f);
+                CopyMeshInto(mesh, iceMesh);
+                Destroy(iceMesh);
                 return;
             }
 
@@ -1418,7 +1427,14 @@ namespace SCoL.Voxels
                 _lowPolyWaterMesh != null &&
                 _lowPolyWaterMesh.vertexCount > 0)
             {
-                CopyElevatedMeshInto(mesh, _lowPolyWaterMesh, Mathf.Max(0.001f, winterOverlayHeightOffset) + 0.015f, doubleSided: true);
+                BuildLowPolyCornerMaps(out _, out var iceWaterMask);
+                var iceMesh = BuildLowPolyWaterMesh(
+                    iceWaterMask,
+                    extraOverhang: Mathf.Max(0f, winterIceExtraOverhang),
+                    extraEmbedDepth: Mathf.Max(0f, winterIceExtraEmbed),
+                    additionalYOffset: Mathf.Max(0.001f, winterOverlayHeightOffset) + 0.015f);
+                CopyMeshInto(mesh, iceMesh);
+                Destroy(iceMesh);
                 mc.sharedMesh = null;
                 mc.sharedMesh = mesh;
                 return;
@@ -2505,15 +2521,18 @@ namespace SCoL.Voxels
             return new Vector3(cellX + u, h, cellZ + v);
         }
 
-        private Mesh BuildLowPolyWaterMesh(float[,] cornerWaterMask)
+        private Mesh BuildLowPolyWaterMesh(float[,] cornerWaterMask, float extraOverhang = 0f, float extraEmbedDepth = 0f, float additionalYOffset = 0f)
         {
             int w = config.worldWidth;
             int d = config.worldDepth;
             int sub = Mathf.Clamp(lowPolyWaterSubdivisions, 1, 4);
             float threshold = Mathf.Clamp(lowPolyWaterMaskThreshold, 0.01f, 0.99f);
             float uvScale = Mathf.Max(0.01f, lowPolyUVScale);
-            float seaY = Mathf.Clamp(config.seaLevel + 1f + lowPolyWaterYOffset - Mathf.Max(0f, lowPolyWaterEmbedDepth), 0f, config.worldHeight + 8f);
-            float overhangPerSubQuad = Mathf.Max(0f, lowPolyWaterHorizontalOverhang) / sub;
+            float seaY = Mathf.Clamp(
+                config.seaLevel + 1f + lowPolyWaterYOffset + additionalYOffset - Mathf.Max(0f, lowPolyWaterEmbedDepth + extraEmbedDepth),
+                0f,
+                config.worldHeight + 8f);
+            float overhangPerSubQuad = Mathf.Max(0f, lowPolyWaterHorizontalOverhang + extraOverhang) / sub;
 
             var verts = new List<Vector3>(w * d * sub * sub * 4);
             var uvs = new List<Vector2>(verts.Capacity);
@@ -2566,6 +2585,20 @@ namespace SCoL.Voxels
             mesh.RecalculateNormals();
             mesh.RecalculateBounds();
             return mesh;
+        }
+
+        private static void CopyMeshInto(Mesh dest, Mesh source)
+        {
+            if (dest == null || source == null)
+                return;
+
+            dest.Clear();
+            dest.indexFormat = source.indexFormat;
+            dest.vertices = source.vertices;
+            dest.normals = source.normals;
+            dest.uv = source.uv;
+            dest.triangles = source.triangles;
+            dest.bounds = source.bounds;
         }
 
         private static float EvalMask(float[,] cornerMask, int cellX, int cellZ, float u, float v)

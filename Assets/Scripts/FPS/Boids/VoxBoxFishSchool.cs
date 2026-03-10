@@ -459,6 +459,7 @@ public class VoxBoxFishBoidAgent : MonoBehaviour
     [Range(1f, 30f)] public float hardClampLerpSpeed = 10f;
     [Min(0.05f)] public float terrainClearance = 0.28f;
     [Min(0.05f)] public float surfaceClearance = 0.18f;
+    [Min(0.05f)] public float horizontalRecenterDistance = 0.85f;
 
     [HideInInspector] public VoxelWorld voxelWorld;
     [HideInInspector] public VoxBoxFishSchool school;
@@ -624,31 +625,44 @@ public class VoxBoxFishBoidAgent : MonoBehaviour
         bool tooHigh = p.y > waterSurfaceY;
         bool invalidShallowColumn = hasTerrain && minY >= waterSurfaceY - 0.02f;
 
-        if (!inWater || tooLow || tooHigh || invalidShallowColumn)
+        bool needsHorizontalRecovery = !inWater || invalidShallowColumn;
+        bool needsVerticalClamp = tooLow || tooHigh;
+
+        if (needsHorizontalRecovery || needsVerticalClamp)
         {
             if (school.TryGetNearestWaterAnchor(p, out var nearest))
             {
                 float t = Mathf.Clamp01(Time.deltaTime * Mathf.Max(1f, hardClampLerpSpeed));
-                p = Vector3.Lerp(p, nearest, t);
-
-                if (voxelWorld.TryGetTerrainSurfaceYAtWorld(nearest, out float nearestTerrainY, includeWaterSurface: false))
+                if (needsHorizontalRecovery)
                 {
-                    float nearestMinY = nearestTerrainY + Mathf.Max(0.05f, terrainClearance);
-                    p.y = Mathf.Clamp(p.y, nearestMinY, waterSurfaceY);
+                    Vector3 target = nearest;
+                    if (voxelWorld.TryGetTerrainSurfaceYAtWorld(nearest, out float nearestTerrainY, includeWaterSurface: false))
+                        target.y = Mathf.Clamp(target.y, nearestTerrainY + Mathf.Max(0.05f, terrainClearance), waterSurfaceY);
+                    else
+                        target.y = Mathf.Min(target.y, waterSurfaceY);
+
+                    p = Vector3.Lerp(p, target, t);
                 }
                 else
                 {
-                    p.y = Mathf.Min(p.y, waterSurfaceY);
+                    p.y = Mathf.Clamp(p.y, minY, waterSurfaceY);
                 }
 
                 transform.position = p;
 
                 Vector3 toAnchor = nearest - transform.position;
-                if (toAnchor.sqrMagnitude > 0.0001f)
+                Vector3 toAnchorPlanar = new Vector3(toAnchor.x, 0f, toAnchor.z);
+                float planarDist = toAnchorPlanar.magnitude;
+                if (needsHorizontalRecovery && planarDist > Mathf.Max(0.05f, horizontalRecenterDistance))
                 {
-                    Vector3 dir = toAnchor.normalized;
+                    Vector3 dir = toAnchorPlanar.normalized;
                     float speed = Mathf.Max(minSpeed, velocity.magnitude);
-                    velocity = Vector3.Lerp(velocity, dir * speed, t);
+                    Vector3 desired = new Vector3(dir.x * speed, velocity.y * 0.35f, dir.z * speed);
+                    velocity = Vector3.Lerp(velocity, desired, t);
+                }
+                else if (needsVerticalClamp)
+                {
+                    velocity.y = Mathf.Lerp(velocity.y, 0f, t);
                 }
             }
             else
