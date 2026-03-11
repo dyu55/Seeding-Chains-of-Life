@@ -76,6 +76,7 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
         }
 
         TryAutoAssignAnimalPrefabs();
+        EnsureFoxAndDeerPrefabs();
         ClearSpawned();
 
         int spawnedCount = 0;
@@ -87,10 +88,10 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
             bool spawned = false;
             for (int tries = 0; tries < Mathf.Max(1, maxSpawnAttemptsPerAnimal); tries++)
             {
-                if (!TryPickSpawnPoint(out var pos))
+                if (!TryPickSpawnPoint(i, target, out var pos))
                     continue;
 
-                var prefab = PickPrefab();
+                var prefab = PickPrefab(i, target);
                 var rot = Quaternion.Euler(0f, Random.Range(0f, 360f), 0f);
                 var go = SpawnAnimal(prefab, pos, rot, i);
                 if (go == null) continue;
@@ -155,6 +156,11 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
             isFox = prefab.name.IndexOf("fox", System.StringComparison.OrdinalIgnoreCase) >= 0;
         if (!isFox)
             isFox = go.name.IndexOf("fox", System.StringComparison.OrdinalIgnoreCase) >= 0;
+        bool isDeer = false;
+        if (prefab != null)
+            isDeer = prefab.name.IndexOf("deer", System.StringComparison.OrdinalIgnoreCase) >= 0;
+        if (!isDeer)
+            isDeer = go.name.IndexOf("deer", System.StringComparison.OrdinalIgnoreCase) >= 0;
         if (isFox)
         {
             // Foxes get stricter shoreline behavior: avoid entering water and turn around at edges.
@@ -163,6 +169,28 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
             boid.waterEdgeLookAheadDistance = 1.35f;
             boid.waterEdgeTurnSpeedMultiplier = 1.45f;
             boid.waterEdgeExtraAvoidWeight = 4.5f;
+
+            var visualSwap = go.GetComponent<AnimatedAnimalVisualSwap>();
+            if (visualSwap == null)
+                visualSwap = go.AddComponent<AnimatedAnimalVisualSwap>();
+            visualSwap.resourceModelPath = "Animals/FoxAnimated/Fox";
+            visualSwap.desiredLocalHeight = 1.9f;
+            visualSwap.yawOffsetDegrees = 0f;
+            visualSwap.destroyExistingVisualChildren = true;
+            visualSwap.logWarnings = logSpawnInfo;
+            visualSwap.ApplyNow();
+        }
+        else if (isDeer)
+        {
+            var visualSwap = go.GetComponent<AnimatedAnimalVisualSwap>();
+            if (visualSwap == null)
+                visualSwap = go.AddComponent<AnimatedAnimalVisualSwap>();
+            visualSwap.resourceModelPath = "Animals/DeerAnimated/Deer";
+            visualSwap.desiredLocalHeight = 2.25f;
+            visualSwap.yawOffsetDegrees = 0f;
+            visualSwap.destroyExistingVisualChildren = true;
+            visualSwap.logWarnings = logSpawnInfo;
+            visualSwap.ApplyNow();
         }
 
         boid.canEatMaturePlants = animalsEatMaturePlants;
@@ -181,20 +209,32 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
         return go;
     }
 
-    bool TryPickSpawnPoint(out Vector3 pos)
+    bool TryPickSpawnPoint(int spawnIndex, int targetCount, out Vector3 pos)
     {
         pos = transform.position;
 
         if (voxelWorld != null && voxelWorld.Config != null)
         {
-            int x = Random.Range(0, voxelWorld.Config.worldWidth);
-            int z = Random.Range(0, voxelWorld.Config.worldDepth);
-            if (!IsDryLandColumn(x, z))
-                return false;
+            if (TryPickDistributedWorldColumn(spawnIndex, targetCount, out int x, out int z))
+            {
+                Vector3 top = voxelWorld.ColumnTopWorld(x, z);
+                pos = new Vector3(top.x, top.y + groundOffset, top.z);
+                return true;
+            }
 
-            Vector3 top = voxelWorld.ColumnTopWorld(x, z);
-            pos = new Vector3(top.x, top.y + groundOffset, top.z);
-            return true;
+            for (int tries = 0; tries < 12; tries++)
+            {
+                x = Random.Range(0, voxelWorld.Config.worldWidth);
+                z = Random.Range(0, voxelWorld.Config.worldDepth);
+                if (!IsDryLandColumn(x, z))
+                    continue;
+
+                Vector3 top = voxelWorld.ColumnTopWorld(x, z);
+                pos = new Vector3(top.x, top.y + groundOffset, top.z);
+                return true;
+            }
+
+            return false;
         }
 
         // Fallback when VoxelWorld is not present.
@@ -208,6 +248,70 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
 
         pos = transform.position + new Vector3(r.x, 0f, r.y);
         return true;
+    }
+
+    bool TryPickDistributedWorldColumn(int spawnIndex, int targetCount, out int x, out int z)
+    {
+        x = 0;
+        z = 0;
+
+        if (voxelWorld == null || voxelWorld.Config == null)
+            return false;
+
+        int worldWidth = Mathf.Max(1, voxelWorld.Config.worldWidth);
+        int worldDepth = Mathf.Max(1, voxelWorld.Config.worldDepth);
+        int target = Mathf.Max(1, targetCount);
+
+        float aspect = worldWidth / (float)Mathf.Max(1, worldDepth);
+        int gridX = Mathf.Max(1, Mathf.RoundToInt(Mathf.Sqrt(target * Mathf.Max(0.25f, aspect))));
+        int gridZ = Mathf.Max(1, Mathf.CeilToInt(target / (float)gridX));
+
+        int cellIndex = Mathf.Clamp(spawnIndex, 0, target - 1);
+        int cellX = cellIndex % gridX;
+        int cellZ = Mathf.Min(gridZ - 1, cellIndex / gridX);
+
+        int minX = Mathf.FloorToInt(cellX * worldWidth / (float)gridX);
+        int maxX = Mathf.Max(minX, Mathf.CeilToInt((cellX + 1) * worldWidth / (float)gridX) - 1);
+        int minZ = Mathf.FloorToInt(cellZ * worldDepth / (float)gridZ);
+        int maxZ = Mathf.Max(minZ, Mathf.CeilToInt((cellZ + 1) * worldDepth / (float)gridZ) - 1);
+
+        for (int tries = 0; tries < 10; tries++)
+        {
+            int px = Random.Range(minX, maxX + 1);
+            int pz = Random.Range(minZ, maxZ + 1);
+            if (!IsDryLandColumn(px, pz))
+                continue;
+
+            x = px;
+            z = pz;
+            return true;
+        }
+
+        int centerX = Mathf.Clamp((minX + maxX) / 2, 0, worldWidth - 1);
+        int centerZ = Mathf.Clamp((minZ + maxZ) / 2, 0, worldDepth - 1);
+        int maxRadius = Mathf.Max(maxX - minX, maxZ - minZ) + 6;
+        for (int radius = 0; radius <= maxRadius; radius++)
+        {
+            for (int dz = -radius; dz <= radius; dz++)
+            {
+                for (int dx = -radius; dx <= radius; dx++)
+                {
+                    if (Mathf.Max(Mathf.Abs(dx), Mathf.Abs(dz)) != radius)
+                        continue;
+
+                    int px = centerX + dx;
+                    int pz = centerZ + dz;
+                    if (!IsDryLandColumn(px, pz))
+                        continue;
+
+                    x = px;
+                    z = pz;
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     bool IsDryLandColumn(int x, int z)
@@ -235,10 +339,13 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
         return true;
     }
 
-    GameObject PickPrefab()
+    GameObject PickPrefab(int spawnIndex, int targetCount)
     {
         if (animalPrefabs == null || animalPrefabs.Length == 0)
             return null;
+
+        if (TryPickBalancedFoxDeerPrefab(spawnIndex, targetCount, out var balanced))
+            return balanced;
 
         for (int i = 0; i < 8; i++)
         {
@@ -246,6 +353,35 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
             if (p != null) return p;
         }
         return null;
+    }
+
+    bool TryPickBalancedFoxDeerPrefab(int spawnIndex, int targetCount, out GameObject prefab)
+    {
+        prefab = null;
+        if (animalPrefabs == null || animalPrefabs.Length < 2 || targetCount <= 1)
+            return false;
+
+        GameObject fox = null;
+        GameObject deer = null;
+        for (int i = 0; i < animalPrefabs.Length; i++)
+        {
+            var candidate = animalPrefabs[i];
+            if (candidate == null)
+                continue;
+
+            string name = candidate.name ?? string.Empty;
+            if (fox == null && name.IndexOf("fox", System.StringComparison.OrdinalIgnoreCase) >= 0)
+                fox = candidate;
+            else if (deer == null && name.IndexOf("deer", System.StringComparison.OrdinalIgnoreCase) >= 0)
+                deer = candidate;
+        }
+
+        if (fox == null || deer == null)
+            return false;
+
+        int foxCount = Mathf.CeilToInt(targetCount * 0.5f);
+        prefab = spawnIndex < foxCount ? fox : deer;
+        return true;
     }
 
     void ApplyWorldBounds(FPSBoidAgent boid)
@@ -291,19 +427,55 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
     void EnsureAnyCollider(GameObject root)
     {
         if (root == null) return;
-        if (root.GetComponentInChildren<Collider>() != null)
+
+        var existingRootCollider = root.GetComponent<Collider>();
+        if (existingRootCollider != null)
             return;
 
-        var mf = root.GetComponentInChildren<MeshFilter>();
-        if (mf != null && mf.sharedMesh != null)
+        if (!TryGetRenderableBounds(root, out Bounds bounds))
         {
-            var mc = mf.gameObject.AddComponent<MeshCollider>();
-            mc.sharedMesh = mf.sharedMesh;
-            mc.convex = true;
+            root.AddComponent<CapsuleCollider>();
             return;
         }
 
-        root.AddComponent<BoxCollider>();
+        var capsule = root.AddComponent<CapsuleCollider>();
+        capsule.direction = 1;
+
+        Vector3 localCenter = root.transform.InverseTransformPoint(new Vector3(bounds.center.x, bounds.min.y + bounds.size.y * 0.42f, bounds.center.z));
+        capsule.center = localCenter;
+        capsule.height = Mathf.Max(0.6f, bounds.size.y * 0.72f);
+        capsule.radius = Mathf.Clamp(Mathf.Max(bounds.size.x, bounds.size.z) * 0.18f, 0.08f, capsule.height * 0.42f);
+    }
+
+    static bool TryGetRenderableBounds(GameObject root, out Bounds bounds)
+    {
+        var renderers = root.GetComponentsInChildren<Renderer>(true);
+        if (renderers == null || renderers.Length == 0)
+        {
+            bounds = default;
+            return false;
+        }
+
+        bool found = false;
+        bounds = default;
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            var r = renderers[i];
+            if (r == null)
+                continue;
+
+            if (!found)
+            {
+                bounds = r.bounds;
+                found = true;
+            }
+            else
+            {
+                bounds.Encapsulate(r.bounds);
+            }
+        }
+
+        return found;
     }
 
     void TrySetTag(GameObject go, string tagValue)
@@ -362,6 +534,40 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
         if (list.Count > 0)
             animalPrefabs = list.ToArray();
 #endif
+    }
+
+    void EnsureFoxAndDeerPrefabs()
+    {
+#if UNITY_EDITOR
+        var fox = FindAnimalPrefabByName("fox");
+        var deer = FindAnimalPrefabByName("deer");
+
+        if (fox == null)
+            fox = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/VoxBox/Prefabs/Animals/Fox.prefab");
+        if (deer == null)
+            deer = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/VoxBox/Prefabs/Animals/Deer.prefab");
+
+        if (fox != null && deer != null)
+            animalPrefabs = new[] { fox, deer };
+#endif
+    }
+
+    GameObject FindAnimalPrefabByName(string contains)
+    {
+        if (animalPrefabs == null || animalPrefabs.Length == 0 || string.IsNullOrEmpty(contains))
+            return null;
+
+        for (int i = 0; i < animalPrefabs.Length; i++)
+        {
+            var prefab = animalPrefabs[i];
+            if (prefab == null)
+                continue;
+
+            if (prefab.name.IndexOf(contains, System.StringComparison.OrdinalIgnoreCase) >= 0)
+                return prefab;
+        }
+
+        return null;
     }
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]

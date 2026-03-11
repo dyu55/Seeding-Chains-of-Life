@@ -449,12 +449,13 @@ MonoBehaviour:
   voxelWorld: {fileID: 0}
   animalPrefabs:
   - {fileID: 3632003745339279683, guid: ce8121766023134429b1dbdcd2cba052, type: 3}
+  - {fileID: 7005526952333805016, guid: 7e9232d1122d64b4e873b1598e17f5a6, type: 3}
   animalCount: 18
   spawnOnStart: 1
   maxSpawnAttemptsPerAnimal: 8
   groundOffset: 0.02
   raycastHeight: 120
-  randomScaleRange: {x: 0.3, y: 0.5}
+  randomScaleRange: {x: 0.21, y: 0.35}
   groundMask:
     serializedVersion: 2
     m_Bits: 4294967295

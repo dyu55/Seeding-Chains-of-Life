@@ -263,13 +263,23 @@ public class FPSBoidAgent : MonoBehaviour
         // Player avoidance / chase
         var cam = _playerCam != null ? _playerCam : Camera.main;
         bool hasPlantAttractor = _plantAttractorEnabled && _plantAttractor != null;
+        bool plantAttractorInRange = false;
+        Vector3 toAttractor = Vector3.zero;
+        float plantAttractorDistance = float.PositiveInfinity;
+        if (hasPlantAttractor)
+        {
+            toAttractor = _plantAttractor.position - transform.position;
+            toAttractor.y = 0f;
+            plantAttractorDistance = toAttractor.magnitude;
+            plantAttractorInRange = plantAttractorDistance <= Mathf.Max(0.1f, _plantAttractorRadius);
+        }
         if (cam != null)
         {
             float dToPlayer = Vector3.Distance(transform.position, cam.transform.position);
 
             if (role == BoidRole.Prey)
             {
-                if (!hasPlantAttractor && dToPlayer < playerFleeDistance)
+                if (!plantAttractorInRange && dToPlayer < playerFleeDistance)
                 {
                     var away = (transform.position - cam.transform.position);
                     away.y = 0f;
@@ -279,13 +289,9 @@ public class FPSBoidAgent : MonoBehaviour
         }
 
         // Plant lure: when player equips Plant tool, nearby animals follow.
-        if (hasPlantAttractor)
+        if (plantAttractorInRange)
         {
-            var toAttractor = (_plantAttractor.position - transform.position);
-            toAttractor.y = 0f;
-            float d = toAttractor.magnitude;
-            if (d <= Mathf.Max(0.1f, _plantAttractorRadius))
-                accel += SteerTowards(toAttractor) * Mathf.Max(0f, _plantAttractorWeight);
+            accel += SteerTowards(toAttractor) * Mathf.Max(0f, _plantAttractorWeight);
         }
         else if (canEatMaturePlants && TryEnsureEatTarget())
         {
