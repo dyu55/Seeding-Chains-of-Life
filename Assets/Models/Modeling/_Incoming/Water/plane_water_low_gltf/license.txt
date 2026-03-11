@@ -1,0 +1,11 @@
+Model Information:
+* title:	Plane_Water_low
+* source:	https://sketchfab.com/3d-models/plane-water-low-041babee8ae24ecd8b11fddeed2f32fc
+* author:	DonikXD (https://sketchfab.com/DonikXD)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Plane_Water_low" (https://sketchfab.com/3d-models/plane-water-low-041babee8ae24ecd8b11fddeed2f32fc) by DonikXD (https://sketchfab.com/DonikXD) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
