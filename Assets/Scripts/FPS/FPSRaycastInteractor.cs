@@ -660,13 +660,17 @@ public class FPSRaycastInteractor : MonoBehaviour
         if (!Physics.Raycast(ray, out var hit, 50f, hitMask, QueryTriggerInteraction.Ignore))
             return;
 
-        var growth = hit.collider != null ? hit.collider.GetComponentInParent<FPSSeedGrowth>() : null;
-        if (growth == null || growth.IsBurned)
-            return;
         if (Random.value > Mathf.Clamp01(thunderTargetIgniteChance))
             return;
 
-        growth.ApplyFire(destroyOnFire: false, destroyChance: 0f, destroyDelaySeconds: 0f);
+        if (_runtime == null || !_runtime.isActiveAndEnabled)
+            _runtime = FindFirstObjectByType<SCoLRuntime>();
+        if (_runtime == null)
+            return;
+
+        int scorched = _runtime.ScorchPatchWorld(hit.point, halfExtent: 2);
+        if (logHits && scorched > 0)
+            Debug.Log($"[FPSRaycastInteractor] Thunder scorched patch: {scorched} cells");
     }
 
     bool TryHandlePlantDestroyClick(RaycastHit hit)

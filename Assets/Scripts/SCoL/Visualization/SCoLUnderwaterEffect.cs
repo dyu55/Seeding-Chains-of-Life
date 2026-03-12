@@ -65,11 +65,14 @@ namespace SCoL.Visualization
             if (targetCamera == null)
                 return;
 
-            float waterY = voxelWorld.OriginWorld.y + voxelWorld.Config.seaLevel + waterSurfaceOffset;
             Vector3 camPos = targetCamera.transform.position;
 
-            if (voxelWorld.TryGetFrozenWaterSurfaceYAtWorld(camPos, out float frozenSurfaceY) &&
-                camPos.y >= frozenSurfaceY - Mathf.Max(0f, waterlineHysteresis))
+            float waterY = voxelWorld.OriginWorld.y + voxelWorld.Config.seaLevel + waterSurfaceOffset;
+            if (voxelWorld.TryGetVisibleWaterSurfaceYAtWorld(camPos, out float visibleWaterSurfaceY))
+                waterY = visibleWaterSurfaceY + waterSurfaceOffset;
+
+            if (voxelWorld.TryGetVisibleWaterSurfaceYAtWorld(camPos, out float currentVisibleSurfaceY) &&
+                camPos.y >= currentVisibleSurfaceY - Mathf.Max(0f, waterlineHysteresis))
             {
                 if (_active)
                     ExitUnderwater();

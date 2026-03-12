@@ -11,6 +11,7 @@ Shader "SCoL/StylizedAnimatedWater"
         _FresnelPower ("Fresnel Power", Range(0.5, 8)) = 5.5
         _HighlightStrength ("Highlight Strength", Range(0, 2)) = 0.06
         _FlowContrast ("Flow Contrast", Range(0, 1)) = 0.32
+        _LightingStrength ("Lighting Strength", Range(0, 1)) = 1
         _Opacity ("Opacity", Range(0, 1)) = 0.64
     }
 
@@ -35,6 +36,7 @@ Shader "SCoL/StylizedAnimatedWater"
             #pragma fragment frag
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
 
             struct Attributes
             {
@@ -62,6 +64,7 @@ Shader "SCoL/StylizedAnimatedWater"
                 float _FresnelPower;
                 float _HighlightStrength;
                 float _FlowContrast;
+                float _LightingStrength;
                 float _Opacity;
             CBUFFER_END
 
@@ -93,7 +96,10 @@ Shader "SCoL/StylizedAnimatedWater"
             {
                 half3 normalWS = SampleAnimatedNormal(IN.uv, IN.positionWS);
                 half3 viewDir = normalize(IN.viewDirWS);
+                Light mainLight = GetMainLight();
+                half3 lightDir = normalize(mainLight.direction);
                 half fresnel = pow(saturate(1.0h - dot(viewDir, normalWS)), _FresnelPower);
+                half ndotl = saturate(dot(normalWS, lightDir));
                 half ripple = saturate((normalWS.x + normalWS.y) * 0.5h + 0.5h);
                 half flow = sin(IN.positionWS.x * 0.24h + _Time.y * 2.8h) * 0.5h + 0.5h;
                 flow = lerp(flow, sin(IN.positionWS.z * 0.31h - _Time.y * 1.9h) * 0.5h + 0.5h, 0.5h);
@@ -103,7 +109,12 @@ Shader "SCoL/StylizedAnimatedWater"
                 color *= lerp(0.84h, 1.06h, ripple);
                 color *= lerp(1.0h - _FlowContrast, 1.0h + _FlowContrast, flow);
                 color += band * 0.035h;
+                half directLight = lerp(0.42h, 1.42h, ndotl);
+                half3 lightTint = lerp(half3(1.0h, 1.0h, 1.0h), mainLight.color.rgb, 0.35h);
+                color *= lerp(1.0h, directLight, _LightingStrength);
+                color *= lerp(half3(1.0h, 1.0h, 1.0h), lightTint, _LightingStrength * 0.45h);
                 color += fresnel * _HighlightStrength;
+                color += pow(ndotl, 10.0h) * fresnel * _HighlightStrength * 2.8h * mainLight.color.rgb;
 
                 half alpha = saturate(_Opacity * lerp(0.88h, 1.03h, ripple) * lerp(0.92h, 1.06h, band));
                 return half4(color, alpha);

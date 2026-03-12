@@ -167,15 +167,15 @@ namespace SCoL.Voxels
         [Min(0.02f)] public float winterSnowBuildSpeed = 0.30f;
         [Min(0.02f)] public float winterSnowMeltSpeed = 0.18f;
         [Range(0.1f, 1f)] public float winterIceFrozenThreshold = 0.82f;
-        [Range(0f, 0.8f)] public float winterIceExtraOverhang = 0.34f;
-        [Range(0f, 0.2f)] public float winterIceExtraEmbed = 0.04f;
+        [Range(0f, 0.8f)] public float winterIceExtraOverhang = 0.18f;
+        [Range(0f, 0.2f)] public float winterIceExtraEmbed = 0.0f;
         [Range(-0.25f, 0.1f)] public float winterIceThresholdBias = -0.08f;
         [Range(4, 8)] public int winterIceSubdivisions = 6;
         [Range(0, 6)] public int winterIceMaskExpandPasses = 2;
         [Range(0, 8)] public int winterIceMaskSmoothingPasses = 3;
         [Range(0f, 1f)] public float winterIceMaskSmoothingStrength = 0.82f;
         public Color snowOverlayColor = new Color(0.98f, 0.98f, 1.0f, 0.92f);
-        public Color iceOverlayColor = new Color(0.70f, 0.90f, 1.0f, 0.84f);
+        public Color iceOverlayColor = new Color(0.78f, 0.86f, 0.93f, 0.88f);
 
         [Tooltip("If true, world (0,0,0) is placed at this transform position.")]
         public bool useTransformAsOrigin = true;
@@ -194,6 +194,7 @@ namespace SCoL.Voxels
         private GameObject _featuredTreesRoot;
         private GameObject _lowPolyVisualRoot;
         private Mesh _lowPolyLandMesh;
+        private Mesh _lowPolyLandColliderMesh;
         private Mesh _lowPolyWaterMesh;
         private MeshRenderer _lowPolyWaterRenderer;
         private MeshCollider _lowPolyLandCollider;
@@ -212,11 +213,15 @@ namespace SCoL.Voxels
         private float _nextSeasonLookupAt;
         private float _winterVisualAmount;
         private bool _winterVisualsActive;
+        private const int WinterSnowRenderQueue = 3006;
+        private const int WinterIceRenderQueue = 3010;
+        private const float FrozenLowPolySnowLift = 0.08f;
         private bool _useCubeNetGrassUV;
         private bool _useCubeNetDirtUV;
         private bool _useCubeNetStoneUV;
         private bool _waterSurfaceVisible = true;
         private Material _hiddenWaterMat;
+        private Color _lowPolyTerrainBaseColor = new Color(0.50f, 0.63f, 0.37f, 1f);
         private readonly List<FlatBuildPad> _flatBuildPads = new();
         private Mesh[] _stylizedGrassMeshes;
         private Mesh[] _incomingGroundGrassMeshes;
@@ -499,6 +504,8 @@ namespace SCoL.Voxels
                 boundaryWallMaterial.enableInstancing = true;
                 boundaryWallMaterial.color = new Color(0.85f, 0.25f, 0.20f, 0.30f);
             }
+
+            CacheTerrainBaseColors();
         }
 
         private void EnforceWaterEdgeSmoothingDefaults()
@@ -510,8 +517,8 @@ namespace SCoL.Voxels
             lowPolyWaterMaskThreshold = Mathf.Clamp(Mathf.Min(lowPolyWaterMaskThreshold, 0.24f), 0.10f, 0.90f);
             lowPolyWaterMaskExpandPasses = Mathf.Clamp(Mathf.Max(lowPolyWaterMaskExpandPasses, 2), 0, 6);
             lowPolyWaterMaskExpandStrength = Mathf.Clamp01(Mathf.Max(lowPolyWaterMaskExpandStrength, 0.85f));
-            lowPolyWaterHorizontalOverhang = Mathf.Clamp(Mathf.Max(lowPolyWaterHorizontalOverhang, 0.90f), 0f, 1.5f);
-            lowPolyWaterEmbedDepth = Mathf.Clamp(Mathf.Max(lowPolyWaterEmbedDepth, 0.12f), 0f, 0.6f);
+            lowPolyWaterHorizontalOverhang = Mathf.Clamp(lowPolyWaterHorizontalOverhang, 0.68f, 0.88f);
+            lowPolyWaterEmbedDepth = Mathf.Clamp(lowPolyWaterEmbedDepth, 0f, 0.025f);
         }
 
         private void TryApplyVoxBoxTerrainMaterials(Shader fallbackShader)
@@ -929,6 +936,7 @@ namespace SCoL.Voxels
             if (mat.HasProperty("_HighlightStrength")) mat.SetFloat("_HighlightStrength", 0.06f);
             if (mat.HasProperty("_FresnelPower")) mat.SetFloat("_FresnelPower", 5.5f);
             if (mat.HasProperty("_FlowContrast")) mat.SetFloat("_FlowContrast", 0.32f);
+            if (mat.HasProperty("_LightingStrength")) mat.SetFloat("_LightingStrength", 1.0f);
             if (mat.HasProperty("_ScrollA")) mat.SetVector("_ScrollA", new Vector4(0.115f, 0.035f, 0f, 0f));
             if (mat.HasProperty("_ScrollB")) mat.SetVector("_ScrollB", new Vector4(-0.075f, 0.085f, 0f, 0f));
             mat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
@@ -1433,6 +1441,9 @@ namespace SCoL.Voxels
             if (_lowPolyLandMesh != null)
                 Destroy(_lowPolyLandMesh);
             _lowPolyLandMesh = null;
+            if (_lowPolyLandColliderMesh != null)
+                Destroy(_lowPolyLandColliderMesh);
+            _lowPolyLandColliderMesh = null;
             if (_lowPolyWaterMesh != null)
                 Destroy(_lowPolyWaterMesh);
             _lowPolyWaterMesh = null;
@@ -1480,12 +1491,17 @@ namespace SCoL.Voxels
                 _winterOverlayRoot.SetActive(false);
             }
 
-            Shader shader = Shader.Find("Universal Render Pipeline/Lit");
-            if (shader == null) shader = Shader.Find("Standard");
+            Shader snowShader = Shader.Find("Universal Render Pipeline/Unlit");
+            if (snowShader == null) snowShader = Shader.Find("Unlit/Texture");
+            if (snowShader == null) snowShader = Shader.Find("Universal Render Pipeline/Lit");
+            if (snowShader == null) snowShader = Shader.Find("Standard");
 
-            if (_snowOverlayMat == null)
+            Shader iceShader = Shader.Find("Universal Render Pipeline/Lit");
+            if (iceShader == null) iceShader = Shader.Find("Standard");
+
+            if (_snowOverlayMat == null || _snowOverlayMat.shader != snowShader)
             {
-                _snowOverlayMat = new Material(shader) { name = "Winter_SnowOverlay" };
+                _snowOverlayMat = new Material(snowShader) { name = "Winter_SnowOverlay" };
                 _snowOverlayMat.enableInstancing = true;
             }
             if (_snowOverlayTex == null)
@@ -1493,31 +1509,35 @@ namespace SCoL.Voxels
                     "Winter_SnowOverlayTex",
                     new Color(0.88f, 0.90f, 0.95f, 0.72f),
                     new Color(1f, 1f, 1f, 1f));
-            ConfigureWinterOverlayMaterial(_snowOverlayMat, snowOverlayColor, _snowOverlayTex, 0.18f);
+            ConfigureWinterOverlayMaterial(_snowOverlayMat, GetEffectiveSnowOverlayColor(), _snowOverlayTex, 0.02f, WinterSnowRenderQueue, opaqueMode: false);
 
-            if (_iceOverlayMat == null)
+            if (_iceOverlayMat == null || _iceOverlayMat.shader != iceShader)
             {
-                _iceOverlayMat = new Material(shader) { name = "Winter_IceOverlay" };
+                _iceOverlayMat = new Material(iceShader) { name = "Winter_IceOverlay" };
                 _iceOverlayMat.enableInstancing = true;
             }
             if (_iceOverlayTex == null)
                 _iceOverlayTex = CreateWinterOverlayTexture(
                     "Winter_IceOverlayTex",
-                    new Color(0.62f, 0.78f, 0.92f, 0.62f),
-                    new Color(0.92f, 0.97f, 1f, 0.94f));
-            ConfigureWinterOverlayMaterial(_iceOverlayMat, iceOverlayColor, _iceOverlayTex, 0.28f);
+                    new Color(0.60f, 0.72f, 0.82f, 0.52f),
+                    new Color(0.86f, 0.92f, 0.98f, 0.84f));
+            ConfigureWinterOverlayMaterial(_iceOverlayMat, GetEffectiveIceOverlayColor(), _iceOverlayTex, 0.36f, WinterIceRenderQueue, opaqueMode: false);
 
             if (_snowOverlayGO == null)
-                _snowOverlayGO = CreateOverlayGO("SnowOverlay", _snowOverlayMat);
+                _snowOverlayGO = CreateOverlayGO("SnowOverlay", _snowOverlayMat, sortingOrder: 20);
+            else
+                UpdateOverlayRenderer(_snowOverlayGO, _snowOverlayMat, 20);
             if (_iceOverlayGO == null)
-                _iceOverlayGO = CreateOverlayGO("IceOverlay", _iceOverlayMat);
+                _iceOverlayGO = CreateOverlayGO("IceOverlay", _iceOverlayMat, sortingOrder: 10);
+            else
+                UpdateOverlayRenderer(_iceOverlayGO, _iceOverlayMat, 10);
             if (_iceColliderGO == null)
                 _iceColliderGO = CreateIceColliderGO("IceCollider");
 
             ApplyWinterOverlayAmount(_winterVisualAmount);
         }
 
-        private GameObject CreateOverlayGO(string name, Material mat)
+        private GameObject CreateOverlayGO(string name, Material mat, int sortingOrder)
         {
             var go = new GameObject(name);
             go.transform.SetParent(_winterOverlayRoot.transform, worldPositionStays: false);
@@ -1533,7 +1553,23 @@ namespace SCoL.Voxels
             mr.sharedMaterial = mat;
             mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             mr.receiveShadows = false;
+            mr.sortingOrder = sortingOrder;
             return go;
+        }
+
+        private static void UpdateOverlayRenderer(GameObject go, Material mat, int sortingOrder)
+        {
+            if (go == null)
+                return;
+
+            var mr = go.GetComponent<MeshRenderer>();
+            if (mr == null)
+                return;
+
+            mr.sharedMaterial = mat;
+            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            mr.receiveShadows = false;
+            mr.sortingOrder = sortingOrder;
         }
 
         private GameObject CreateIceColliderGO(string name)
@@ -1569,6 +1605,24 @@ namespace SCoL.Voxels
             var mesh = mf.sharedMesh;
             mesh.Clear();
             mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+
+            if (!includeWaterColumns &&
+                useLowPolyTerrainVisual &&
+                _lowPolyLandMesh != null &&
+                _lowPolyLandMesh.vertexCount > 0)
+            {
+                if (IsWinterSurfaceFrozen)
+                {
+                    CopyElevatedMeshInto(mesh, _lowPolyLandMesh, Mathf.Max(FrozenLowPolySnowLift, winterOverlayHeightOffset), doubleSided: lowPolyDoubleSided);
+                    return;
+                }
+
+                BuildLowPolyCornerMaps(out var snowLandCorners, out var snowWaterMask);
+                var snowLandMesh = BuildLowPolyLandSnowOverlayMesh(snowLandCorners, snowWaterMask);
+                CopyElevatedMeshInto(mesh, snowLandMesh, Mathf.Max(0.001f, winterOverlayHeightOffset), doubleSided: lowPolyDoubleSided);
+                Destroy(snowLandMesh);
+                return;
+            }
 
             if (includeWaterColumns &&
                 useLowPolyTerrainVisual &&
@@ -1833,7 +1887,9 @@ namespace SCoL.Voxels
         {
             if (_winterOverlayRoot == null && visualsActive)
                 EnsureWinterOverlayObjects();
+            UpdateWinterOverlayMaterialModes(iceFrozen);
             ApplyWinterOverlayAmount(amount);
+            ApplyWinterTerrainTint(amount);
             if (_winterOverlayRoot != null && _winterOverlayRoot.activeSelf != visualsActive)
                 _winterOverlayRoot.SetActive(visualsActive);
             if (_iceColliderGO != null)
@@ -1841,6 +1897,8 @@ namespace SCoL.Voxels
                 var mc = _iceColliderGO.GetComponent<MeshCollider>();
                 if (mc != null) mc.enabled = iceFrozen;
             }
+
+            RefreshWaterSurfaceVisibility();
         }
 
         private float GetWinterTargetAmount()
@@ -1867,11 +1925,67 @@ namespace SCoL.Voxels
             return target;
         }
 
+        private void CacheTerrainBaseColors()
+        {
+            _lowPolyTerrainBaseColor = GetMaterialColor(lowPolyTerrainMaterial, _lowPolyTerrainBaseColor);
+        }
+
+        private void ApplyWinterTerrainTint(float amount)
+        {
+            if (lowPolyTerrainMaterial == null)
+                return;
+
+            float t = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(amount));
+            var winterTint = new Color(0.90f, 0.93f, 0.95f, 1f);
+            var color = Color.Lerp(_lowPolyTerrainBaseColor, winterTint, Mathf.Clamp01(t * 0.9f));
+            SetMaterialColor(lowPolyTerrainMaterial, color);
+        }
+
         private void ApplyWinterOverlayAmount(float amount)
         {
             float t = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(amount));
-            ApplyOverlayAlpha(_snowOverlayMat, snowOverlayColor, t);
-            ApplyOverlayAlpha(_iceOverlayMat, iceOverlayColor, t);
+            ApplyOverlayAlpha(_snowOverlayMat, GetEffectiveSnowOverlayColor(), t);
+            ApplyOverlayAlpha(_iceOverlayMat, GetEffectiveIceOverlayColor(), t);
+        }
+
+        private static Color GetMaterialColor(Material mat, Color fallback)
+        {
+            if (mat == null)
+                return fallback;
+            if (mat.HasProperty("_BaseColor"))
+                return mat.GetColor("_BaseColor");
+            if (mat.HasProperty("_Color"))
+                return mat.GetColor("_Color");
+            return fallback;
+        }
+
+        private static void SetMaterialColor(Material mat, Color color)
+        {
+            if (mat == null)
+                return;
+            if (mat.HasProperty("_BaseColor"))
+                mat.SetColor("_BaseColor", color);
+            if (mat.HasProperty("_Color"))
+                mat.SetColor("_Color", color);
+        }
+
+        private void UpdateWinterOverlayMaterialModes(bool iceFrozen)
+        {
+            ConfigureWinterOverlayMaterial(
+                _snowOverlayMat,
+                GetEffectiveSnowOverlayColor(),
+                _snowOverlayTex,
+                0.02f,
+                iceFrozen ? 2006 : WinterSnowRenderQueue,
+                opaqueMode: iceFrozen);
+
+            ConfigureWinterOverlayMaterial(
+                _iceOverlayMat,
+                GetEffectiveIceOverlayColor(),
+                _iceOverlayTex,
+                0.36f,
+                iceFrozen ? 2010 : WinterIceRenderQueue,
+                opaqueMode: iceFrozen);
         }
 
         private static void ApplyOverlayAlpha(Material mat, Color baseColor, float amount)
@@ -1885,10 +1999,31 @@ namespace SCoL.Voxels
             if (mat.HasProperty("_Color")) mat.SetColor("_Color", tint);
         }
 
-        private static void ConfigureWinterOverlayMaterial(Material mat, Color tint, Texture2D tex, float smoothness)
+        private Color GetEffectiveSnowOverlayColor()
+        {
+            var tint = snowOverlayColor;
+            tint.a = Mathf.Clamp(tint.a, 0.80f, 1f);
+            return tint;
+        }
+
+        private Color GetEffectiveIceOverlayColor()
+        {
+            var tint = iceOverlayColor;
+            tint.r = Mathf.Clamp(tint.r, 0.72f, 0.86f);
+            tint.g = Mathf.Clamp(tint.g, Mathf.Max(tint.r + 0.04f, 0.80f), 0.90f);
+            tint.b = Mathf.Clamp(tint.b, Mathf.Max(tint.g + 0.04f, 0.88f), 0.97f);
+            tint.a = Mathf.Clamp(tint.a, 0.82f, 0.95f);
+            return tint;
+        }
+
+        private static void ConfigureWinterOverlayMaterial(Material mat, Color tint, Texture2D tex, float smoothness, int renderQueue, bool opaqueMode)
         {
             if (mat == null)
                 return;
+
+            bool looksLikeUnlit = mat.shader != null &&
+                (mat.shader.name.Contains("Unlit", StringComparison.OrdinalIgnoreCase) ||
+                 mat.shader.name.Contains("/Particles/", StringComparison.OrdinalIgnoreCase));
 
             if (tex != null)
             {
@@ -1898,18 +2033,26 @@ namespace SCoL.Voxels
 
             if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", tint);
             if (mat.HasProperty("_Color")) mat.SetColor("_Color", tint);
-            if (mat.HasProperty("_Surface")) mat.SetFloat("_Surface", 1f);
+            if (mat.HasProperty("_Surface")) mat.SetFloat("_Surface", opaqueMode ? 0f : 1f);
             if (mat.HasProperty("_Blend")) mat.SetFloat("_Blend", 0f);
-            if (mat.HasProperty("_SrcBlend")) mat.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
-            if (mat.HasProperty("_DstBlend")) mat.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
-            if (mat.HasProperty("_ZWrite")) mat.SetFloat("_ZWrite", 0f);
-            if (mat.HasProperty("_Smoothness")) mat.SetFloat("_Smoothness", smoothness);
-            if (mat.HasProperty("_Glossiness")) mat.SetFloat("_Glossiness", smoothness);
+            if (mat.HasProperty("_SrcBlend")) mat.SetFloat("_SrcBlend", opaqueMode ? (float)UnityEngine.Rendering.BlendMode.One : (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            if (mat.HasProperty("_DstBlend")) mat.SetFloat("_DstBlend", opaqueMode ? (float)UnityEngine.Rendering.BlendMode.Zero : (float)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            if (mat.HasProperty("_ZWrite")) mat.SetFloat("_ZWrite", opaqueMode ? 1f : 0f);
+            if (!looksLikeUnlit)
+            {
+                if (mat.HasProperty("_Smoothness")) mat.SetFloat("_Smoothness", smoothness);
+                if (mat.HasProperty("_Glossiness")) mat.SetFloat("_Glossiness", smoothness);
+            }
             if (mat.HasProperty("_Cull")) mat.SetFloat("_Cull", 0f);
             if (mat.HasProperty("_CullMode")) mat.SetFloat("_CullMode", 0f);
+            if (mat.HasProperty("_AlphaClip")) mat.SetFloat("_AlphaClip", 0f);
+            if (mat.HasProperty("_Cutoff")) mat.SetFloat("_Cutoff", 0f);
 
-            mat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
-            mat.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            mat.renderQueue = renderQueue;
+            if (opaqueMode)
+                mat.DisableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            else
+                mat.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
             mat.DisableKeyword("_ALPHATEST_ON");
         }
 
@@ -2218,7 +2361,7 @@ namespace SCoL.Voxels
 
             _chunkSubmeshOrder[cc] = order.ToArray();
             mr.sharedMaterials = mats.ToArray();
-            ApplyWaterSurfaceVisibilityToChunk(cc, mr);
+            ApplyWaterSurfaceVisibilityToChunk(cc, mr, _waterSurfaceVisible && !IsWinterSurfaceFrozen);
 
             if (config.generateColliders)
             {
@@ -2533,6 +2676,8 @@ namespace SCoL.Voxels
 
             if (_lowPolyLandMesh != null)
                 Destroy(_lowPolyLandMesh);
+            if (_lowPolyLandColliderMesh != null)
+                Destroy(_lowPolyLandColliderMesh);
             if (_lowPolyWaterMesh != null)
                 Destroy(_lowPolyWaterMesh);
 
@@ -2546,7 +2691,8 @@ namespace SCoL.Voxels
             {
                 _lowPolyLandCollider = landGO.AddComponent<MeshCollider>();
                 _lowPolyLandCollider.convex = false;
-                _lowPolyLandCollider.sharedMesh = _lowPolyLandMesh;
+                _lowPolyLandColliderMesh = BuildLowPolyLandMesh(cornerHeights);
+                _lowPolyLandCollider.sharedMesh = _lowPolyLandColliderMesh;
             }
 
             _lowPolyWaterMesh = BuildLowPolyWaterMesh(cornerWaterMask);
@@ -2812,6 +2958,68 @@ namespace SCoL.Voxels
             return new Vector3(cellX + u, h, cellZ + v);
         }
 
+        private Mesh BuildLowPolyLandSnowOverlayMesh(float[,] cornerHeights, float[,] cornerWaterMask)
+        {
+            int w = config.worldWidth;
+            int d = config.worldDepth;
+            int sub = Mathf.Clamp(lowPolyTerrainSubdivisions, 1, 3);
+            float uvScale = Mathf.Max(0.01f, lowPolyUVScale);
+            float waterThreshold = Mathf.Clamp(lowPolyWaterMaskThreshold, 0.01f, 0.99f);
+            // Let snow reach slightly closer to the shoreline so frozen lakes do not get a bare green ring.
+            float landThreshold = Mathf.Clamp((1f - waterThreshold) - 0.18f, 0.50f, 0.85f);
+
+            var verts = new List<Vector3>(w * d * sub * sub * 4);
+            var uvs = new List<Vector2>(verts.Capacity);
+            var tris = new List<int>(w * d * sub * sub * 6);
+
+            for (int z = 0; z < d; z++)
+            for (int x = 0; x < w; x++)
+            {
+                for (int sz = 0; sz < sub; sz++)
+                for (int sx = 0; sx < sub; sx++)
+                {
+                    float u0 = sx / (float)sub;
+                    float u1 = (sx + 1) / (float)sub;
+                    float v0 = sz / (float)sub;
+                    float v1 = (sz + 1) / (float)sub;
+
+                    float m00 = cornerWaterMask != null ? EvalMask(cornerWaterMask, x, z, u0, v0) : 0f;
+                    float m10 = cornerWaterMask != null ? EvalMask(cornerWaterMask, x, z, u1, v0) : 0f;
+                    float m01 = cornerWaterMask != null ? EvalMask(cornerWaterMask, x, z, u0, v1) : 0f;
+                    float m11 = cornerWaterMask != null ? EvalMask(cornerWaterMask, x, z, u1, v1) : 0f;
+                    float land00 = 1f - m00;
+                    float land10 = 1f - m10;
+                    float land01 = 1f - m01;
+                    float land11 = 1f - m11;
+                    float landMax = Mathf.Max(Mathf.Max(land00, land10), Mathf.Max(land01, land11));
+                    if (landMax < landThreshold)
+                        continue;
+
+                    Vector3 p00 = EvalLandPoint(cornerHeights, x, z, u0, v0);
+                    Vector3 p10 = EvalLandPoint(cornerHeights, x, z, u1, v0);
+                    Vector3 p01 = EvalLandPoint(cornerHeights, x, z, u0, v1);
+                    Vector3 p11 = EvalLandPoint(cornerHeights, x, z, u1, v1);
+
+                    Vector2 uv00 = new Vector2((x + u0) * uvScale, (z + v0) * uvScale);
+                    Vector2 uv10 = new Vector2((x + u1) * uvScale, (z + v0) * uvScale);
+                    Vector2 uv01 = new Vector2((x + u0) * uvScale, (z + v1) * uvScale);
+                    Vector2 uv11 = new Vector2((x + u1) * uvScale, (z + v1) * uvScale);
+
+                    AddClippedScalarTri(verts, tris, uvs, p00, p10, p11, uv00, uv10, uv11, land00, land10, land11, landThreshold, lowPolyDoubleSided);
+                    AddClippedScalarTri(verts, tris, uvs, p00, p11, p01, uv00, uv11, uv01, land00, land11, land01, landThreshold, lowPolyDoubleSided);
+                }
+            }
+
+            var mesh = new Mesh { name = "LowPoly_LandSnowOverlay" };
+            mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+            mesh.SetVertices(verts);
+            mesh.SetTriangles(tris, 0);
+            mesh.SetUVs(0, uvs);
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
+            return mesh;
+        }
+
         private Mesh BuildLowPolyWaterMesh(float[,] cornerWaterMask, float extraOverhang = 0f, float extraEmbedDepth = 0f, float additionalYOffset = 0f, float thresholdBias = 0f, int subOverride = -1)
         {
             int w = config.worldWidth;
@@ -2844,8 +3052,8 @@ namespace SCoL.Voxels
                     float m10 = EvalMask(cornerWaterMask, x, z, u1, v0);
                     float m01 = EvalMask(cornerWaterMask, x, z, u0, v1);
                     float m11 = EvalMask(cornerWaterMask, x, z, u1, v1);
-                    float mAvg = (m00 + m10 + m01 + m11) * 0.25f;
-                    if (mAvg < threshold)
+                    float mMax = Mathf.Max(Mathf.Max(m00, m10), Mathf.Max(m01, m11));
+                    if (mMax < threshold)
                         continue;
 
                     float x0 = (x + u0) - overhangPerSubQuad;
@@ -2863,8 +3071,8 @@ namespace SCoL.Voxels
                     Vector2 uv01 = new Vector2((x + u0) * uvScale, (z + v1) * uvScale);
                     Vector2 uv11 = new Vector2((x + u1) * uvScale, (z + v1) * uvScale);
 
-                    AddFlatTri(verts, tris, uvs, p00, p10, p11, uv00, uv10, uv11, lowPolyWaterDoubleSided);
-                    AddFlatTri(verts, tris, uvs, p00, p11, p01, uv00, uv11, uv01, lowPolyWaterDoubleSided);
+                    AddClippedScalarTri(verts, tris, uvs, p00, p10, p11, uv00, uv10, uv11, m00, m10, m11, threshold, lowPolyWaterDoubleSided);
+                    AddClippedScalarTri(verts, tris, uvs, p00, p11, p01, uv00, uv11, uv01, m00, m11, m01, threshold, lowPolyWaterDoubleSided);
                 }
             }
 
@@ -2921,6 +3129,79 @@ namespace SCoL.Voxels
             verts.Add(a); verts.Add(c); verts.Add(b);
             uvs.Add(uva); uvs.Add(uvc); uvs.Add(uvb);
             tris.Add(j0 + 0); tris.Add(j0 + 1); tris.Add(j0 + 2);
+        }
+
+        private static void AddClippedScalarTri(
+            List<Vector3> verts, List<int> tris, List<Vector2> uvs,
+            Vector3 a, Vector3 b, Vector3 c,
+            Vector2 uva, Vector2 uvb, Vector2 uvc,
+            float sa, float sb, float sc,
+            float threshold,
+            bool doubleSided)
+        {
+            var polyPos = new List<Vector3>(4) { a, b, c };
+            var polyUv = new List<Vector2>(4) { uva, uvb, uvc };
+            var polyS = new List<float>(4) { sa, sb, sc };
+
+            ClipScalarPolygon(polyPos, polyUv, polyS, threshold);
+            if (polyPos.Count < 3)
+                return;
+
+            for (int i = 1; i < polyPos.Count - 1; i++)
+            {
+                AddFlatTri(
+                    verts, tris, uvs,
+                    polyPos[0], polyPos[i], polyPos[i + 1],
+                    polyUv[0], polyUv[i], polyUv[i + 1],
+                    doubleSided);
+            }
+        }
+
+        private static void ClipScalarPolygon(List<Vector3> polyPos, List<Vector2> polyUv, List<float> polyS, float threshold)
+        {
+            if (polyPos == null || polyUv == null || polyS == null)
+                return;
+
+            var outPos = new List<Vector3>(polyPos.Count + 1);
+            var outUv = new List<Vector2>(polyUv.Count + 1);
+            var outS = new List<float>(polyS.Count + 1);
+
+            for (int i = 0; i < polyPos.Count; i++)
+            {
+                int next = (i + 1) % polyPos.Count;
+                Vector3 p0 = polyPos[i];
+                Vector3 p1 = polyPos[next];
+                Vector2 uv0 = polyUv[i];
+                Vector2 uv1 = polyUv[next];
+                float s0 = polyS[i];
+                float s1 = polyS[next];
+
+                bool in0 = s0 >= threshold;
+                bool in1 = s1 >= threshold;
+
+                if (in0)
+                {
+                    outPos.Add(p0);
+                    outUv.Add(uv0);
+                    outS.Add(s0);
+                }
+
+                if (in0 == in1 || Mathf.Approximately(s0, s1))
+                    continue;
+
+                float t = Mathf.InverseLerp(s0, s1, threshold);
+                outPos.Add(Vector3.LerpUnclamped(p0, p1, t));
+                outUv.Add(Vector2.LerpUnclamped(uv0, uv1, t));
+                outS.Add(threshold);
+            }
+
+            polyPos.Clear();
+            polyUv.Clear();
+            polyS.Clear();
+
+            polyPos.AddRange(outPos);
+            polyUv.AddRange(outUv);
+            polyS.AddRange(outS);
         }
 
         private void BuildFeaturedTrees()
@@ -3761,6 +4042,22 @@ namespace SCoL.Voxels
             return IsWinterSurfaceFrozen && IsWaterColumnAtWorld(world);
         }
 
+        public bool TryGetVisibleWaterSurfaceYAtWorld(Vector3 world, out float surfaceY)
+        {
+            surfaceY = 0f;
+            if (config == null || !IsWaterColumnAtWorld(world))
+                return false;
+
+            if (TryGetFrozenWaterSurfaceYAtWorld(world, out surfaceY))
+                return true;
+
+            surfaceY = OriginWorld.y + Mathf.Clamp(
+                config.seaLevel + 1f + lowPolyWaterYOffset - Mathf.Max(0f, lowPolyWaterEmbedDepth),
+                0f,
+                config.worldHeight + 8f);
+            return true;
+        }
+
         public bool TryGetFrozenWaterSurfaceYAtWorld(Vector3 world, out float surfaceY)
         {
             surfaceY = 0f;
@@ -3833,8 +4130,14 @@ namespace SCoL.Voxels
         public void SetWaterSurfaceVisible(bool visible)
         {
             _waterSurfaceVisible = visible;
+            RefreshWaterSurfaceVisibility();
+        }
+
+        private void RefreshWaterSurfaceVisibility()
+        {
+            bool effectiveVisible = _waterSurfaceVisible && !IsWinterSurfaceFrozen;
             if (_lowPolyWaterRenderer != null)
-                _lowPolyWaterRenderer.enabled = visible;
+                _lowPolyWaterRenderer.enabled = effectiveVisible;
             foreach (var kv in _chunkGOs)
             {
                 if (kv.Value == null)
@@ -3842,11 +4145,11 @@ namespace SCoL.Voxels
                 var mr = kv.Value.GetComponent<MeshRenderer>();
                 if (mr == null)
                     continue;
-                ApplyWaterSurfaceVisibilityToChunk(kv.Key, mr);
+                ApplyWaterSurfaceVisibilityToChunk(kv.Key, mr, effectiveVisible);
             }
         }
 
-        private void ApplyWaterSurfaceVisibilityToChunk(Vector2Int cc, MeshRenderer mr)
+        private void ApplyWaterSurfaceVisibilityToChunk(Vector2Int cc, MeshRenderer mr, bool effectiveVisible)
         {
             if (mr == null)
                 return;
@@ -3864,7 +4167,7 @@ namespace SCoL.Voxels
                 if (order[i] != VoxelBlockType.Water)
                     continue;
 
-                var desired = _waterSurfaceVisible ? waterMat : (hiddenMat ??= EnsureHiddenWaterMaterial());
+                var desired = effectiveVisible ? waterMat : (hiddenMat ??= EnsureHiddenWaterMaterial());
                 if (mats[i] != desired)
                 {
                     mats[i] = desired;

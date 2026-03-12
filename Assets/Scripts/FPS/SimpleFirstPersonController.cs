@@ -353,8 +353,8 @@ public class SimpleFirstPersonController : MonoBehaviour
     bool IsUnderwater(Vector3 worldPos)
     {
         if (_voxelWorld != null &&
-            _voxelWorld.TryGetFrozenWaterSurfaceYAtWorld(worldPos, out float frozenSurfaceY) &&
-            worldPos.y >= frozenSurfaceY - Mathf.Max(0f, waterlinePadding))
+            _voxelWorld.TryGetVisibleWaterSurfaceYAtWorld(worldPos, out float visibleWaterSurfaceY) &&
+            worldPos.y >= visibleWaterSurfaceY - Mathf.Max(0f, waterlinePadding))
             return false;
 
         if (!_voxelWorld.TryWorldToColumn(worldPos, out int x, out int z))
@@ -372,8 +372,11 @@ public class SimpleFirstPersonController : MonoBehaviour
         if (_voxelWorld.GetBlock(x, sea, z) != VoxelBlockType.Water)
             return false;
 
-        float seaSurfaceY = _voxelWorld.OriginWorld.y + sea + 1f - Mathf.Max(0f, waterlinePadding);
-        return worldPos.y < seaSurfaceY;
+        float waterSurfaceY = _voxelWorld.OriginWorld.y + sea + 1f - Mathf.Max(0f, waterlinePadding);
+        if (_voxelWorld.TryGetVisibleWaterSurfaceYAtWorld(worldPos, out float visibleY))
+            waterSurfaceY = visibleY - Mathf.Max(0f, waterlinePadding);
+
+        return worldPos.y < waterSurfaceY;
     }
 
     void TryStepOntoFrozenWater()

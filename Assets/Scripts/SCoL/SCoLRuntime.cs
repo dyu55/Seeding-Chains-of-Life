@@ -1069,6 +1069,37 @@ namespace SCoL
             return scorched;
         }
 
+        public int ScorchPatchWorld(Vector3 world, int halfExtent = 2)
+        {
+            if (Grid == null)
+                return 0;
+            if (!TryWorldToCell(world, out int cx, out int cy))
+                return 0;
+
+            int clampedHalfExtent = Mathf.Max(0, halfExtent);
+            int scorched = 0;
+
+            for (int y = cy - clampedHalfExtent; y <= cy + clampedHalfExtent; y++)
+            for (int x = cx - clampedHalfExtent; x <= cx + clampedHalfExtent; x++)
+            {
+                if (!Grid.InBounds(x, y))
+                    continue;
+
+                ScorchCell(x, y);
+                scorched++;
+            }
+
+            if (scorched > 0)
+            {
+                ViewMode = GridViewMode.Stage;
+                OverlayFire = true;
+                _renderer?.Render(Grid);
+                _plantRenderer?.RenderNow();
+            }
+
+            return scorched;
+        }
+
         private void ApplyWaterGrowthBoost(ref CellState c)
         {
             if (!waterCanAccelerateGrowth)
