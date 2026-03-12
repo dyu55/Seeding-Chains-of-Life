@@ -23,8 +23,6 @@ namespace SCoL.Visualization
         [Min(0.02f)] public float updateInterval = 0.10f;
 
         [Header("SimpleUIKit")]
-        public bool useSimpleUIKitHealthBarPrefab = true;
-        public GameObject simpleUIKitHealthBarPrefab;
         public bool useSimpleUIKitPanelPrefabs = true;
         public GameObject simpleUIKitPanelPrefab;
         public GameObject simpleUIKitInnerPanelPrefab;
@@ -33,22 +31,34 @@ namespace SCoL.Visualization
         [Min(1f)] public float defaultMaxHealth = 100f;
         public bool autoCreatePlayerHealth = true;
         public bool showHealthText = true;
+        [Min(4f)] public float healthBarWidth = 440f;
+        [Min(4f)] public float healthBarHeight = 30f;
+        [Min(0f)] public float healthLagCatchupSpeed = 52f;
 
         private Canvas _canvas;
         private RectTransform _root;
         private Font _font;
 
-        private Image _crosshairH;
-        private Image _crosshairV;
+        private Image _crosshairLeft;
+        private Image _crosshairRight;
+        private Image _crosshairTop;
+        private Image _crosshairBottom;
+        private Image _crosshairDot;
         private Text _statusLabel;
         private RectTransform _aimPanel;
         private Text _aimTitleLabel;
         private Text _aimDetailLabel;
         private Text _inventoryLabel;
-        private Slider _healthSlider;
+        private RectTransform _healthTrackRect;
+        private RectTransform _healthLagRect;
+        private RectTransform _healthFillRect;
         private Text _healthLabel;
+        private Text _healthCaptionLabel;
+        private Text _healthBadgeLabel;
+        private Image _healthFrame;
+        private Image _healthPulse;
+        private Image _healthLagFill;
         private Image _healthFill;
-        private Image _healthIcon;
 
         private SCoLInventory _inventory;
         private PlantVoxelRenderer _plantRenderer;
@@ -56,14 +66,28 @@ namespace SCoL.Visualization
         private SCoLPlayerHealth _playerHealth;
 
         private float _nextUpdateAt;
+        private float _displayHealth = -1f;
+        private float _displayLagHealth = -1f;
         private readonly StringBuilder _sb = new StringBuilder(256);
         private static Sprite _fallbackWhiteUISprite;
 
         private static readonly Color CrosshairIdle = new Color(1f, 1f, 1f, 0.90f);
         private static readonly Color CrosshairHover = new Color(0.35f, 1f, 0.35f, 0.98f);
-        private const string SimpleUIKitSliderPrefabPath = "Assets/SimpleUIKit/Prefabs/Elements/SliderScale.prefab";
         private const string SimpleUIKitPanelPrefabPath = "Assets/SimpleUIKit/Prefabs/Elements/Parts/Background.prefab";
         private const string SimpleUIKitInnerPanelPrefabPath = "Assets/SimpleUIKit/Prefabs/Elements/Parts/BackgroundInner.prefab";
+        private static readonly Color HealthFrameBase = new Color(0.36f, 0.26f, 0.12f, 0.96f);
+        private static readonly Color HealthFrameAlert = new Color(0.70f, 0.18f, 0.14f, 0.98f);
+        private static readonly Color HealthTrackBase = new Color(0.08f, 0.09f, 0.11f, 0.94f);
+        private static readonly Color HealthLagColor = new Color(0.96f, 0.72f, 0.34f, 0.48f);
+        private static readonly Color HealthFillLow = new Color(0.84f, 0.18f, 0.18f, 0.98f);
+        private static readonly Color HealthFillHigh = new Color(0.22f, 0.78f, 0.44f, 0.98f);
+        private static readonly Color HudCardBg = new Color(0.04f, 0.05f, 0.07f, 0.46f);
+        private static readonly Color HudCardInset = new Color(0.10f, 0.11f, 0.15f, 0.72f);
+        private static readonly Color HudTextPrimary = new Color(0.94f, 0.95f, 0.90f, 0.98f);
+        private static readonly Color HudTextSecondary = new Color(0.71f, 0.76f, 0.79f, 0.96f);
+        private static readonly Color HudAccentWarm = new Color(0.94f, 0.75f, 0.38f, 0.98f);
+        private static readonly Color HudAccentCool = new Color(0.41f, 0.80f, 0.98f, 0.98f);
+        private static readonly Color HudAccentGreen = new Color(0.51f, 0.88f, 0.57f, 0.98f);
 
         private void Awake()
         {
@@ -140,22 +164,21 @@ namespace SCoL.Visualization
             TryResolveSimpleUIKitPrefabs();
             BuildPanelsAndLabels();
             BuildCrosshair();
-
-            if (!TryCreateSimpleUIKitHealthBar(_root))
-                CreateFallbackHealthBar(_root);
+            BuildStylizedHealthBar(_root);
         }
 
         private void BuildPanelsAndLabels()
         {
-            var statusPanel = CreatePanel(
+            var statusPanel = CreateHudCard(
                 _root,
                 "StatusPanel",
                 anchorMin: new Vector2(0f, 1f),
                 anchorMax: new Vector2(0f, 1f),
                 pivot: new Vector2(0f, 1f),
-                anchoredPos: new Vector2(12f, -12f),
-                size: new Vector2(360f, 95f),
-                bg: new Color(0f, 0f, 0f, 0.45f));
+                anchoredPos: new Vector2(26f, -26f),
+                size: new Vector2(480f, 212f),
+                title: "WORLD STATE",
+                accent: HudAccentWarm);
 
             _statusLabel = CreateText(
                 statusPanel,
@@ -163,60 +186,60 @@ namespace SCoL.Visualization
                 anchorMin: new Vector2(0f, 0f),
                 anchorMax: new Vector2(1f, 1f),
                 pivot: new Vector2(0.5f, 0.5f),
-                anchoredPos: Vector2.zero,
-                size: new Vector2(-16f, -16f),
-                fontSize: 16,
-                color: new Color(0f, 0f, 0f, 0.95f),
-                alignment: TextAnchor.MiddleCenter);
+                anchoredPos: new Vector2(0f, -20f),
+                size: new Vector2(-42f, -72f),
+                fontSize: 20,
+                color: HudTextSecondary,
+                alignment: TextAnchor.UpperLeft);
 
-            _aimPanel = CreatePanel(
+            _aimPanel = CreateHudCard(
                 _root,
                 "AimHoverPanel",
                 anchorMin: new Vector2(1f, 0.5f),
                 anchorMax: new Vector2(1f, 0.5f),
                 pivot: new Vector2(1f, 0.5f),
-                anchoredPos: new Vector2(-18f, 96f),
-                size: new Vector2(280f, 74f),
-                bg: new Color(0f, 0f, 0f, 0.58f),
-                preferInnerStyle: true);
+                anchoredPos: new Vector2(-28f, 118f),
+                size: new Vector2(380f, 132f),
+                title: "FOCUS",
+                accent: HudAccentCool);
             _aimPanel.gameObject.SetActive(false);
 
             _aimTitleLabel = CreateText(
                 _aimPanel,
                 "AimTitle",
-                anchorMin: new Vector2(0f, 0.52f),
+                anchorMin: new Vector2(0f, 0.50f),
                 anchorMax: new Vector2(1f, 1f),
                 pivot: new Vector2(0.5f, 0.5f),
-                anchoredPos: new Vector2(0f, -4f),
-                size: new Vector2(-18f, -10f),
-                fontSize: 18,
-                color: new Color(0f, 0f, 0f, 0.98f),
-                alignment: TextAnchor.MiddleCenter,
+                anchoredPos: new Vector2(0f, -12f),
+                size: new Vector2(-34f, -40f),
+                fontSize: 25,
+                color: HudTextPrimary,
+                alignment: TextAnchor.MiddleLeft,
                 addOutline: true);
 
             _aimDetailLabel = CreateText(
                 _aimPanel,
                 "AimDetail",
                 anchorMin: new Vector2(0f, 0f),
-                anchorMax: new Vector2(1f, 0.58f),
+                anchorMax: new Vector2(1f, 0.54f),
                 pivot: new Vector2(0.5f, 0.5f),
-                anchoredPos: new Vector2(0f, 2f),
-                size: new Vector2(-18f, -12f),
-                fontSize: 14,
-                color: new Color(0f, 0f, 0f, 0.92f),
-                alignment: TextAnchor.MiddleCenter,
+                anchoredPos: new Vector2(0f, -4f),
+                size: new Vector2(-34f, -24f),
+                fontSize: 18,
+                color: HudTextSecondary,
+                alignment: TextAnchor.UpperLeft,
                 addOutline: true);
 
-            var invPanel = CreatePanel(
+            var invPanel = CreateHudCard(
                 _root,
                 "InventoryPanel",
                 anchorMin: new Vector2(1f, 0f),
                 anchorMax: new Vector2(1f, 0f),
                 pivot: new Vector2(1f, 0f),
-                anchoredPos: new Vector2(-12f, 12f),
-                size: new Vector2(280f, 122f),
-                bg: new Color(0f, 0f, 0f, 0.45f),
-                preferInnerStyle: true);
+                anchoredPos: new Vector2(-26f, 26f),
+                size: new Vector2(390f, 222f),
+                title: "RESERVES",
+                accent: HudAccentGreen);
 
             _inventoryLabel = CreateText(
                 invPanel,
@@ -224,169 +247,214 @@ namespace SCoL.Visualization
                 anchorMin: new Vector2(0f, 0f),
                 anchorMax: new Vector2(1f, 1f),
                 pivot: new Vector2(0.5f, 0.5f),
-                anchoredPos: Vector2.zero,
-                size: new Vector2(-16f, -16f),
-                fontSize: 16,
-                color: new Color(0f, 0f, 0f, 0.95f),
-                alignment: TextAnchor.MiddleCenter);
+                anchoredPos: new Vector2(0f, -12f),
+                size: new Vector2(-34f, -62f),
+                fontSize: 20,
+                color: HudTextSecondary,
+                alignment: TextAnchor.UpperLeft);
         }
 
         private void BuildCrosshair()
         {
-            _crosshairH = CreateCrosshairLine(_root, "CrosshairH", new Vector2(16f, 2f));
-            _crosshairV = CreateCrosshairLine(_root, "CrosshairV", new Vector2(2f, 16f));
-            _crosshairH.color = CrosshairIdle;
-            _crosshairV.color = CrosshairIdle;
+            _crosshairLeft = CreateCrosshairLine(_root, "CrosshairLeft", new Vector2(-18f, 0f), new Vector2(12f, 2f));
+            _crosshairRight = CreateCrosshairLine(_root, "CrosshairRight", new Vector2(18f, 0f), new Vector2(12f, 2f));
+            _crosshairTop = CreateCrosshairLine(_root, "CrosshairTop", new Vector2(0f, 18f), new Vector2(2f, 12f));
+            _crosshairBottom = CreateCrosshairLine(_root, "CrosshairBottom", new Vector2(0f, -18f), new Vector2(2f, 12f));
+            _crosshairDot = CreateCrosshairLine(_root, "CrosshairDot", Vector2.zero, new Vector2(5f, 5f));
+
+            SetCrosshairColor(CrosshairIdle);
         }
 
-        private bool TryCreateSimpleUIKitHealthBar(RectTransform parent)
+        private void BuildStylizedHealthBar(RectTransform parent)
         {
-            if (!useSimpleUIKitHealthBarPrefab)
-                return false;
-
-            if (simpleUIKitHealthBarPrefab == null)
-            {
-#if UNITY_EDITOR
-                simpleUIKitHealthBarPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(SimpleUIKitSliderPrefabPath);
-#endif
-                if (simpleUIKitHealthBarPrefab == null)
-                    return false;
-            }
-
-            var barGo = Instantiate(simpleUIKitHealthBarPrefab, parent, worldPositionStays: false);
-            barGo.name = "HealthBar (SimpleUIKit)";
-
-            var rt = barGo.GetComponent<RectTransform>();
-            if (rt != null)
-            {
-                rt.anchorMin = new Vector2(0.5f, 0f);
-                rt.anchorMax = new Vector2(0.5f, 0f);
-                rt.pivot = new Vector2(0.5f, 0f);
-                rt.anchoredPosition = new Vector2(0f, 26f);
-                rt.sizeDelta = new Vector2(620f, 82f);
-                rt.localScale = Vector3.one;
-            }
-
-            var input = barGo.GetComponentInChildren<InputField>(true);
-            if (input != null)
-                input.gameObject.SetActive(false);
-
-            // This HUD uses the prefab only as a visual style container.
-            // Disable kit-specific interactive slider behaviour at runtime.
-            var behaviours = barGo.GetComponentsInChildren<Behaviour>(true);
-            for (int i = 0; i < behaviours.Length; i++)
-            {
-                var b = behaviours[i];
-                if (b == null) continue;
-                if (b.GetType().Name == "CustomSlider")
-                    b.enabled = false;
-            }
-
-            _healthSlider = barGo.GetComponentInChildren<Slider>(true);
-            if (_healthSlider == null)
-            {
-                Destroy(barGo);
-                return false;
-            }
-
-            _healthSlider.interactable = false;
-            _healthSlider.transition = Selectable.Transition.None;
-            _healthSlider.minValue = 0f;
-            _healthSlider.maxValue = Mathf.Max(1f, defaultMaxHealth);
-            _healthSlider.wholeNumbers = false;
-
-            if (_healthSlider.fillRect != null)
-                _healthFill = _healthSlider.fillRect.GetComponent<Image>();
-
-            _healthLabel = CreateText(
-                barGo.transform as RectTransform,
-                "HealthText",
-                anchorMin: new Vector2(0.5f, 0.5f),
-                anchorMax: new Vector2(0.5f, 0.5f),
-                pivot: new Vector2(0.5f, 0.5f),
-                anchoredPos: new Vector2(34f, 0f),
-                size: new Vector2(240f, 36f),
-                fontSize: 24,
-                color: new Color(0f, 0f, 0f, 0.96f),
-                alignment: TextAnchor.MiddleCenter,
-                addOutline: true);
-
-            _healthIcon = CreateHealthIcon(barGo.transform as RectTransform, new Vector2(-120f, 0f), 30f);
-            return true;
-        }
-
-        private void CreateFallbackHealthBar(RectTransform parent)
-        {
-            var panel = CreatePanel(
+            var panel = CreateImage(
                 parent,
-                "HealthBar (Fallback)",
+                "HealthBar (Stylized)",
                 anchorMin: new Vector2(0.5f, 0f),
                 anchorMax: new Vector2(0.5f, 0f),
                 pivot: new Vector2(0.5f, 0f),
-                anchoredPos: new Vector2(0f, 26f),
-                size: new Vector2(620f, 82f),
-                bg: new Color(0f, 0f, 0f, 0.5f));
+                anchoredPos: new Vector2(0f, 36f),
+                size: new Vector2(690f, 146f),
+                color: new Color(0.02f, 0.02f, 0.03f, 0.28f)).rectTransform;
 
-            var sliderGO = new GameObject("Slider", typeof(RectTransform), typeof(Slider));
-            var sliderRt = sliderGO.GetComponent<RectTransform>();
-            sliderGO.transform.SetParent(panel, false);
-            sliderRt.anchorMin = new Vector2(0f, 0f);
-            sliderRt.anchorMax = new Vector2(1f, 1f);
-            sliderRt.offsetMin = new Vector2(14f, 14f);
-            sliderRt.offsetMax = new Vector2(-14f, -14f);
+            var panelShadow = panel.gameObject.AddComponent<Shadow>();
+            panelShadow.effectColor = new Color(0f, 0f, 0f, 0.45f);
+            panelShadow.effectDistance = new Vector2(0f, -8f);
 
-            var bg = new GameObject("Background", typeof(RectTransform), typeof(Image));
-            var bgRt = bg.GetComponent<RectTransform>();
-            bg.transform.SetParent(sliderGO.transform, false);
-            bgRt.anchorMin = Vector2.zero;
-            bgRt.anchorMax = Vector2.one;
-            bgRt.offsetMin = Vector2.zero;
-            bgRt.offsetMax = Vector2.zero;
-            var bgImg = bg.GetComponent<Image>();
-            bgImg.color = new Color(0.08f, 0.08f, 0.08f, 0.9f);
+            _healthFrame = CreateImage(
+                panel,
+                "OuterFrame",
+                anchorMin: new Vector2(0.5f, 0.5f),
+                anchorMax: new Vector2(0.5f, 0.5f),
+                pivot: new Vector2(0.5f, 0.5f),
+                anchoredPos: new Vector2(36f, 0f),
+                size: new Vector2(540f, 86f),
+                color: HealthFrameBase);
 
-            var fillArea = new GameObject("Fill Area", typeof(RectTransform));
-            var fillAreaRt = fillArea.GetComponent<RectTransform>();
-            fillArea.transform.SetParent(sliderGO.transform, false);
-            fillAreaRt.anchorMin = Vector2.zero;
-            fillAreaRt.anchorMax = Vector2.one;
-            fillAreaRt.offsetMin = new Vector2(2f, 2f);
-            fillAreaRt.offsetMax = new Vector2(-2f, -2f);
+            CreateImage(
+                _healthFrame.transform,
+                "FrameInset",
+                anchorMin: new Vector2(0.5f, 0.5f),
+                anchorMax: new Vector2(0.5f, 0.5f),
+                pivot: new Vector2(0.5f, 0.5f),
+                anchoredPos: Vector2.zero,
+                size: new Vector2(522f, 68f),
+                color: new Color(0.12f, 0.09f, 0.08f, 0.86f));
 
-            var fill = new GameObject("Fill", typeof(RectTransform), typeof(Image));
-            var fillRt = fill.GetComponent<RectTransform>();
-            fill.transform.SetParent(fillArea.transform, false);
-            fillRt.anchorMin = Vector2.zero;
-            fillRt.anchorMax = Vector2.one;
-            fillRt.offsetMin = Vector2.zero;
-            fillRt.offsetMax = Vector2.zero;
-            _healthFill = fill.GetComponent<Image>();
-            _healthFill.color = new Color(0.22f, 0.88f, 0.36f, 0.96f);
+            _healthPulse = CreateImage(
+                _healthFrame.transform,
+                "PulseGlow",
+                anchorMin: new Vector2(0.5f, 0.5f),
+                anchorMax: new Vector2(0.5f, 0.5f),
+                pivot: new Vector2(0.5f, 0.5f),
+                anchoredPos: Vector2.zero,
+                size: new Vector2(550f, 96f),
+                color: new Color(0.95f, 0.18f, 0.14f, 0f));
 
-            _healthSlider = sliderGO.GetComponent<Slider>();
-            _healthSlider.targetGraphic = bgImg;
-            _healthSlider.fillRect = fillRt;
-            _healthSlider.direction = Slider.Direction.LeftToRight;
-            _healthSlider.transition = Selectable.Transition.None;
-            _healthSlider.interactable = false;
-            _healthSlider.minValue = 0f;
-            _healthSlider.maxValue = Mathf.Max(1f, defaultMaxHealth);
-            _healthSlider.wholeNumbers = false;
+            var badge = CreateImage(
+                panel,
+                "Badge",
+                anchorMin: new Vector2(0f, 0.5f),
+                anchorMax: new Vector2(0f, 0.5f),
+                pivot: new Vector2(0.5f, 0.5f),
+                anchoredPos: new Vector2(82f, 0f),
+                size: new Vector2(94f, 94f),
+                color: new Color(0.53f, 0.38f, 0.17f, 0.98f));
+            badge.rectTransform.localRotation = Quaternion.Euler(0f, 0f, 45f);
+
+            CreateImage(
+                badge.transform,
+                "BadgeInner",
+                anchorMin: new Vector2(0.5f, 0.5f),
+                anchorMax: new Vector2(0.5f, 0.5f),
+                pivot: new Vector2(0.5f, 0.5f),
+                anchoredPos: Vector2.zero,
+                size: new Vector2(68f, 68f),
+                color: new Color(0.16f, 0.09f, 0.08f, 0.92f));
+
+            _healthBadgeLabel = CreateText(
+                badge.transform,
+                "BadgeLabel",
+                anchorMin: new Vector2(0.5f, 0.5f),
+                anchorMax: new Vector2(0.5f, 0.5f),
+                pivot: new Vector2(0.5f, 0.5f),
+                anchoredPos: Vector2.zero,
+                size: new Vector2(96f, 38f),
+                fontSize: 28,
+                color: new Color(0.98f, 0.92f, 0.76f, 0.98f),
+                alignment: TextAnchor.MiddleCenter,
+                addOutline: true);
+            _healthBadgeLabel.transform.localRotation = Quaternion.Euler(0f, 0f, -45f);
+            _healthBadgeLabel.text = "HP";
+
+            _healthCaptionLabel = CreateText(
+                panel,
+                "HealthCaption",
+                anchorMin: new Vector2(0f, 1f),
+                anchorMax: new Vector2(0f, 1f),
+                pivot: new Vector2(0f, 1f),
+                anchoredPos: new Vector2(176f, -20f),
+                size: new Vector2(260f, 30f),
+                fontSize: 18,
+                color: new Color(0.94f, 0.82f, 0.62f, 0.92f),
+                alignment: TextAnchor.MiddleLeft);
+            _healthCaptionLabel.text = "VITALITY";
+
+            _healthTrackRect = CreateRect(
+                panel,
+                "TrackRoot",
+                anchorMin: new Vector2(0f, 0.5f),
+                anchorMax: new Vector2(0f, 0.5f),
+                pivot: new Vector2(0f, 0.5f),
+                anchoredPos: new Vector2(176f, 10f),
+                size: new Vector2(healthBarWidth, healthBarHeight));
+
+            CreateImage(
+                _healthTrackRect,
+                "TrackShadow",
+                anchorMin: Vector2.zero,
+                anchorMax: Vector2.one,
+                pivot: new Vector2(0.5f, 0.5f),
+                anchoredPos: new Vector2(0f, -3f),
+                size: Vector2.zero,
+                color: new Color(0f, 0f, 0f, 0.25f));
+
+            CreateImage(
+                _healthTrackRect,
+                "TrackBase",
+                anchorMin: Vector2.zero,
+                anchorMax: Vector2.one,
+                pivot: new Vector2(0.5f, 0.5f),
+                anchoredPos: Vector2.zero,
+                size: Vector2.zero,
+                color: HealthTrackBase);
+
+            CreateImage(
+                _healthTrackRect,
+                "TrackTopRim",
+                anchorMin: new Vector2(0f, 1f),
+                anchorMax: new Vector2(1f, 1f),
+                pivot: new Vector2(0.5f, 1f),
+                anchoredPos: new Vector2(0f, -1f),
+                size: new Vector2(0f, 2f),
+                color: new Color(0.96f, 0.88f, 0.66f, 0.22f));
+
+            var fillMask = CreateRect(
+                _healthTrackRect,
+                "FillMask",
+                anchorMin: Vector2.zero,
+                anchorMax: Vector2.one,
+                pivot: new Vector2(0.5f, 0.5f),
+                anchoredPos: Vector2.zero,
+                size: Vector2.zero);
+            fillMask.gameObject.AddComponent<RectMask2D>();
+
+            _healthLagFill = CreateImage(
+                fillMask,
+                "LagFill",
+                anchorMin: new Vector2(0f, 0f),
+                anchorMax: new Vector2(0f, 1f),
+                pivot: new Vector2(0f, 0.5f),
+                anchoredPos: Vector2.zero,
+                size: new Vector2(healthBarWidth, 0f),
+                color: HealthLagColor);
+            _healthLagRect = _healthLagFill.rectTransform;
+
+            _healthFill = CreateImage(
+                fillMask,
+                "HealthFill",
+                anchorMin: new Vector2(0f, 0f),
+                anchorMax: new Vector2(0f, 1f),
+                pivot: new Vector2(0f, 0.5f),
+                anchoredPos: Vector2.zero,
+                size: new Vector2(healthBarWidth, 0f),
+                color: HealthFillHigh);
+            _healthFillRect = _healthFill.rectTransform;
+
+            CreateImage(
+                _healthFill.transform,
+                "FillHighlight",
+                anchorMin: new Vector2(0f, 1f),
+                anchorMax: new Vector2(1f, 1f),
+                pivot: new Vector2(0.5f, 1f),
+                anchoredPos: new Vector2(0f, -2f),
+                size: new Vector2(0f, 6f),
+                color: new Color(1f, 1f, 1f, 0.18f));
+
+            CreateSegmentTicks(_healthTrackRect, 8);
 
             _healthLabel = CreateText(
                 panel,
                 "HealthText",
-                anchorMin: new Vector2(0.5f, 0.5f),
-                anchorMax: new Vector2(0.5f, 0.5f),
-                pivot: new Vector2(0.5f, 0.5f),
-                anchoredPos: new Vector2(34f, 0f),
-                size: new Vector2(240f, 36f),
-                fontSize: 24,
-                color: new Color(0f, 0f, 0f, 0.96f),
+                anchorMin: new Vector2(1f, 0.5f),
+                anchorMax: new Vector2(1f, 0.5f),
+                pivot: new Vector2(1f, 0.5f),
+                anchoredPos: new Vector2(-24f, 10f),
+                size: new Vector2(170f, 46f),
+                fontSize: 30,
+                color: new Color(0.97f, 0.95f, 0.90f, 0.98f),
                 alignment: TextAnchor.MiddleCenter,
                 addOutline: true);
-
-            _healthIcon = CreateHealthIcon(panel, new Vector2(-120f, 0f), 30f);
         }
 
         private void EnsurePlayerHealth()
@@ -423,24 +491,35 @@ namespace SCoL.Visualization
                 return;
 
             _sb.Clear();
-            _sb.AppendLine("SCoL");
+            _sb.AppendLine("<size=21><b>SCoL</b></size>");
 
             if (runtime != null)
             {
-                _sb.AppendLine($"{runtime.CurrentSeason} / {runtime.CurrentWeather}");
-                _sb.AppendLine($"View: {runtime.ViewMode}   Fire: {(runtime.OverlayFire ? "ON" : "OFF")}");
+                _sb.Append("<color=#F1D598><b>Season</b></color> ");
+                _sb.Append(runtime.CurrentSeason);
+                _sb.Append("  <color=#F1D598><b>Weather</b></color> ");
+                _sb.AppendLine(runtime.CurrentWeather.ToString());
+                _sb.Append("<color=#F1D598><b>View</b></color> ");
+                _sb.Append(runtime.ViewMode);
+                _sb.Append("  <color=#F1D598><b>Fire Overlay</b></color> ");
+                _sb.AppendLine(runtime.OverlayFire ? "ON" : "OFF");
             }
 
             if (_fpsInteractor != null)
             {
-                _sb.AppendLine($"Tool: {_fpsInteractor.currentTool}");
+                _sb.Append("<color=#F1D598><b>Tool</b></color> ");
+                _sb.AppendLine(_fpsInteractor.currentTool.ToString());
                 if (_fpsInteractor.currentTool == FPSRaycastInteractor.ApplyTool.Seed)
                 {
-                    _sb.AppendLine($"Flower: {_fpsInteractor.GetSelectedFlowerName()}");
+                    _sb.Append("<color=#F1D598><b>Flower</b></color> ");
+                    _sb.AppendLine(_fpsInteractor.GetSelectedFlowerName());
                     if (_inventory != null)
                     {
                         int idx = _fpsInteractor.GetSelectedSeedVariantIndex();
-                        _sb.AppendLine($"Seed Type: {_inventory.GetSeedTypeDisplayName(idx)} ({_inventory.GetSeedTypeCount(idx)})");
+                        _sb.Append("<color=#F1D598><b>Seed Type</b></color> ");
+                        _sb.Append(_inventory.GetSeedTypeDisplayName(idx));
+                        _sb.Append("  <color=#F1D598><b>Count</b></color> ");
+                        _sb.AppendLine(_inventory.GetSeedTypeCount(idx).ToString());
                     }
                 }
             }
@@ -459,20 +538,29 @@ namespace SCoL.Visualization
             }
 
             int selected = _fpsInteractor != null ? _fpsInteractor.GetSelectedSeedVariantIndex() : 0;
-            _inventoryLabel.text =
-                $"Seed: {_inventory.seeds}\n" +
-                $"  Roseglow: {_inventory.GetSeedTypeCount(0)}\n" +
-                $"  Amberbloom: {_inventory.GetSeedTypeCount(1)}\n" +
-                $"  Moonpetal: {_inventory.GetSeedTypeCount(2)}\n" +
-                $"Selected: {_inventory.GetSeedTypeDisplayName(selected)}\n" +
-                $"Water: {_inventory.water}\n" +
-                $"Fire: {_inventory.fire}\n" +
-                $"Plant: {_inventory.plants}";
+            _sb.Clear();
+            _sb.Append("<color=#7FD390><b>Total Seeds</b></color> ");
+            _sb.AppendLine(_inventory.seeds.ToString());
+            _sb.Append("<color=#F0E9D7>Roseglow</color>  ");
+            _sb.Append(_inventory.GetSeedTypeCount(0));
+            _sb.Append("    <color=#F0E9D7>Amberbloom</color>  ");
+            _sb.AppendLine(_inventory.GetSeedTypeCount(1).ToString());
+            _sb.Append("<color=#F0E9D7>Moonpetal</color>  ");
+            _sb.Append(_inventory.GetSeedTypeCount(2));
+            _sb.Append("    <color=#7FD390><b>Selected</b></color> ");
+            _sb.AppendLine(_inventory.GetSeedTypeDisplayName(selected));
+            _sb.Append("<color=#67C8FF><b>Water</b></color> ");
+            _sb.Append(_inventory.water);
+            _sb.Append("    <color=#FF8E62><b>Fire</b></color> ");
+            _sb.Append(_inventory.fire);
+            _sb.Append("    <color=#8BE39E><b>Plants</b></color> ");
+            _sb.Append(_inventory.plants);
+            _inventoryLabel.text = _sb.ToString();
         }
 
         private void UpdateHealth()
         {
-            if (_healthSlider == null)
+            if (_healthFillRect == null || _healthLagRect == null)
                 return;
 
             float max = Mathf.Max(1f, defaultMaxHealth);
@@ -484,15 +572,48 @@ namespace SCoL.Visualization
                 current = Mathf.Clamp(_playerHealth.CurrentHealth, 0f, max);
             }
 
-            if (!Mathf.Approximately(_healthSlider.maxValue, max))
-                _healthSlider.maxValue = max;
+            if (_displayHealth < 0f)
+                _displayHealth = current;
+            if (_displayLagHealth < 0f)
+                _displayLagHealth = current;
 
-            _healthSlider.value = current;
+            float dt = Mathf.Max(Time.unscaledDeltaTime, 0.0001f);
+            float primarySpeed = max * (current > _displayHealth ? 7.5f : 11f);
+            _displayHealth = Mathf.MoveTowards(_displayHealth, current, primarySpeed * dt);
+
+            if (current >= _displayLagHealth)
+                _displayLagHealth = current;
+            else
+                _displayLagHealth = Mathf.MoveTowards(_displayLagHealth, current, Mathf.Max(1f, healthLagCatchupSpeed) * dt);
+
+            float t = max > 0f ? Mathf.Clamp01(_displayHealth / max) : 0f;
+            float lagT = max > 0f ? Mathf.Clamp01(_displayLagHealth / max) : 0f;
+            SetFillWidth(_healthFillRect, t);
+            SetFillWidth(_healthLagRect, lagT);
 
             if (_healthFill != null)
             {
-                float t = max > 0f ? current / max : 0f;
-                _healthFill.color = Color.Lerp(new Color(0.92f, 0.24f, 0.20f, 0.98f), new Color(0.22f, 0.88f, 0.36f, 0.98f), t);
+                _healthFill.color = Color.Lerp(HealthFillLow, HealthFillHigh, Mathf.SmoothStep(0f, 1f, t));
+            }
+
+            if (_healthLagFill != null)
+            {
+                _healthLagFill.color = Color.Lerp(
+                    new Color(0.92f, 0.34f, 0.22f, 0.34f),
+                    HealthLagColor,
+                    Mathf.SmoothStep(0f, 1f, lagT));
+            }
+
+            if (_healthFrame != null)
+            {
+                _healthFrame.color = Color.Lerp(HealthFrameAlert, HealthFrameBase, Mathf.SmoothStep(0f, 1f, t));
+            }
+
+            if (_healthPulse != null)
+            {
+                float low = Mathf.Clamp01((0.33f - t) / 0.33f);
+                float pulse = low * (0.40f + 0.60f * (0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * 6.4f)));
+                _healthPulse.color = new Color(0.95f, 0.14f, 0.12f, pulse * 0.28f);
             }
 
             if (_healthLabel != null)
@@ -505,15 +626,14 @@ namespace SCoL.Visualization
 
         private void UpdateAimInfo()
         {
-            if (_crosshairH == null || _crosshairV == null)
+            if (_crosshairLeft == null || _crosshairRight == null || _crosshairTop == null || _crosshairBottom == null)
                 return;
 
             bool hasTarget = FPSAimTargeting.TryResolve(cameraSource, maxDistance, hitMask, runtime, _plantRenderer, out var target)
                              && target.HasActionableTarget;
 
             Color cross = hasTarget ? CrosshairHover : CrosshairIdle;
-            _crosshairH.color = cross;
-            _crosshairV.color = cross;
+            SetCrosshairColor(cross);
 
             string title = string.Empty;
             string detail = string.Empty;
@@ -621,6 +741,59 @@ namespace SCoL.Visualization
 #endif
         }
 
+        private RectTransform CreateHudCard(Transform parent, string name, Vector2 anchorMin, Vector2 anchorMax, Vector2 pivot, Vector2 anchoredPos, Vector2 size, string title, Color accent)
+        {
+            var card = CreateImage(parent, name, anchorMin, anchorMax, pivot, anchoredPos, size, HudCardBg).rectTransform;
+
+            var shadow = card.gameObject.AddComponent<Shadow>();
+            shadow.effectColor = new Color(0f, 0f, 0f, 0.38f);
+            shadow.effectDistance = new Vector2(0f, -7f);
+
+            CreateImage(
+                card,
+                "CardInset",
+                anchorMin: new Vector2(0.5f, 0.5f),
+                anchorMax: new Vector2(0.5f, 0.5f),
+                pivot: new Vector2(0.5f, 0.5f),
+                anchoredPos: Vector2.zero,
+                size: size - new Vector2(8f, 8f),
+                color: HudCardInset);
+
+            CreateImage(
+                card,
+                "AccentBar",
+                anchorMin: new Vector2(0f, 1f),
+                anchorMax: new Vector2(0f, 1f),
+                pivot: new Vector2(0f, 1f),
+                anchoredPos: new Vector2(16f, -14f),
+                size: new Vector2(82f, 4f),
+                color: accent);
+
+            CreateImage(
+                card,
+                "AccentPill",
+                anchorMin: new Vector2(1f, 1f),
+                anchorMax: new Vector2(1f, 1f),
+                pivot: new Vector2(1f, 1f),
+                anchoredPos: new Vector2(-16f, -14f),
+                size: new Vector2(44f, 12f),
+                color: new Color(accent.r, accent.g, accent.b, 0.18f));
+
+            CreateText(
+                card,
+                "CardTitle",
+                anchorMin: new Vector2(0f, 1f),
+                anchorMax: new Vector2(1f, 1f),
+                pivot: new Vector2(0f, 1f),
+                anchoredPos: new Vector2(18f, -28f),
+                size: new Vector2(-36f, 26f),
+                fontSize: 16,
+                color: accent,
+                alignment: TextAnchor.MiddleLeft).text = title;
+
+            return card;
+        }
+
         private RectTransform CreatePanel(Transform parent, string name, Vector2 anchorMin, Vector2 anchorMax, Vector2 pivot, Vector2 anchoredPos, Vector2 size, Color bg, bool preferInnerStyle = false)
         {
             GameObject go;
@@ -698,7 +871,7 @@ namespace SCoL.Visualization
             return text;
         }
 
-        private Image CreateCrosshairLine(Transform parent, string name, Vector2 size)
+        private Image CreateCrosshairLine(Transform parent, string name, Vector2 anchoredPos, Vector2 size)
         {
             var go = new GameObject(name, typeof(RectTransform), typeof(Image));
             go.transform.SetParent(parent, false);
@@ -706,30 +879,81 @@ namespace SCoL.Visualization
             rt.anchorMin = new Vector2(0.5f, 0.5f);
             rt.anchorMax = new Vector2(0.5f, 0.5f);
             rt.pivot = new Vector2(0.5f, 0.5f);
-            rt.anchoredPosition = Vector2.zero;
+            rt.anchoredPosition = anchoredPos;
             rt.sizeDelta = size;
 
             var image = go.GetComponent<Image>();
+            image.sprite = ResolveBuiltinUISprite();
             image.raycastTarget = false;
             return image;
         }
 
-        private Image CreateHealthIcon(Transform parent, Vector2 anchoredPos, float size)
+        private void SetCrosshairColor(Color color)
         {
-            var go = new GameObject("HealthIcon", typeof(RectTransform), typeof(Image));
+            if (_crosshairLeft != null) _crosshairLeft.color = color;
+            if (_crosshairRight != null) _crosshairRight.color = color;
+            if (_crosshairTop != null) _crosshairTop.color = color;
+            if (_crosshairBottom != null) _crosshairBottom.color = color;
+            if (_crosshairDot != null) _crosshairDot.color = Color.Lerp(color, Color.white, 0.25f);
+        }
+
+        private RectTransform CreateRect(Transform parent, string name, Vector2 anchorMin, Vector2 anchorMax, Vector2 pivot, Vector2 anchoredPos, Vector2 size)
+        {
+            var go = new GameObject(name, typeof(RectTransform));
             go.transform.SetParent(parent, false);
             var rt = go.GetComponent<RectTransform>();
-            rt.anchorMin = new Vector2(0.5f, 0.5f);
-            rt.anchorMax = new Vector2(0.5f, 0.5f);
-            rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.anchorMin = anchorMin;
+            rt.anchorMax = anchorMax;
+            rt.pivot = pivot;
             rt.anchoredPosition = anchoredPos;
-            rt.sizeDelta = new Vector2(size, size);
+            rt.sizeDelta = size;
+            return rt;
+        }
 
-            var icon = go.GetComponent<Image>();
-            icon.sprite = ResolveBuiltinUISprite();
-            icon.color = new Color(0.95f, 0.2f, 0.24f, 0.98f);
-            icon.raycastTarget = false;
-            return icon;
+        private Image CreateImage(Transform parent, string name, Vector2 anchorMin, Vector2 anchorMax, Vector2 pivot, Vector2 anchoredPos, Vector2 size, Color color)
+        {
+            var go = new GameObject(name, typeof(RectTransform), typeof(Image));
+            go.transform.SetParent(parent, false);
+            var rt = go.GetComponent<RectTransform>();
+            rt.anchorMin = anchorMin;
+            rt.anchorMax = anchorMax;
+            rt.pivot = pivot;
+            rt.anchoredPosition = anchoredPos;
+            rt.sizeDelta = size;
+
+            var image = go.GetComponent<Image>();
+            image.sprite = ResolveBuiltinUISprite();
+            image.type = Image.Type.Simple;
+            image.color = color;
+            image.raycastTarget = false;
+            return image;
+        }
+
+        private void CreateSegmentTicks(RectTransform parent, int count)
+        {
+            count = Mathf.Max(1, count);
+            for (int i = 1; i < count; i++)
+            {
+                float x = healthBarWidth * i / count;
+                CreateImage(
+                    parent,
+                    $"Tick_{i}",
+                    anchorMin: new Vector2(0f, 0f),
+                    anchorMax: new Vector2(0f, 1f),
+                    pivot: new Vector2(0.5f, 0.5f),
+                    anchoredPos: new Vector2(x, 0f),
+                    size: new Vector2(2f, 0f),
+                    color: new Color(1f, 1f, 1f, 0.08f));
+            }
+        }
+
+        private void SetFillWidth(RectTransform target, float normalized)
+        {
+            if (target == null)
+                return;
+
+            normalized = Mathf.Clamp01(normalized);
+            target.sizeDelta = new Vector2(Mathf.Max(0f, healthBarWidth * normalized), 0f);
         }
 
         private static Sprite ResolveBuiltinUISprite()
