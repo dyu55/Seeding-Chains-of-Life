@@ -4,6 +4,7 @@ using UnityEngine;
 using Unity.XR.CoreUtils;
 using SCoL.Visualization;
 using SCoL.Weather;
+using UnityEngine.SceneManagement;
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
@@ -16,6 +17,8 @@ namespace SCoL.Voxels
     [DisallowMultipleComponent]
     public class VoxelWorld : MonoBehaviour
     {
+        private const string StylizedTerrainPreviewSceneName = "StylizedTerrainPreview";
+
         public VoxelWorldConfig config;
         public VoxelWorldConfig Config => config;
 
@@ -135,6 +138,14 @@ namespace SCoL.Voxels
         [Min(0.5f)] public float featuredTreeMinSpacing = 2.6f;
         [Min(0)] public int featuredTreeWaterBufferRadius = 2;
         [Min(0.5f)] public float featuredTreeRockClearRadius = 2.2f;
+        [Header("Pink Tree Grove")]
+        public bool enablePinkTreeGrove = true;
+        [Min(0)] public int pinkTreeCount = 26;
+        [Range(0.10f, 0.50f)] public float pinkTreeGroveWidthRatio = 0.22f;
+        [Range(0.18f, 0.70f)] public float pinkTreeGroveDepthRatio = 0.42f;
+        [Min(2)] public int pinkTreeEdgeMargin = 5;
+        [Min(1f)] public float pinkTreeMinSpacing = 4.8f;
+        public Vector2 pinkTreeTargetHeightRange = new Vector2(7.0f, 8.5f);
 
         [Header("World Boundary")]
         [Tooltip("Create 4 border walls around the voxel map to prevent leaving the world.")]
@@ -159,6 +170,7 @@ namespace SCoL.Voxels
         [Range(0f, 0.8f)] public float winterIceExtraOverhang = 0.34f;
         [Range(0f, 0.2f)] public float winterIceExtraEmbed = 0.04f;
         [Range(-0.25f, 0.1f)] public float winterIceThresholdBias = -0.08f;
+        [Range(4, 8)] public int winterIceSubdivisions = 6;
         [Range(0, 6)] public int winterIceMaskExpandPasses = 2;
         [Range(0, 8)] public int winterIceMaskSmoothingPasses = 3;
         [Range(0f, 1f)] public float winterIceMaskSmoothingStrength = 0.82f;
@@ -207,6 +219,7 @@ namespace SCoL.Voxels
         private Material _hiddenWaterMat;
         private readonly List<FlatBuildPad> _flatBuildPads = new();
         private Mesh[] _stylizedGrassMeshes;
+        private Mesh[] _incomingGroundGrassMeshes;
         private Mesh[] _stylizedFlowerMeshes;
         private Mesh[] _stylizedBushMeshes;
         private Mesh[] _stylizedPlantMeshes;
@@ -215,6 +228,7 @@ namespace SCoL.Voxels
         private Mesh[] _stylizedPebbleMeshes;
         private Mesh[] _stylizedPathRockMeshes;
         private Material _stylizedGrassMaterial;
+        private Material[] _incomingGroundGrassMaterials;
         private Material _stylizedFlowerMaterial;
         private Material _stylizedLeafMaterial;
         private Material _stylizedMushroomMaterial;
@@ -239,6 +253,7 @@ namespace SCoL.Voxels
         private float _streamT;
         private Texture2D _grassFaceAtlasRuntime;
         private TreeVariant[] _featuredTreeVariants;
+        private TreeVariant[] _pinkTreeVariants;
 
         public Vector3 OriginWorld => useTransformAsOrigin ? transform.position : Vector3.zero;
 
@@ -246,7 +261,7 @@ namespace SCoL.Voxels
         {
             if (config == null)
             {
-                config = Resources.Load<VoxelWorldConfig>("Voxels/VoxelWorldConfig_Default");
+                config = Resources.Load<VoxelWorldConfig>(ResolveDefaultConfigResourcePath());
             }
 
             if (config == null)
@@ -255,6 +270,7 @@ namespace SCoL.Voxels
                 config = ScriptableObject.CreateInstance<VoxelWorldConfig>();
             }
 
+            ApplySceneProfileOverrides();
             _seed = config.useFixedSeed ? config.seed : Environment.TickCount;
             _rng = new System.Random(_seed);
             _noiseOffset = new Vector2(_rng.Next(-100000, 100000), _rng.Next(-100000, 100000));
@@ -264,6 +280,65 @@ namespace SCoL.Voxels
             EnforceWaterEdgeSmoothingDefaults();
             EnsureGrassPropAssets();
             GenerateAll();
+        }
+
+        private static bool IsStylizedTerrainPreviewScene()
+        {
+            var scene = SceneManager.GetActiveScene();
+            return scene.IsValid() &&
+                   string.Equals(scene.name, StylizedTerrainPreviewSceneName, StringComparison.Ordinal);
+        }
+
+        private static string ResolveDefaultConfigResourcePath()
+        {
+            return IsStylizedTerrainPreviewScene()
+                ? "Voxels/VoxelWorldConfig_StylizedPreview"
+                : "Voxels/VoxelWorldConfig_Default";
+        }
+
+        private void ApplySceneProfileOverrides()
+        {
+            if (!IsStylizedTerrainPreviewScene())
+                return;
+
+            useVoxBoxTerrainMaterials = false;
+            useIncomingTerrainBlockTextures = false;
+            useOriginalWaterMaterial = true;
+
+            enableShorelineSand = false;
+            enableFlatBuildPads = false;
+            edgeLandBufferBlocks = Mathf.Max(edgeLandBufferBlocks, 8);
+            edgeMinHeightAboveSea = Mathf.Max(edgeMinHeightAboveSea, 2);
+
+            useLowPolyTerrainVisual = true;
+            useLowPolyTerrainCollider = true;
+            lowPolySmoothingPasses = Mathf.Max(lowPolySmoothingPasses, 5);
+            lowPolySmoothingStrength = Mathf.Max(lowPolySmoothingStrength, 0.78f);
+            lowPolyDiagonalSmoothingWeight = Mathf.Max(lowPolyDiagonalSmoothingWeight, 0.58f);
+            lowPolyTerrainSubdivisions = Mathf.Max(lowPolyTerrainSubdivisions, 3);
+            lowPolyWaterSubdivisions = Mathf.Max(lowPolyWaterSubdivisions, 4);
+            lowPolyWaterHorizontalOverhang = Mathf.Max(lowPolyWaterHorizontalOverhang, 1.0f);
+            lowPolyWaterEmbedDepth = Mathf.Max(lowPolyWaterEmbedDepth, 0.14f);
+            lowPolyUVScale = Mathf.Min(lowPolyUVScale, 0.16f);
+
+            enableGrassProps = true;
+            enableFloraProps = true;
+            grassPropDensity = Mathf.Max(grassPropDensity, 0.26f);
+            grassPropsMaxPerChunk = Mathf.Max(grassPropsMaxPerChunk, 220);
+            flowerDensity = Mathf.Max(flowerDensity, 0.028f);
+
+            enableFeaturedTrees = true;
+            featuredTreeCount = Mathf.Max(featuredTreeCount, 72);
+            featuredTreeClusterChance = Mathf.Max(featuredTreeClusterChance, 0.42f);
+            featuredTreeClusterRadius = Mathf.Max(featuredTreeClusterRadius, 6);
+            featuredTreeMinSpacing = Mathf.Max(featuredTreeMinSpacing, 3.0f);
+            featuredTreeWaterBufferRadius = Mathf.Max(featuredTreeWaterBufferRadius, 3);
+
+            enablePinkTreeGrove = true;
+            pinkTreeCount = Mathf.Max(pinkTreeCount, 34);
+            pinkTreeGroveWidthRatio = Mathf.Max(pinkTreeGroveWidthRatio, 0.28f);
+            pinkTreeGroveDepthRatio = Mathf.Max(pinkTreeGroveDepthRatio, 0.48f);
+            pinkTreeMinSpacing = Mathf.Max(pinkTreeMinSpacing, 5.2f);
         }
 
         private void Awake()
@@ -371,6 +446,53 @@ namespace SCoL.Voxels
             if (lowPolyWaterMaterial.HasProperty("_CullMode")) lowPolyWaterMaterial.SetFloat("_CullMode", 0f);
             ApplyPlaneWaterAnimatedMaterial(lowPolyWaterMaterial, "LowPoly_Water_Animated");
 
+            if (IsStylizedTerrainPreviewScene())
+            {
+                if (grassMat != null)
+                {
+                    if (grassMat.HasProperty("_BaseMap")) grassMat.SetTexture("_BaseMap", null);
+                    if (grassMat.HasProperty("_MainTex")) grassMat.SetTexture("_MainTex", null);
+                    if (grassMat.HasProperty("_BaseColor")) grassMat.SetColor("_BaseColor", new Color(0.48f, 0.63f, 0.34f, 1f));
+                    if (grassMat.HasProperty("_Color")) grassMat.SetColor("_Color", new Color(0.48f, 0.63f, 0.34f, 1f));
+                }
+
+                if (dirtMat != null)
+                {
+                    if (dirtMat.HasProperty("_BaseMap")) dirtMat.SetTexture("_BaseMap", null);
+                    if (dirtMat.HasProperty("_MainTex")) dirtMat.SetTexture("_MainTex", null);
+                    if (dirtMat.HasProperty("_BaseColor")) dirtMat.SetColor("_BaseColor", new Color(0.58f, 0.46f, 0.30f, 1f));
+                    if (dirtMat.HasProperty("_Color")) dirtMat.SetColor("_Color", new Color(0.58f, 0.46f, 0.30f, 1f));
+                }
+
+                if (stoneMat != null)
+                {
+                    if (stoneMat.HasProperty("_BaseMap")) stoneMat.SetTexture("_BaseMap", null);
+                    if (stoneMat.HasProperty("_MainTex")) stoneMat.SetTexture("_MainTex", null);
+                    if (stoneMat.HasProperty("_BaseColor")) stoneMat.SetColor("_BaseColor", new Color(0.52f, 0.50f, 0.46f, 1f));
+                    if (stoneMat.HasProperty("_Color")) stoneMat.SetColor("_Color", new Color(0.52f, 0.50f, 0.46f, 1f));
+                }
+
+                if (lowPolyTerrainMaterial != null)
+                {
+                    if (lowPolyTerrainMaterial.HasProperty("_BaseColor")) lowPolyTerrainMaterial.SetColor("_BaseColor", new Color(0.50f, 0.63f, 0.37f, 1f));
+                    if (lowPolyTerrainMaterial.HasProperty("_Color")) lowPolyTerrainMaterial.SetColor("_Color", new Color(0.50f, 0.63f, 0.37f, 1f));
+                    if (lowPolyTerrainMaterial.HasProperty("_Smoothness")) lowPolyTerrainMaterial.SetFloat("_Smoothness", 0.01f);
+                    if (lowPolyTerrainMaterial.HasProperty("_Glossiness")) lowPolyTerrainMaterial.SetFloat("_Glossiness", 0.01f);
+                }
+
+                if (waterMat != null)
+                {
+                    if (waterMat.HasProperty("_BaseColor")) waterMat.SetColor("_BaseColor", new Color(0.17f, 0.45f, 0.50f, 0.82f));
+                    if (waterMat.HasProperty("_Color")) waterMat.SetColor("_Color", new Color(0.17f, 0.45f, 0.50f, 0.82f));
+                }
+
+                if (lowPolyWaterMaterial != null)
+                {
+                    if (lowPolyWaterMaterial.HasProperty("_BaseColor")) lowPolyWaterMaterial.SetColor("_BaseColor", new Color(0.20f, 0.52f, 0.56f, 0.84f));
+                    if (lowPolyWaterMaterial.HasProperty("_Color")) lowPolyWaterMaterial.SetColor("_Color", new Color(0.20f, 0.52f, 0.56f, 0.84f));
+                }
+            }
+
             if (showBoundaryWalls && boundaryWallMaterial == null)
             {
                 boundaryWallMaterial = new Material(shader) { name = "Voxel_BoundaryWall" };
@@ -437,7 +559,11 @@ namespace SCoL.Voxels
 #if UNITY_EDITOR
             EnsureStylizedNatureAssets();
 
-            if (_stylizedGrassMeshes != null && _stylizedGrassMeshes.Length > 0)
+            if (_incomingGroundGrassMeshes != null && _incomingGroundGrassMeshes.Length > 0)
+            {
+                enableGrassProps = false;
+            }
+            else if (_stylizedGrassMeshes != null && _stylizedGrassMeshes.Length > 0)
             {
                 enableGrassProps = true;
                 grassPropMesh = _stylizedGrassMeshes[0];
@@ -532,6 +658,7 @@ namespace SCoL.Voxels
             }
 
             EnsureFeaturedTreeVariants();
+            EnsurePinkTreeVariants();
 
             if (flowerMaterial == null)
             {
@@ -580,12 +707,18 @@ namespace SCoL.Voxels
 #if UNITY_EDITOR
         private void EnsureStylizedNatureAssets()
         {
-            if (_stylizedGrassMeshes != null && _stylizedGrassMeshes.Length > 0)
+            if ((_stylizedGrassMeshes != null && _stylizedGrassMeshes.Length > 0) ||
+                (_incomingGroundGrassMeshes != null && _incomingGroundGrassMeshes.Length > 0))
                 return;
 
-            _stylizedGrassMeshes = LoadStylizedNatureMeshes(
-                "Assets/Models/Modeling/_Incoming/StylizedNature/FBX/Grass_Common_Short.fbx",
-                "Assets/Models/Modeling/_Incoming/StylizedNature/FBX/Grass_Wispy_Short.fbx");
+            LoadIncomingReplacementGrassAssets();
+
+            if (_incomingGroundGrassMeshes == null || _incomingGroundGrassMeshes.Length == 0)
+            {
+                _stylizedGrassMeshes = LoadStylizedNatureMeshes(
+                    "Assets/Models/Modeling/_Incoming/StylizedNature/FBX/Grass_Common_Short.fbx",
+                    "Assets/Models/Modeling/_Incoming/StylizedNature/FBX/Grass_Wispy_Short.fbx");
+            }
 
             _stylizedFlowerMeshes = LoadStylizedNatureMeshes(
                 "Assets/Models/Modeling/_Incoming/StylizedNature/FBX/Flower_3_Group.fbx",
@@ -655,6 +788,37 @@ namespace SCoL.Voxels
                 "StylizedNature_PathRocks",
                 "Assets/Models/Modeling/_Incoming/StylizedNature/Textures/PathRocks_Diffuse.png",
                 Color.white);
+        }
+
+        private void LoadIncomingReplacementGrassAssets()
+        {
+            string[] paths =
+            {
+                "Assets/Models/Modeling/_Incoming/grassa/grassa.obj",
+                "Assets/Models/Modeling/_Incoming/grassb/grassb.obj",
+                "Assets/Models/Modeling/_Incoming/grassc/grassc.obj"
+            };
+
+            var meshes = new List<Mesh>(paths.Length);
+            var materials = new List<Material>(paths.Length);
+
+            for (int i = 0; i < paths.Length; i++)
+            {
+                var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(paths[i]);
+                if (prefab == null)
+                    continue;
+
+                var mesh = LoadFirstMeshFromModel(paths[i]);
+                var material = BuildImportedModelMaterial(prefab, $"IncomingGrass_{i}_Mat");
+                if (mesh == null || material == null)
+                    continue;
+
+                meshes.Add(mesh);
+                materials.Add(material);
+            }
+
+            _incomingGroundGrassMeshes = meshes.ToArray();
+            _incomingGroundGrassMaterials = materials.ToArray();
         }
 
         private static Mesh[] LoadStylizedNatureMeshes(params string[] assetPaths)
@@ -833,6 +997,43 @@ namespace SCoL.Voxels
 
             _featuredTreeVariants = variants.ToArray();
 
+            if (_featuredTreeVariants.Length == 0)
+            {
+                string[] fallbackPaths =
+                {
+                    "Assets/Models/Modeling/_Incoming/tree1/smalltree.obj",
+                    "Assets/Models/Modeling/_Incoming/tree2/small tree 2.obj",
+                    "Assets/Models/Modeling/_Incoming/tree3/tree3.obj",
+                    "Assets/Models/Modeling/_Incoming/tree4/tree4.obj",
+                    "Assets/Models/Modeling/_Incoming/tree5/3d model.obj",
+                    "Assets/Models/Modeling/_Incoming/tree6/tree6.obj",
+                    "Assets/Models/Modeling/_Incoming/tree7/tree7.obj",
+                    "Assets/Models/Modeling/_Incoming/tree8/tree8.obj"
+                };
+
+                variants = new List<TreeVariant>(fallbackPaths.Length);
+                for (int i = 0; i < fallbackPaths.Length; i++)
+                {
+                    var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(fallbackPaths[i]);
+                    if (prefab == null)
+                        continue;
+
+                    float height = EstimatePrefabHeight(prefab);
+                    if (height <= 0.01f)
+                        continue;
+
+                    variants.Add(new TreeVariant
+                    {
+                        prefab = prefab,
+                        sourceHeight = height,
+                        materialOverride = BuildTreeVariantMaterial(prefab),
+                        textureOverride = FindTreeVariantTexture(prefab)
+                    });
+                }
+
+                _featuredTreeVariants = variants.ToArray();
+            }
+
             if ((treeMesh == null || treeMaterial == null) && _featuredTreeVariants.Length > 0)
             {
                 var samplePrefab = _featuredTreeVariants[0].prefab;
@@ -864,6 +1065,40 @@ namespace SCoL.Voxels
             }
         }
 
+        private void EnsurePinkTreeVariants()
+        {
+            if (_pinkTreeVariants != null && _pinkTreeVariants.Length > 0)
+                return;
+
+            string[] paths =
+            {
+                "Assets/Models/Modeling/_Incoming/pinktree1/pinktree1.obj",
+                "Assets/Models/Modeling/_Incoming/pinktree2/pinktree2.obj"
+            };
+
+            var variants = new List<TreeVariant>(paths.Length);
+            for (int i = 0; i < paths.Length; i++)
+            {
+                var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(paths[i]);
+                if (prefab == null)
+                    continue;
+
+                float height = EstimatePrefabHeight(prefab);
+                if (height <= 0.01f)
+                    continue;
+
+                variants.Add(new TreeVariant
+                {
+                    prefab = prefab,
+                    sourceHeight = height,
+                    materialOverride = BuildTreeVariantMaterial(prefab),
+                    textureOverride = FindTreeVariantTexture(prefab)
+                });
+            }
+
+            _pinkTreeVariants = variants.ToArray();
+        }
+
         private static float EstimatePrefabHeight(GameObject prefab)
         {
             if (!TryGetRenderableBounds(prefab, out Bounds bounds))
@@ -872,6 +1107,11 @@ namespace SCoL.Voxels
         }
 
         private static Material BuildTreeVariantMaterial(GameObject prefab)
+        {
+            return BuildImportedModelMaterial(prefab, prefab != null ? $"{prefab.name}_RuntimeTreeMat" : "RuntimeTreeMat");
+        }
+
+        private static Material BuildImportedModelMaterial(GameObject prefab, string materialName)
         {
             if (prefab == null)
                 return null;
@@ -882,11 +1122,11 @@ namespace SCoL.Voxels
 
             var mat = new Material(r.sharedMaterial)
             {
-                name = $"{prefab.name}_RuntimeTreeMat",
+                name = materialName,
                 enableInstancing = true
             };
 
-            var tex = FindTreeVariantTexture(prefab);
+            var tex = FindTextureInPrefabDirectory(prefab);
             if (tex != null)
             {
                 tex.filterMode = FilterMode.Bilinear;
@@ -900,6 +1140,11 @@ namespace SCoL.Voxels
         }
 
         private static Texture2D FindTreeVariantTexture(GameObject prefab)
+        {
+            return FindTextureInPrefabDirectory(prefab);
+        }
+
+        private static Texture2D FindTextureInPrefabDirectory(GameObject prefab)
         {
             if (prefab == null)
                 return null;
@@ -917,7 +1162,9 @@ namespace SCoL.Voxels
                 System.IO.Path.Combine(dir, "material_BaseColor.jpg").Replace("\\", "/"),
                 System.IO.Path.Combine(dir, "mesh1.jpg").Replace("\\", "/"),
                 System.IO.Path.Combine(dir, "material_BaseColor.png").Replace("\\", "/"),
-                System.IO.Path.Combine(dir, "mesh1.png").Replace("\\", "/")
+                System.IO.Path.Combine(dir, "mesh1.png").Replace("\\", "/"),
+                System.IO.Path.Combine(dir, $"{System.IO.Path.GetFileName(dir)}.jpg").Replace("\\", "/"),
+                System.IO.Path.Combine(dir, $"{System.IO.Path.GetFileName(dir)}.png").Replace("\\", "/")
             };
 
             for (int i = 0; i < candidates.Length; i++)
@@ -1335,7 +1582,8 @@ namespace SCoL.Voxels
                     extraOverhang: Mathf.Max(0f, winterIceExtraOverhang),
                     extraEmbedDepth: Mathf.Max(0f, winterIceExtraEmbed),
                     additionalYOffset: Mathf.Max(0.001f, winterOverlayHeightOffset) + 0.012f,
-                    thresholdBias: winterIceThresholdBias);
+                    thresholdBias: winterIceThresholdBias,
+                    subOverride: Mathf.Max(lowPolyWaterSubdivisions, winterIceSubdivisions));
                 CopyMeshInto(mesh, iceMesh);
                 Destroy(iceMesh);
                 return;
@@ -1440,7 +1688,8 @@ namespace SCoL.Voxels
                     extraOverhang: Mathf.Max(0f, winterIceExtraOverhang),
                     extraEmbedDepth: Mathf.Max(0f, winterIceExtraEmbed),
                     additionalYOffset: Mathf.Max(0.001f, winterOverlayHeightOffset) + 0.015f,
-                    thresholdBias: winterIceThresholdBias);
+                    thresholdBias: winterIceThresholdBias,
+                    subOverride: Mathf.Max(lowPolyWaterSubdivisions, winterIceSubdivisions));
                 CopyMeshInto(mesh, iceMesh);
                 Destroy(iceMesh);
                 mc.sharedMesh = null;
@@ -2011,24 +2260,30 @@ namespace SCoL.Voxels
 
                 var props = new List<FloraPropChunk.Prop>();
 
-                if (_stylizedFlowerMeshes != null && _stylizedFlowerMeshes.Length > 0 && _stylizedFlowerMaterial != null)
+                if (_incomingGroundGrassMeshes != null && _incomingGroundGrassMaterials != null)
                 {
-                    for (int i = 0; i < _stylizedFlowerMeshes.Length; i++)
+                    int incomingCount = Mathf.Min(_incomingGroundGrassMeshes.Length, _incomingGroundGrassMaterials.Length);
+                    for (int i = 0; i < incomingCount; i++)
                     {
+                        if (_incomingGroundGrassMeshes[i] == null || _incomingGroundGrassMaterials[i] == null)
+                            continue;
+
                         props.Add(new FloraPropChunk.Prop
                         {
-                            name = $"StylizedFlower_{i}",
-                            mesh = _stylizedFlowerMeshes[i],
-                            material = _stylizedFlowerMaterial,
-                            density = flowerDensity * 1.15f,
-                            maxPerChunk = Mathf.Max(flowersMaxPerChunk, 10),
+                            name = $"IncomingGrass_{i}",
+                            mesh = _incomingGroundGrassMeshes[i],
+                            material = _incomingGroundGrassMaterials[i],
+                            density = 0.065f,
+                            maxPerChunk = 18,
                             onlyOnGrass = true,
                             requireAboveSeaLevel = true,
                             strictGridPlacement = false,
-                            randomOffsetXZ = new Vector2(0.35f, 0.35f),
-                            scaleRange = new Vector2(0.85f, 1.20f),
+                            randomOffsetXZ = new Vector2(0.18f, 0.18f),
+                            scaleRange = new Vector2(0.38f, 0.62f),
                             avoidSteepSlopes = true,
-                            maxNeighborDelta = 1
+                            maxNeighborDelta = 0,
+                            alignToSmoothedTerrain = true,
+                            embedDepth = 0.08f
                         });
                     }
                 }
@@ -2047,10 +2302,12 @@ namespace SCoL.Voxels
                             onlyOnGrass = true,
                             requireAboveSeaLevel = true,
                             strictGridPlacement = false,
-                            randomOffsetXZ = new Vector2(0.28f, 0.28f),
+                            randomOffsetXZ = new Vector2(0.18f, 0.18f),
                             scaleRange = new Vector2(0.035f, 0.055f),
                             avoidSteepSlopes = true,
-                            maxNeighborDelta = 2
+                            maxNeighborDelta = 1,
+                            alignToSmoothedTerrain = true,
+                            embedDepth = 0.08f
                         });
                     }
                 }
@@ -2073,10 +2330,12 @@ namespace SCoL.Voxels
                             onlyOnGrass = true,
                             requireAboveSeaLevel = true,
                             strictGridPlacement = false,
-                            randomOffsetXZ = new Vector2(0.30f, 0.30f),
+                            randomOffsetXZ = new Vector2(0.18f, 0.18f),
                             scaleRange = scaleRange,
                             avoidSteepSlopes = true,
-                            maxNeighborDelta = 1
+                            maxNeighborDelta = 0,
+                            alignToSmoothedTerrain = true,
+                            embedDepth = 0.10f
                         });
                     }
                 }
@@ -2098,7 +2357,9 @@ namespace SCoL.Voxels
                             randomOffsetXZ = new Vector2(0.26f, 0.26f),
                             scaleRange = new Vector2(0.82f, 1.08f),
                             avoidSteepSlopes = true,
-                            maxNeighborDelta = 1
+                            maxNeighborDelta = 0,
+                            alignToSmoothedTerrain = true,
+                            embedDepth = 0.08f
                         });
                     }
                 }
@@ -2117,13 +2378,13 @@ namespace SCoL.Voxels
                             onlyOnGrass = false,
                             requireAboveSeaLevel = true,
                             strictGridPlacement = false,
-                            randomOffsetXZ = new Vector2(0.40f, 0.40f),
+                            randomOffsetXZ = new Vector2(0.22f, 0.22f),
                             scaleRange = new Vector2(0.16f, 1.35f),
                             avoidSteepSlopes = true,
-                            maxNeighborDelta = 1,
+                            maxNeighborDelta = 0,
                             instantiateAsObject = true,
                             colliderMode = FloraPropChunk.ColliderMode.Box,
-                            embedDepth = 0.22f,
+                            embedDepth = 0.34f,
                             alignToSmoothedTerrain = true
                         });
                     }
@@ -2143,10 +2404,12 @@ namespace SCoL.Voxels
                             onlyOnGrass = false,
                             requireAboveSeaLevel = true,
                             strictGridPlacement = false,
-                            randomOffsetXZ = new Vector2(0.44f, 0.44f),
+                            randomOffsetXZ = new Vector2(0.18f, 0.18f),
                             scaleRange = new Vector2(0.04f, 0.20f),
-                            avoidSteepSlopes = false,
-                            maxNeighborDelta = 2
+                            avoidSteepSlopes = true,
+                            maxNeighborDelta = 0,
+                            alignToSmoothedTerrain = true,
+                            embedDepth = 0.08f
                         });
                     }
                 }
@@ -2165,10 +2428,12 @@ namespace SCoL.Voxels
                             onlyOnGrass = false,
                             requireAboveSeaLevel = true,
                             strictGridPlacement = false,
-                            randomOffsetXZ = new Vector2(0.46f, 0.46f),
+                            randomOffsetXZ = new Vector2(0.16f, 0.16f),
                             scaleRange = new Vector2(0.05f, 0.20f),
-                            avoidSteepSlopes = false,
-                            maxNeighborDelta = 2
+                            avoidSteepSlopes = true,
+                            maxNeighborDelta = 0,
+                            alignToSmoothedTerrain = true,
+                            embedDepth = 0.08f
                         });
                     }
                 }
@@ -2547,11 +2812,11 @@ namespace SCoL.Voxels
             return new Vector3(cellX + u, h, cellZ + v);
         }
 
-        private Mesh BuildLowPolyWaterMesh(float[,] cornerWaterMask, float extraOverhang = 0f, float extraEmbedDepth = 0f, float additionalYOffset = 0f, float thresholdBias = 0f)
+        private Mesh BuildLowPolyWaterMesh(float[,] cornerWaterMask, float extraOverhang = 0f, float extraEmbedDepth = 0f, float additionalYOffset = 0f, float thresholdBias = 0f, int subOverride = -1)
         {
             int w = config.worldWidth;
             int d = config.worldDepth;
-            int sub = Mathf.Clamp(lowPolyWaterSubdivisions, 1, 4);
+            int sub = Mathf.Clamp(subOverride > 0 ? subOverride : lowPolyWaterSubdivisions, 1, 8);
             float threshold = Mathf.Clamp(lowPolyWaterMaskThreshold + thresholdBias, 0.01f, 0.99f);
             float uvScale = Mathf.Max(0.01f, lowPolyUVScale);
             float seaY = Mathf.Clamp(
@@ -2718,10 +2983,101 @@ namespace SCoL.Voxels
                 placed++;
             }
 
+            if (enablePinkTreeGrove && _pinkTreeVariants != null && _pinkTreeVariants.Length > 0)
+            {
+                PlacePinkTreeGrove(placed, prng, used, placedPositions);
+            }
+
             if (placed < target)
             {
                 Debug.LogWarning($"[VoxelWorld] Featured trees placed {placed}/{target}. Consider lowering constraints or search radius.", this);
             }
+        }
+
+        private void PlacePinkTreeGrove(int startIndex, System.Random prng, HashSet<int> used, List<Vector2> placedPositions)
+        {
+            if (config == null || _pinkTreeVariants == null || _pinkTreeVariants.Length == 0)
+                return;
+
+            int count = Mathf.Max(0, pinkTreeCount);
+            if (count <= 0)
+                return;
+
+            var rect = GetPinkTreeGroveRect();
+            int placed = 0;
+            int attempts = 0;
+            int maxAttempts = Mathf.Max(240, count * 40);
+
+            while (placed < count && attempts++ < maxAttempts)
+            {
+                int sx = prng.Next(rect.xMin, rect.xMax);
+                int sz = prng.Next(rect.yMin, rect.yMax);
+                if (!TryFindFeaturedTreeColumnInRect(sx, sz, rect, out int px, out int pz))
+                    continue;
+
+                int key = ColumnKey(px, pz);
+                if (used.Contains(key))
+                    continue;
+                if (!HasTreeSpacing(px, pz, placedPositions, pinkTreeMinSpacing))
+                    continue;
+
+                var variant = _pinkTreeVariants[prng.Next(0, _pinkTreeVariants.Length)];
+                PlaceFeaturedTree(startIndex + placed, px, pz, prng, variant, pinkTreeTargetHeightRange);
+                used.Add(key);
+                placedPositions.Add(new Vector2(px, pz));
+                placed++;
+            }
+        }
+
+        private RectInt GetPinkTreeGroveRect()
+        {
+            int margin = Mathf.Max(2, pinkTreeEdgeMargin);
+            int width = Mathf.Clamp(Mathf.RoundToInt(config.worldWidth * pinkTreeGroveWidthRatio), 8, Mathf.Max(8, config.worldWidth - margin * 2));
+            int depth = Mathf.Clamp(Mathf.RoundToInt(config.worldDepth * pinkTreeGroveDepthRatio), 10, Mathf.Max(10, config.worldDepth - margin * 2));
+
+            int xMin = Mathf.Clamp(config.worldWidth - margin - width, margin, Mathf.Max(margin, config.worldWidth - margin - 1));
+
+            int zCenter = Mathf.RoundToInt(config.worldDepth * 0.5f);
+            int zMin = Mathf.Clamp(zCenter - depth / 2, margin, Mathf.Max(margin, config.worldDepth - margin - depth));
+
+            return new RectInt(xMin, zMin, Mathf.Max(1, width), Mathf.Max(1, depth));
+        }
+
+        private bool TryFindFeaturedTreeColumnInRect(int centerX, int centerZ, RectInt rect, out int outX, out int outZ)
+        {
+            outX = centerX;
+            outZ = centerZ;
+
+            int maxR = Mathf.Max(0, featuredTreeSearchRadius);
+            for (int pass = 0; pass < 2; pass++)
+            {
+                bool requireGrass = pass == 0;
+
+                for (int r = 0; r <= maxR; r++)
+                {
+                    for (int dz = -r; dz <= r; dz++)
+                    {
+                        for (int dx = -r; dx <= r; dx++)
+                        {
+                            if (r > 0 && Mathf.Max(Mathf.Abs(dx), Mathf.Abs(dz)) != r)
+                                continue;
+
+                            int x = centerX + dx;
+                            int z = centerZ + dz;
+                            if (!rect.Contains(new Vector2Int(x, z)))
+                                continue;
+                            if (!IsValidFeaturedTreeColumn(x, z, requireGrass))
+                                continue;
+
+                            outX = x;
+                            outZ = z;
+                            return true;
+                        }
+                    }
+                }
+            }
+
+            return false;
         }
 
         private bool TryFindFeaturedTreeColumn(int centerX, int centerZ, out int outX, out int outZ)
@@ -2929,7 +3285,12 @@ namespace SCoL.Voxels
 
         private bool HasTreeSpacing(int x, int z, List<Vector2> placedPositions)
         {
-            float minSpacing = Mathf.Max(0.5f, featuredTreeMinSpacing);
+            return HasTreeSpacing(x, z, placedPositions, featuredTreeMinSpacing);
+        }
+
+        private bool HasTreeSpacing(int x, int z, List<Vector2> placedPositions, float minSpacing)
+        {
+            minSpacing = Mathf.Max(0.5f, minSpacing);
             float minSq = minSpacing * minSpacing;
             var p = new Vector2(x, z);
             for (int i = 0; i < placedPositions.Count; i++)
@@ -2956,6 +3317,11 @@ namespace SCoL.Voxels
 
         private void PlaceFeaturedTree(int index, int x, int z, System.Random prng, TreeVariant? forcedVariant)
         {
+            PlaceFeaturedTree(index, x, z, prng, forcedVariant, featuredTreeTargetHeightRange);
+        }
+
+        private void PlaceFeaturedTree(int index, int x, int z, System.Random prng, TreeVariant? forcedVariant, Vector2 targetHeightRange)
+        {
             float surfaceY = OriginWorld.y + GetSurfaceY(x, z) + 1f;
             Vector3 sample = OriginWorld + new Vector3(x + 0.5f, surfaceY + 2f, z + 0.5f);
             if (TryGetTerrainSurfaceYAtWorld(sample, out float smoothY, includeWaterSurface: false))
@@ -2976,8 +3342,8 @@ namespace SCoL.Voxels
                     go.transform.SetPositionAndRotation(targetPos, Quaternion.Euler(0f, yaw, 0f));
 
                     float desiredHeight = Mathf.Lerp(
-                        Mathf.Min(featuredTreeTargetHeightRange.x, featuredTreeTargetHeightRange.y),
-                        Mathf.Max(featuredTreeTargetHeightRange.x, featuredTreeTargetHeightRange.y),
+                        Mathf.Min(targetHeightRange.x, targetHeightRange.y),
+                        Mathf.Max(targetHeightRange.x, targetHeightRange.y),
                         (float)prng.NextDouble());
                     float normalizeScale = desiredHeight / Mathf.Max(0.01f, variant.sourceHeight);
                     go.transform.localScale = Vector3.one * Mathf.Max(0.01f, normalizeScale);
@@ -3389,6 +3755,24 @@ namespace SCoL.Voxels
         }
 
         public bool IsWinterSurfaceFrozen => enableWinterSnowAndIce && _winterVisualsActive;
+
+        public bool IsFrozenWaterColumnAtWorld(Vector3 world)
+        {
+            return IsWinterSurfaceFrozen && IsWaterColumnAtWorld(world);
+        }
+
+        public bool TryGetFrozenWaterSurfaceYAtWorld(Vector3 world, out float surfaceY)
+        {
+            surfaceY = 0f;
+            if (config == null || !IsFrozenWaterColumnAtWorld(world))
+                return false;
+
+            surfaceY = OriginWorld.y + Mathf.Clamp(
+                config.seaLevel + 1f + lowPolyWaterYOffset + Mathf.Max(0.001f, winterOverlayHeightOffset) + 0.015f - Mathf.Max(0f, lowPolyWaterEmbedDepth + winterIceExtraEmbed),
+                0f,
+                config.worldHeight + 8f);
+            return true;
+        }
 
         public bool IsWaterColumnAtWorld(Vector3 world)
         {

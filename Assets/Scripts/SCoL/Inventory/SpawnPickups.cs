@@ -45,6 +45,7 @@ namespace SCoL.Inventory
         [Min(0.1f)] public float groundSnapProbeHeight = 20f;
         [Min(0.5f)] public float groundSnapProbeDistance = 80f;
         [Min(0f)] public float groundClearance = 0.01f;
+        [Range(0.1f, 2f)] public float seedPickupScaleMultiplier = 0.68f;
         public Vector2 randomScaleRange = new Vector2(0.75f, 1.25f);
         [Min(1)] public int maxSpawnAttemptsPerItem = 18;
         [Tooltip("If true, never spawn primitive placeholder objects. Only assigned/imported model prefabs are allowed.")]
@@ -140,6 +141,8 @@ namespace SCoL.Inventory
                 SetLayerRecursive(go, 0); // Default layer for raycast pickup parity.
                 float s = Random.Range(Mathf.Min(randomScaleRange.x, randomScaleRange.y), Mathf.Max(randomScaleRange.x, randomScaleRange.y));
                 go.transform.localScale = go.transform.localScale * s * Mathf.Max(0.5f, pickupGlobalScaleMultiplier);
+                if (type == SCoLItemType.Seed)
+                    go.transform.localScale *= Mathf.Max(0.1f, seedPickupScaleMultiplier);
                 SnapBottomToGround(go, pos);
 
                 var rb = go.GetComponent<Rigidbody>();
@@ -290,6 +293,8 @@ namespace SCoL.Inventory
             }
             SetLayerRecursive(go, 0);
             go.transform.localScale = go.transform.localScale * Mathf.Max(0.5f, pickupGlobalScaleMultiplier);
+            if (type == SCoLItemType.Seed)
+                go.transform.localScale *= Mathf.Max(0.1f, seedPickupScaleMultiplier);
             SnapBottomToGround(go, pos);
 
             var rb = go.GetComponent<Rigidbody>();
@@ -387,6 +392,7 @@ namespace SCoL.Inventory
 #if UNITY_EDITOR
             string[] paths =
             {
+                "Assets/Models/Modeling/_Incoming/seed1/material_BaseColor.jpg",
                 "Assets/Models/Modeling/Squash seed/seed1.png",
                 "Assets/Models/Modeling/Squash seed/seed2.png",
                 "Assets/Models/Modeling/Squash seed/seed3.png",

@@ -19,6 +19,13 @@ namespace SCoL.Inventory
         public int fire = 0;
         public int plants = 0;
 
+        [Header("Starter Inventory")]
+        public bool applyMinimumStarterInventoryOnAwake = true;
+        [Min(0)] public int starterSeeds = 10;
+        [Min(0)] public int starterWater = 10;
+        [Min(0)] public int starterFire = 10;
+        [Min(0)] public int starterPlants = 10;
+
         [Header("Discovery (session only)")]
         public bool discoveredSeed = false;
         public bool discoveredWater = false;
@@ -27,6 +34,7 @@ namespace SCoL.Inventory
 
         private void Awake()
         {
+            EnsureMinimumStarterInventory();
             SyncDiscoveryFromCounts();
         }
 
@@ -51,7 +59,7 @@ namespace SCoL.Inventory
         {
             return variantIndex switch
             {
-                0 => seedV1,
+                0 => seedV1 + seedType1,
                 1 => seedV2,
                 2 => seedV3,
                 3 => seedType1,
@@ -85,9 +93,17 @@ namespace SCoL.Inventory
             switch (variantIndex)
             {
                 case 0:
-                    if (seedV1 < amount) return false;
-                    seedV1 -= amount;
+                {
+                    int available = seedV1 + seedType1;
+                    if (available < amount) return false;
+
+                    int consumeFromV1 = Mathf.Min(seedV1, amount);
+                    seedV1 -= consumeFromV1;
+                    int remaining = amount - consumeFromV1;
+                    if (remaining > 0)
+                        seedType1 -= remaining;
                     break;
+                }
                 case 1:
                     if (seedV2 < amount) return false;
                     seedV2 -= amount;
@@ -112,17 +128,17 @@ namespace SCoL.Inventory
         {
             return variantIndex switch
             {
-                0 => "SeedV1",
-                1 => "SeedV2",
-                2 => "SeedV3",
-                3 => "seed1",
+                0 => "Roseglow",
+                1 => "Amberbloom",
+                2 => "Moonpetal",
+                3 => "Roseglow",
                 _ => "Seed"
             };
         }
 
         public string GetSeedTypeSummary()
         {
-            return $"SeedV1:{seedV1} SeedV2:{seedV2} SeedV3:{seedV3} seed1:{seedType1}";
+            return $"Roseglow:{GetSeedTypeCount(0)} Amberbloom:{GetSeedTypeCount(1)} Moonpetal:{GetSeedTypeCount(2)}";
         }
 
         public void Add(SCoLItemType type, int amount = 1)
@@ -240,6 +256,31 @@ namespace SCoL.Inventory
             if (water > 0) discoveredWater = true;
             if (fire > 0) discoveredFire = true;
             if (plants > 0) discoveredPlant = true;
+        }
+
+        private void EnsureMinimumStarterInventory()
+        {
+            if (!applyMinimumStarterInventoryOnAwake)
+                return;
+
+            water = Mathf.Max(water, starterWater);
+            fire = Mathf.Max(fire, starterFire);
+            plants = Mathf.Max(plants, starterPlants);
+
+            int totalSeedVariants = seedV1 + seedV2 + seedV3 + seedType1;
+            int seedDeficit = Mathf.Max(0, starterSeeds - totalSeedVariants);
+            for (int i = 0; i < seedDeficit; i++)
+            {
+                switch (i % 4)
+                {
+                    case 0: seedV1++; break;
+                    case 1: seedV2++; break;
+                    case 2: seedV3++; break;
+                    default: seedType1++; break;
+                }
+            }
+
+            seeds = Mathf.Max(seeds, seedV1 + seedV2 + seedV3 + seedType1, starterSeeds);
         }
     }
 }

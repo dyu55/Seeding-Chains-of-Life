@@ -228,10 +228,9 @@ namespace SCoL.Visualization
                     int selected = _fpsInteractor != null ? _fpsInteractor.GetSelectedSeedVariantIndex() : 0;
                     _invText.text =
                         $"Seed: {_inventory.seeds}\n" +
-                        $"  SeedV1: {_inventory.seedV1}\n" +
-                        $"  SeedV2: {_inventory.seedV2}\n" +
-                        $"  SeedV3: {_inventory.seedV3}\n" +
-                        $"  seed1: {_inventory.seedType1}\n" +
+                        $"  Roseglow: {_inventory.GetSeedTypeCount(0)}\n" +
+                        $"  Amberbloom: {_inventory.GetSeedTypeCount(1)}\n" +
+                        $"  Moonpetal: {_inventory.GetSeedTypeCount(2)}\n" +
                         $"Selected: {_inventory.GetSeedTypeDisplayName(selected)}\n" +
                         $"Water: {_inventory.water}\n" +
                         $"Fire: {_inventory.fire}\n" +

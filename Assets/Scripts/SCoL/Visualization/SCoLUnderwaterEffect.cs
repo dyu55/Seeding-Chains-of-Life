@@ -68,6 +68,14 @@ namespace SCoL.Visualization
             float waterY = voxelWorld.OriginWorld.y + voxelWorld.Config.seaLevel + waterSurfaceOffset;
             Vector3 camPos = targetCamera.transform.position;
 
+            if (voxelWorld.TryGetFrozenWaterSurfaceYAtWorld(camPos, out float frozenSurfaceY) &&
+                camPos.y >= frozenSurfaceY - Mathf.Max(0f, waterlineHysteresis))
+            {
+                if (_active)
+                    ExitUnderwater();
+                return;
+            }
+
             // Primary: exact voxel occupancy around camera (more reliable at the waterline than a pure Y threshold).
             bool inWaterVoxel = IsCameraInsideWaterVoxel(camPos);
 

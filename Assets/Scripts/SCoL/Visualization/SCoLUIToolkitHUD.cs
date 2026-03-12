@@ -41,6 +41,7 @@ namespace SCoL.Visualization
         private Image _crosshairH;
         private Image _crosshairV;
         private Text _statusLabel;
+        private RectTransform _aimPanel;
         private Text _aimTitleLabel;
         private Text _aimDetailLabel;
         private Text _inventoryLabel;
@@ -168,9 +169,43 @@ namespace SCoL.Visualization
                 color: new Color(0f, 0f, 0f, 0.95f),
                 alignment: TextAnchor.MiddleCenter);
 
-            // Center aim info panel intentionally disabled to keep crosshair area unobstructed.
-            _aimTitleLabel = null;
-            _aimDetailLabel = null;
+            _aimPanel = CreatePanel(
+                _root,
+                "AimHoverPanel",
+                anchorMin: new Vector2(1f, 0.5f),
+                anchorMax: new Vector2(1f, 0.5f),
+                pivot: new Vector2(1f, 0.5f),
+                anchoredPos: new Vector2(-18f, 96f),
+                size: new Vector2(280f, 74f),
+                bg: new Color(0f, 0f, 0f, 0.58f),
+                preferInnerStyle: true);
+            _aimPanel.gameObject.SetActive(false);
+
+            _aimTitleLabel = CreateText(
+                _aimPanel,
+                "AimTitle",
+                anchorMin: new Vector2(0f, 0.52f),
+                anchorMax: new Vector2(1f, 1f),
+                pivot: new Vector2(0.5f, 0.5f),
+                anchoredPos: new Vector2(0f, -4f),
+                size: new Vector2(-18f, -10f),
+                fontSize: 18,
+                color: new Color(0f, 0f, 0f, 0.98f),
+                alignment: TextAnchor.MiddleCenter,
+                addOutline: true);
+
+            _aimDetailLabel = CreateText(
+                _aimPanel,
+                "AimDetail",
+                anchorMin: new Vector2(0f, 0f),
+                anchorMax: new Vector2(1f, 0.58f),
+                pivot: new Vector2(0.5f, 0.5f),
+                anchoredPos: new Vector2(0f, 2f),
+                size: new Vector2(-18f, -12f),
+                fontSize: 14,
+                color: new Color(0f, 0f, 0f, 0.92f),
+                alignment: TextAnchor.MiddleCenter,
+                addOutline: true);
 
             var invPanel = CreatePanel(
                 _root,
@@ -426,10 +461,9 @@ namespace SCoL.Visualization
             int selected = _fpsInteractor != null ? _fpsInteractor.GetSelectedSeedVariantIndex() : 0;
             _inventoryLabel.text =
                 $"Seed: {_inventory.seeds}\n" +
-                $"  SeedV1: {_inventory.seedV1}\n" +
-                $"  SeedV2: {_inventory.seedV2}\n" +
-                $"  SeedV3: {_inventory.seedV3}\n" +
-                $"  seed1: {_inventory.seedType1}\n" +
+                $"  Roseglow: {_inventory.GetSeedTypeCount(0)}\n" +
+                $"  Amberbloom: {_inventory.GetSeedTypeCount(1)}\n" +
+                $"  Moonpetal: {_inventory.GetSeedTypeCount(2)}\n" +
                 $"Selected: {_inventory.GetSeedTypeDisplayName(selected)}\n" +
                 $"Water: {_inventory.water}\n" +
                 $"Fire: {_inventory.fire}\n" +
@@ -494,63 +528,65 @@ namespace SCoL.Visualization
                         var pickup = target.pickup != null ? target.pickup : (target.root != null ? target.root.GetComponentInParent<SCoLPickup>() : null);
                         if (pickup != null && _inventory != null)
                         {
-                            title = "Item: " + _inventory.GetItemDisplayName(pickup.type, true);
-                            detail = _inventory.GetItemDescription(pickup.type, true) + "  [LMB collect]";
+                            title = _inventory.GetItemDisplayName(pickup.type, true);
+                            detail = _inventory.GetItemDescription(pickup.type, true);
                         }
                         else
                         {
-                            title = "Item: Unknown item";
-                            detail = "You have not discovered this item yet.  [LMB collect]";
+                            title = "Unknown item";
+                            detail = "You have not discovered this item yet.";
                         }
                         break;
                     }
                     case FPSAimTargetKind.Harvestable:
-                        title = "Harvestable";
-                        detail = "LMB harvest (adds Seed)";
+                        title = target.root != null ? target.root.name : "Harvestable";
+                        detail = "Harvestable";
                         break;
                     case FPSAimTargetKind.LegacyPlant:
                     case FPSAimTargetKind.CAPlant:
                     {
-                        int clicks = _fpsInteractor != null ? Mathf.Max(1, _fpsInteractor.plantDestroyClicksRequired) : 4;
-                        title = target.kind == FPSAimTargetKind.LegacyPlant ? "Plant" : $"Plant Cell {target.cellX},{target.cellY}";
-                        detail = $"LMB uproot (+Plant)  |  RMB x{clicks} destroy";
+                        title = ResolvePlantHoverName(target);
+                        detail = "Plant";
                         break;
                     }
                     case FPSAimTargetKind.Animal:
                     {
-                        bool plantTool = _fpsInteractor != null && _fpsInteractor.currentTool == FPSRaycastInteractor.ApplyTool.Plant;
-                        title = target.animal != null ? $"Animal: {target.animal.name}" : "Animal";
-                        detail = plantTool ? "RMB feed animal" : "Press 4 then RMB to feed";
+                        title = target.animal != null ? target.animal.name : "Animal";
+                        detail = "Animal";
                         break;
                     }
                 }
             }
-            else if (_inventory != null && _fpsInteractor != null)
-            {
-                SCoLItemType item;
-                string hint;
-                switch (_fpsInteractor.currentTool)
-                {
-                    case FPSRaycastInteractor.ApplyTool.Seed:
-                        item = SCoLItemType.Seed; hint = "RMB plant"; break;
-                    case FPSRaycastInteractor.ApplyTool.Water:
-                        item = SCoLItemType.Water; hint = "RMB apply water"; break;
-                    case FPSRaycastInteractor.ApplyTool.Fire:
-                        item = SCoLItemType.Fire; hint = "RMB ignite"; break;
-                    default:
-                        item = SCoLItemType.Plant; hint = "RMB feed animal"; break;
-                }
-
-                title = "Held: " + _inventory.GetItemDisplayName(item, true);
-                if (item == SCoLItemType.Seed && _fpsInteractor != null)
-                    title += $" ({_fpsInteractor.GetSelectedFlowerName()})";
-                detail = _inventory.GetItemDescription(item, true) + $"  [{hint}]";
-            }
-
+            if (_aimPanel != null)
+                _aimPanel.gameObject.SetActive(!string.IsNullOrEmpty(title));
             if (_aimTitleLabel != null)
                 _aimTitleLabel.text = title;
             if (_aimDetailLabel != null)
                 _aimDetailLabel.text = detail;
+        }
+
+        private string ResolvePlantHoverName(FPSAimTargetInfo target)
+        {
+            if (target.kind == FPSAimTargetKind.CAPlant && runtime != null && runtime.Grid != null && _plantRenderer != null)
+            {
+                var cell = runtime.Grid.Get(target.cellX, target.cellY);
+                if (cell != null && cell.FlowerVariantIndex >= 0)
+                {
+                    string variantName = _plantRenderer.GetFlowerVariantDisplayName(cell.FlowerVariantIndex);
+                    if (!string.IsNullOrWhiteSpace(variantName))
+                        return variantName;
+                }
+            }
+
+            if (target.root != null)
+            {
+                string raw = target.root.name;
+                if (raw.StartsWith("Plant_"))
+                    return "Plant";
+                return raw;
+            }
+
+            return "Plant";
         }
 
         private static Font ResolveFont()

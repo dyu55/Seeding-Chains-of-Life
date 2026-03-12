@@ -508,6 +508,8 @@ public class VoxBoxFishBoidAgent : MonoBehaviour
     [Range(1f, 30f)] public float hardClampLerpSpeed = 10f;
     [Min(0.05f)] public float terrainClearance = 0.28f;
     [Min(0.05f)] public float surfaceClearance = 0.18f;
+    [Min(0.01f)] public float surfaceSoftBand = 0.22f;
+    [Min(0.1f)] public float surfacePushDownSpeed = 0.55f;
     [Min(0.05f)] public float horizontalRecenterDistance = 0.85f;
     [Min(0.1f)] public float anchorReachDistance = 0.75f;
     [Min(0.1f)] public float retargetAnchorInterval = 3.5f;
@@ -672,9 +674,19 @@ public class VoxBoxFishBoidAgent : MonoBehaviour
         if (voxelWorld != null && voxelWorld.Config != null)
         {
             float targetY = voxelWorld.OriginWorld.y + voxelWorld.Config.seaLevel - Mathf.Abs(cruiseDepthBelowSea);
+            float maxAllowedTargetY = voxelWorld.OriginWorld.y + voxelWorld.Config.seaLevel - Mathf.Max(0.08f, surfaceClearance + surfaceSoftBand * 0.5f);
+            targetY = Mathf.Min(targetY, maxAllowedTargetY);
             float yDelta = Mathf.Clamp(targetY - myPos.y, -1f, 1f);
             accel += Vector3.up * (yDelta * depthHoldWeight);
-        }
+
+                float waterSurfaceY = voxelWorld.OriginWorld.y + voxelWorld.Config.seaLevel - Mathf.Max(0.05f, surfaceClearance);
+                float softBand = Mathf.Max(0.01f, surfaceSoftBand);
+                if (myPos.y > waterSurfaceY - softBand)
+                {
+                    float surfaceT = Mathf.InverseLerp(waterSurfaceY - softBand, waterSurfaceY, myPos.y);
+                    accel += Vector3.down * (depthHoldWeight * 1.8f * surfaceT);
+                }
+            }
 
         if (accel.magnitude > maxForce)
             accel = accel.normalized * maxForce;
@@ -739,6 +751,12 @@ public class VoxBoxFishBoidAgent : MonoBehaviour
                 {
                     velocity.y = Mathf.Lerp(velocity.y, 0f, t);
                 }
+
+                if (tooHigh)
+                {
+                    float downSpeed = Mathf.Max(0.1f, surfacePushDownSpeed);
+                    velocity.y = Mathf.Min(velocity.y, -downSpeed);
+                }
             }
             else
             {
@@ -747,12 +765,16 @@ public class VoxBoxFishBoidAgent : MonoBehaviour
                 if (tooLow)
                     p.y = minY;
                 transform.position = p;
+                if (tooHigh)
+                    velocity.y = Mathf.Min(velocity.y, -Mathf.Max(0.1f, surfacePushDownSpeed));
             }
             return;
         }
 
         p.y = Mathf.Clamp(p.y, minY, waterSurfaceY);
         transform.position = p;
+        if (p.y >= waterSurfaceY - Mathf.Max(0.01f, surfaceSoftBand * 0.35f))
+            velocity.y = Mathf.Min(velocity.y, -Mathf.Max(0.05f, surfacePushDownSpeed * 0.6f));
     }
 
     private void UpdateAnchorTarget(Vector3 myPos)

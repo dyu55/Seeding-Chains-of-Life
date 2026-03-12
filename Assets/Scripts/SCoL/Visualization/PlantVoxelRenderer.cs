@@ -28,12 +28,12 @@ namespace SCoL.Visualization
         [Tooltip("When enabled, seeding uses the selected flower variant instead of per-cell random flower selection.")]
         public bool enableManualFlowerVariantSelection = true;
         [SerializeField, Min(0)] private int selectedFlowerVariantIndex = 0;
-        [Tooltip("If enabled, start with sunflower selected as flower variant #1.")]
-        public bool defaultToSunflowerAtStart = true;
+        [Tooltip("Start with the first curated flower variant selected.")]
+        public bool defaultToFirstCuratedFlower = true;
 
-        [Header("Minecraft Sunflower Variant")]
-        [Tooltip("Auto-add a Minecraft-style crossed-plane sunflower based on the imported sunflower image.")]
-        public bool addMinecraftSunflowerVariant = true;
+        [Header("Legacy Sunflower Variant")]
+        [Tooltip("Disabled by default. Legacy Minecraft-style sunflower is no longer part of the active flower roster.")]
+        public bool addMinecraftSunflowerVariant = false;
         [Tooltip("Asset path for the sunflower texture.")]
         public string sunflowerTextureAssetPath = "Assets/Models/Modeling/_Incoming/Flowers/Sunflower/Sunflower_BE7.png";
         public Vector2 sunflowerPlaneSize = new Vector2(2.70f, 4.80f);
@@ -97,7 +97,7 @@ namespace SCoL.Visualization
 
             AutoAssignVoxBoxDefaults();
             TryInjectMinecraftSunflowerVariant();
-            if (defaultToSunflowerAtStart && GetFlowerVariantCount() > 0)
+            if (defaultToFirstCuratedFlower && GetFlowerVariantCount() > 0)
                 selectedFlowerVariantIndex = 0;
             EnsureFallbackMaterials();
         }
@@ -115,39 +115,43 @@ namespace SCoL.Visualization
         private void AutoAssignVoxBoxDefaults()
         {
 #if UNITY_EDITOR
-            if (smallPlantPrefabs == null || smallPlantPrefabs.Length == 0)
+            var curatedStage1 = LoadPrefabs(
+                "Assets/Models/Modeling/_Incoming/3stageFlowers/Sprout/SproutV1.obj",
+                "Assets/Models/Modeling/_Incoming/3stageFlowers/Sprout/SproutV2.obj",
+                "Assets/Models/Modeling/_Incoming/3stageFlowers/Sprout/SproutV3.obj");
+            if (curatedStage1 != null && curatedStage1.Length > 0)
             {
-                // Variant mapping:
-                // 0: SeedV1 -> SproutV1
-                // 1: SeedV2 -> SproutV2
-                // 2: SeedV3 -> SproutV3
-                // 3: seed1  -> Flower_Stage1 (special yellow lineage)
-                smallPlantPrefabs = LoadPrefabs(
-                    "Assets/Models/Modeling/_Incoming/3stageFlowers/Sprout/SproutV1.obj",
-                    "Assets/Models/Modeling/_Incoming/3stageFlowers/Sprout/SproutV2.obj",
-                    "Assets/Models/Modeling/_Incoming/3stageFlowers/Sprout/SproutV3.obj",
-                    "Assets/Models/Modeling/_Incoming/Flowers/FlowerV2/Flower_Stage1.obj"
-                );
+                smallPlantPrefabs = curatedStage1;
+            }
+            else if (smallPlantPrefabs == null || smallPlantPrefabs.Length == 0)
+            {
+                smallPlantPrefabs = LoadPrefabs("Assets/Models/Modeling/_Incoming/Flowers/FlowerV2/Flower_Stage1.obj");
             }
 
-            if (smallTreePrefabs == null || smallTreePrefabs.Length == 0)
+            var curatedStage2 = LoadPrefabs(
+                "Assets/Models/Modeling/_Incoming/3stageFlowers/Sprout/SeedV1Sprout.obj",
+                "Assets/Models/Modeling/_Incoming/3stageFlowers/Sprout/SeedV2Sprout.obj",
+                "Assets/Models/Modeling/_Incoming/3stageFlowers/Sprout/SeedV3Sprout.obj");
+            if (curatedStage2 != null && curatedStage2.Length > 0)
             {
-                smallTreePrefabs = LoadPrefabs(
-                    "Assets/Models/Modeling/_Incoming/3stageFlowers/Flowers/FlowerV1.obj",
-                    "Assets/Models/Modeling/_Incoming/3stageFlowers/Flowers/FlowerV2.obj",
-                    "Assets/Models/Modeling/_Incoming/3stageFlowers/Flowers/FlowerV3.obj",
-                    "Assets/Models/Modeling/_Incoming/Flowers/FlowerV2/Flower_Stage2.obj"
-                );
+                smallTreePrefabs = curatedStage2;
+            }
+            else if (smallTreePrefabs == null || smallTreePrefabs.Length == 0)
+            {
+                smallTreePrefabs = LoadPrefabs("Assets/Models/Modeling/_Incoming/Flowers/FlowerV2/Flower_Stage2.obj");
             }
 
-            if (mediumTreePrefabs == null || mediumTreePrefabs.Length == 0)
+            var curatedStage3 = LoadPrefabs(
+                "Assets/Models/Modeling/_Incoming/3stageFlowers/Flowers/FlowerV1.obj",
+                "Assets/Models/Modeling/_Incoming/3stageFlowers/Flowers/FlowerV2.obj",
+                "Assets/Models/Modeling/_Incoming/3stageFlowers/Flowers/FlowerV3.obj");
+            if (curatedStage3 != null && curatedStage3.Length > 0)
             {
-                mediumTreePrefabs = LoadPrefabs(
-                    "Assets/Models/Modeling/_Incoming/3stageFlowers/Flowers/FlowerV1.obj",
-                    "Assets/Models/Modeling/_Incoming/3stageFlowers/Flowers/FlowerV2.obj",
-                    "Assets/Models/Modeling/_Incoming/3stageFlowers/Flowers/FlowerV3.obj",
-                    "Assets/Models/Modeling/_Incoming/yellow flower/yelow flower.obj"
-                );
+                mediumTreePrefabs = curatedStage3;
+            }
+            else if (mediumTreePrefabs == null || mediumTreePrefabs.Length == 0)
+            {
+                mediumTreePrefabs = LoadPrefabs("Assets/Models/Modeling/_Incoming/Flowers/FlowerV2/Flower_FinalStage.obj");
             }
 
             if (largeTreePrefabs == null || largeTreePrefabs.Length == 0)
@@ -492,6 +496,11 @@ namespace SCoL.Visualization
             return GetFlowerVariantName(selectedFlowerVariantIndex);
         }
 
+        public string GetFlowerVariantDisplayName(int globalIndex)
+        {
+            return GetFlowerVariantName(globalIndex);
+        }
+
         public int GetSelectedFlowerVariantIndex()
         {
             return Mathf.Max(0, selectedFlowerVariantIndex);
@@ -565,6 +574,14 @@ namespace SCoL.Visualization
         {
             if (string.IsNullOrWhiteSpace(raw))
                 return "Flower";
+
+            string lower = raw.ToLowerInvariant();
+            if (lower.Contains("sproutv1") || lower.Contains("seedv1sprout") || lower.Contains("flowerv1"))
+                return "Roseglow";
+            if (lower.Contains("sproutv2") || lower.Contains("seedv2sprout") || lower.Contains("flowerv2"))
+                return "Amberbloom";
+            if (lower.Contains("sproutv3") || lower.Contains("seedv3sprout") || lower.Contains("flowerv3"))
+                return "Moonpetal";
 
             string s = raw.Replace('_', ' ').Replace('-', ' ').Trim();
             s = s.Replace("Flower Stage1", "Flower");
@@ -691,7 +708,8 @@ namespace SCoL.Visualization
             if (string.IsNullOrEmpty(n))
                 return false;
             n = n.ToLowerInvariant();
-            return n.Contains("flower") || n.Contains("daisy") || n.Contains("rose") || n.Contains("tulip") || n.Contains("sunflower");
+            return n.Contains("flower") || n.Contains("daisy") || n.Contains("rose") || n.Contains("tulip") ||
+                   n.Contains("sunflower") || n.Contains("sproutv") || n.Contains("seedv");
         }
 
         private float ScaleFor(PlantStage stage, int cellIndex, CellState cell, int variant)

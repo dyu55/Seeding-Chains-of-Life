@@ -125,6 +125,7 @@ public class SimpleFirstPersonController : MonoBehaviour
         if (IsWinterActive())
             speed *= Mathf.Clamp(winterMoveMultiplier, 0.2f, 1f);
         _cc.Move(move * (speed * Time.deltaTime));
+        TryStepOntoFrozenWater();
 
         // Ground / gravity
         bool grounded = _cc.isGrounded;
@@ -351,6 +352,11 @@ public class SimpleFirstPersonController : MonoBehaviour
 
     bool IsUnderwater(Vector3 worldPos)
     {
+        if (_voxelWorld != null &&
+            _voxelWorld.TryGetFrozenWaterSurfaceYAtWorld(worldPos, out float frozenSurfaceY) &&
+            worldPos.y >= frozenSurfaceY - Mathf.Max(0f, waterlinePadding))
+            return false;
+
         if (!_voxelWorld.TryWorldToColumn(worldPos, out int x, out int z))
             return false;
 
@@ -368,6 +374,30 @@ public class SimpleFirstPersonController : MonoBehaviour
 
         float seaSurfaceY = _voxelWorld.OriginWorld.y + sea + 1f - Mathf.Max(0f, waterlinePadding);
         return worldPos.y < seaSurfaceY;
+    }
+
+    void TryStepOntoFrozenWater()
+    {
+        if (_cc == null)
+            return;
+        if (_voxelWorld == null)
+            _voxelWorld = FindFirstObjectByType<VoxelWorld>();
+        if (_voxelWorld == null || !_voxelWorld.IsWinterSurfaceFrozen)
+            return;
+
+        Vector3 probe = transform.position + transform.forward * Mathf.Min(0.2f, _cc.radius * 0.65f);
+        if (!_voxelWorld.TryGetFrozenWaterSurfaceYAtWorld(probe, out float frozenSurfaceY))
+            return;
+
+        float footY = _cc.bounds.min.y;
+        float stepUp = frozenSurfaceY - footY;
+        float maxStep = Mathf.Max(0.12f, _cc.stepOffset + 0.08f);
+        if (stepUp <= 0.01f || stepUp > maxStep)
+            return;
+
+        _cc.Move(Vector3.up * stepUp);
+        if (_velocity.y < 0f)
+            _velocity.y = -0.5f;
     }
 
     void ApplyUnderwaterState()

@@ -811,14 +811,6 @@ namespace SCoL
             _plantRenderer?.RenderNow();
         }
 
-        /// <summary>
-        /// Backward-compatible overload. Variant selection is currently handled in renderer, not CA cell state.
-        /// </summary>
-        public void PlaceSeedAt(Vector3 world, int selectedVariant)
-        {
-            PlaceSeedAt(world);
-        }
-
         public bool TryDestroyPlantAtCell(int x, int y)
         {
             if (Grid == null || !Grid.InBounds(x, y))
@@ -1022,6 +1014,59 @@ namespace SCoL
             }
 
             return ignited;
+        }
+
+        public int ScorchAroundWorld(Vector3 world, float radius = 1.25f, int maxPlants = 3)
+        {
+            if (Grid == null)
+                return 0;
+            if (!TryWorldToCell(world, out int cx, out int cy))
+                return 0;
+
+            float r = Mathf.Max(0.1f, radius);
+            float cell = Mathf.Max(0.0001f, Grid.CellSize);
+            int cellR = Mathf.Max(1, Mathf.CeilToInt(r / cell));
+            int scorched = 0;
+
+            var candidates = new List<(int x, int y, float dSqr)>(32);
+            for (int y = cy - cellR; y <= cy + cellR; y++)
+            for (int x = cx - cellR; x <= cx + cellR; x++)
+            {
+                if (!Grid.InBounds(x, y))
+                    continue;
+
+                var c = Grid.Get(x, y);
+                if (!c.HasPlant)
+                    continue;
+
+                Vector3 center = Grid.CellCenterWorld(x, y);
+                Vector2 d = new Vector2(center.x - world.x, center.z - world.z);
+                float dSqr = d.sqrMagnitude;
+                if (dSqr <= r * r)
+                    candidates.Add((x, y, dSqr));
+            }
+
+            if (candidates.Count == 0)
+                return 0;
+
+            candidates.Sort((a, b) => a.dSqr.CompareTo(b.dSqr));
+            int limit = Mathf.Max(1, maxPlants);
+            for (int i = 0; i < candidates.Count && scorched < limit; i++)
+            {
+                var c = candidates[i];
+                ScorchCell(c.x, c.y);
+                scorched++;
+            }
+
+            if (scorched > 0)
+            {
+                ViewMode = GridViewMode.Stage;
+                OverlayFire = true;
+                _renderer?.Render(Grid);
+                _plantRenderer?.RenderNow();
+            }
+
+            return scorched;
         }
 
         private void ApplyWaterGrowthBoost(ref CellState c)

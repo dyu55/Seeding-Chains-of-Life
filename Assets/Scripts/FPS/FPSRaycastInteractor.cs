@@ -400,8 +400,9 @@ public class FPSRaycastInteractor : MonoBehaviour
             {
                 case ApplyTool.Seed:
                 {
-                    // treat upward-facing surfaces as ground
-                    if (hit.normal.y < 0.35f)
+                    Vector3 plantWorldPoint = hit.point;
+                    bool hasProjectedPlacement = TryResolveSeedPlacementPoint(hit, out plantWorldPoint);
+                    if (!hasProjectedPlacement && hit.normal.y < 0.35f)
                         return;
 
                     int selectedSeedVariant = GetSelectedSeedVariantIndex();
@@ -414,7 +415,7 @@ public class FPSRaycastInteractor : MonoBehaviour
                     bool attemptedRuntime = false;
                     bool plantedByRuntime = false;
                     if (useCARuntimeSeeding)
-                        plantedByRuntime = TryPlaceSeedWithRuntime(hit.point, out attemptedRuntime);
+                        plantedByRuntime = TryPlaceSeedWithRuntime(plantWorldPoint, out attemptedRuntime);
 
                     GameObject spawned = null;
                     if (attemptedRuntime)
@@ -429,13 +430,13 @@ public class FPSRaycastInteractor : MonoBehaviour
                     }
                     else
                     {
-                        var spawnPos = hit.point + hit.normal * 0.02f;
+                        var spawnPos = plantWorldPoint + (hasProjectedPlacement ? Vector3.up * 0.02f : hit.normal * 0.02f);
                         var spawnRot = Quaternion.LookRotation(Vector3.ProjectOnPlane(cameraSource.transform.forward, Vector3.up).normalized, Vector3.up);
                         RefreshGrowthSetup();
                         spawned = FPSSeeding.SpawnFromSeed(spawnPos, spawnRot, _growthSetup);
                     }
 
-                    FPSGameFeel.VoxelBurst(hit.point, count: 14, spread: 1.0f, life: 0.8f, cubeSize: 0.055f);
+                    FPSGameFeel.VoxelBurst(plantWorldPoint, count: 14, spread: 1.0f, life: 0.8f, cubeSize: 0.055f);
                     FPSGameFeel.Shake(0.05f, 0.10f);
 
                     if (logHits)
@@ -771,6 +772,29 @@ public class FPSRaycastInteractor : MonoBehaviour
         return false;
     }
 
+    bool TryResolveSeedPlacementPoint(RaycastHit hit, out Vector3 plantWorldPoint)
+    {
+        plantWorldPoint = hit.point;
+
+        if (_voxelWorld == null || !_voxelWorld.isActiveAndEnabled)
+            _voxelWorld = FindFirstObjectByType<VoxelWorld>();
+        if (_voxelWorld == null)
+            return hit.normal.y >= 0.35f;
+
+        Vector3 sample = hit.point;
+        sample.y = Mathf.Max(sample.y, _voxelWorld.OriginWorld.y + _voxelWorld.Config.seaLevel + 1f);
+
+        if (_voxelWorld.TryGetTerrainSurfaceYAtWorld(sample, out float surfaceY, includeWaterSurface: false) &&
+            _voxelWorld.TryWorldToColumn(sample, out int x, out int z) &&
+            _voxelWorld.IsGrassSurface(x, z))
+        {
+            plantWorldPoint = new Vector3(sample.x, surfaceY + 0.02f, sample.z);
+            return true;
+        }
+
+        return hit.normal.y >= 0.35f;
+    }
+
     bool TryResolveCAPlantCellFromWorld(Vector3 worldPoint, out int x, out int y)
     {
         x = y = -1;
@@ -964,9 +988,10 @@ public class FPSRaycastInteractor : MonoBehaviour
             return TryCycleSeedFlowerVariant();
 
         int current = GetSelectedSeedVariantIndex();
-        for (int step = 1; step <= 4; step++)
+        int variantCount = 3;
+        for (int step = 1; step <= variantCount; step++)
         {
-            int candidate = (current + step) % 4;
+            int candidate = (current + step) % variantCount;
             if (_inventory.GetSeedTypeCount(candidate) > 0)
             {
                 _plantRenderer.SetSelectedFlowerVariantIndex(candidate);
