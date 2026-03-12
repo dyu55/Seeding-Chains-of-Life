@@ -60,6 +60,15 @@ namespace SCoL.Visualization
         public float smallPlantYOffset = 0.00f;
         public float treeYOffset = 0.00f;
 
+        [Header("Flower Stage Size Enforcement")]
+        [Tooltip("Normalize imported flower/sprout model sizes so Stage1 < Stage2 < Stage3 visually.")]
+        public bool enforceFlowerStageHeightProgression = true;
+        [Min(0.05f)] public float stage1TargetHeight = 1.80f;
+        [Min(0.05f)] public float stage2TargetHeight = 2.88f;
+        [Min(0.05f)] public float stage3TargetHeight = 4.08f;
+        [Range(0.25f, 4f)] public float stageHeightScaleClampMin = 0.35f;
+        [Range(0.25f, 4f)] public float stageHeightScaleClampMax = 2.80f;
+
         [Header("Fallback Colors")]
         public Color fallbackSmallPlantColor = new Color(0.35f, 0.88f, 0.42f);
         public Color fallbackSmallTreeColor = new Color(0.44f, 0.74f, 0.36f);
@@ -106,40 +115,39 @@ namespace SCoL.Visualization
         private void AutoAssignVoxBoxDefaults()
         {
 #if UNITY_EDITOR
-            const string flowerV1FinalStagePath = "Assets/Models/Modeling/_Incoming/Flowers/FlowerV1/Flower0.obj";
-
             if (smallPlantPrefabs == null || smallPlantPrefabs.Length == 0)
             {
-                var stage1 = LoadPrefabs("Assets/Models/Modeling/_Incoming/Flowers/FlowerV2/Flower_Stage1.obj");
-                smallPlantPrefabs = (stage1 != null && stage1.Length > 0)
-                    ? stage1
-                    : LoadPrefabs(flowerV1FinalStagePath);
+                // Variant mapping:
+                // 0: SeedV1 -> SproutV1
+                // 1: SeedV2 -> SproutV2
+                // 2: SeedV3 -> SproutV3
+                // 3: seed1  -> Flower_Stage1 (special yellow lineage)
+                smallPlantPrefabs = LoadPrefabs(
+                    "Assets/Models/Modeling/_Incoming/3stageFlowers/Sprout/SproutV1.obj",
+                    "Assets/Models/Modeling/_Incoming/3stageFlowers/Sprout/SproutV2.obj",
+                    "Assets/Models/Modeling/_Incoming/3stageFlowers/Sprout/SproutV3.obj",
+                    "Assets/Models/Modeling/_Incoming/Flowers/FlowerV2/Flower_Stage1.obj"
+                );
             }
 
             if (smallTreePrefabs == null || smallTreePrefabs.Length == 0)
             {
-                var stage2 = LoadPrefabs("Assets/Models/Modeling/_Incoming/Flowers/FlowerV2/Flower_Stage2.obj");
-                smallTreePrefabs = (stage2 != null && stage2.Length > 0)
-                    ? stage2
-                    : LoadPrefabs(
-                        "Assets/VoxBox/Prefabs/Trees/Tree 1.prefab",
-                        "Assets/VoxBox/Prefabs/Trees/Tree 2.prefab");
-            }
-
-            if (mediumTreePrefabs == null || mediumTreePrefabs.Length == 0)
-            {
-                // Final floral stage: prefer FlowerV1/Flower0 (team-approved final model).
-                var stage3 = LoadPrefabs(flowerV1FinalStagePath);
-                mediumTreePrefabs = (stage3 != null && stage3.Length > 0)
-                    ? stage3
-                    : LoadPrefabs("Assets/Models/Modeling/_Incoming/Flowers/FlowerV2/Flower_FinalStage.obj");
+                smallTreePrefabs = LoadPrefabs(
+                    "Assets/Models/Modeling/_Incoming/3stageFlowers/Flowers/FlowerV1.obj",
+                    "Assets/Models/Modeling/_Incoming/3stageFlowers/Flowers/FlowerV2.obj",
+                    "Assets/Models/Modeling/_Incoming/3stageFlowers/Flowers/FlowerV3.obj",
+                    "Assets/Models/Modeling/_Incoming/Flowers/FlowerV2/Flower_Stage2.obj"
+                );
             }
 
             if (mediumTreePrefabs == null || mediumTreePrefabs.Length == 0)
             {
                 mediumTreePrefabs = LoadPrefabs(
-                        "Assets/VoxBox/Prefabs/Trees/Tree 3.prefab",
-                        "Assets/VoxBox/Prefabs/Trees/Tree 4.prefab");
+                    "Assets/Models/Modeling/_Incoming/3stageFlowers/Flowers/FlowerV1.obj",
+                    "Assets/Models/Modeling/_Incoming/3stageFlowers/Flowers/FlowerV2.obj",
+                    "Assets/Models/Modeling/_Incoming/3stageFlowers/Flowers/FlowerV3.obj",
+                    "Assets/Models/Modeling/_Incoming/yellow flower/yelow flower.obj"
+                );
             }
 
             if (largeTreePrefabs == null || largeTreePrefabs.Length == 0)
@@ -168,6 +176,8 @@ namespace SCoL.Visualization
         {
             if (!addMinecraftSunflowerVariant)
                 return;
+            if (HasExplicitSeedVariantMapping())
+                return;
 
             if (_sunflowerTemplate == null)
                 _sunflowerTemplate = CreateMinecraftSunflowerTemplate();
@@ -177,6 +187,25 @@ namespace SCoL.Visualization
             smallPlantPrefabs = PrependUnique(smallPlantPrefabs, _sunflowerTemplate);
             smallTreePrefabs = PrependUnique(smallTreePrefabs, _sunflowerTemplate);
             mediumTreePrefabs = PrependUnique(mediumTreePrefabs, _sunflowerTemplate);
+        }
+
+        private bool HasExplicitSeedVariantMapping()
+        {
+            if (smallPlantPrefabs == null || smallPlantPrefabs.Length < 4)
+                return false;
+
+            bool hasSprout1 = false, hasSprout2 = false, hasSprout3 = false, hasStage1 = false;
+            for (int i = 0; i < smallPlantPrefabs.Length; i++)
+            {
+                var p = smallPlantPrefabs[i];
+                if (p == null) continue;
+                string n = p.name.ToLowerInvariant();
+                if (n.Contains("sproutv1")) hasSprout1 = true;
+                else if (n.Contains("sproutv2")) hasSprout2 = true;
+                else if (n.Contains("sproutv3")) hasSprout3 = true;
+                else if (n.Contains("flower_stage1")) hasStage1 = true;
+            }
+            return hasSprout1 && hasSprout2 && hasSprout3 && hasStage1;
         }
 
         private GameObject CreateMinecraftSunflowerTemplate()
@@ -466,6 +495,21 @@ namespace SCoL.Visualization
         public int GetSelectedFlowerVariantIndex()
         {
             return Mathf.Max(0, selectedFlowerVariantIndex);
+        }
+
+        public void SetSelectedFlowerVariantIndex(int index)
+        {
+            int count = GetFlowerVariantCount();
+            if (count <= 0)
+            {
+                selectedFlowerVariantIndex = 0;
+                return;
+            }
+
+            int idx = index % count;
+            if (idx < 0) idx += count;
+            selectedFlowerVariantIndex = idx;
+            RenderNow();
         }
 
         public bool CycleSelectedFlower(int delta)
@@ -925,6 +969,7 @@ namespace SCoL.Visualization
 
                 plantGO.transform.SetPositionAndRotation(targetPos, Quaternion.Euler(0f, yaw, 0f));
                 plantGO.transform.localScale = Vector3.one * scale;
+                TryNormalizeFlowerStageHeight(plantGO, stage);
                 SnapBottomToY(plantGO, targetY);
             }
 
@@ -934,6 +979,57 @@ namespace SCoL.Visualization
                     Return(old);
                 _active.Remove(idx);
             }
+        }
+
+        private void TryNormalizeFlowerStageHeight(GameObject go, PlantStage stage)
+        {
+            if (!enforceFlowerStageHeightProgression || go == null)
+                return;
+            if (!IsFlowerVisualStage(stage))
+                return;
+
+            float targetHeight = stage switch
+            {
+                PlantStage.SmallPlant => Mathf.Max(0.05f, stage1TargetHeight),
+                PlantStage.SmallTree => Mathf.Max(0.05f, stage2TargetHeight),
+                PlantStage.MediumTree => Mathf.Max(0.05f, stage3TargetHeight),
+                _ => -1f
+            };
+            if (targetHeight <= 0f)
+                return;
+
+            if (!TryGetRendererBounds(go, out var b))
+                return;
+            float currentHeight = Mathf.Max(0.0001f, b.size.y);
+            float k = targetHeight / currentHeight;
+            float kMin = Mathf.Min(stageHeightScaleClampMin, stageHeightScaleClampMax);
+            float kMax = Mathf.Max(stageHeightScaleClampMin, stageHeightScaleClampMax);
+            k = Mathf.Clamp(k, kMin, kMax);
+
+            if (!Mathf.Approximately(k, 1f))
+                go.transform.localScale *= k;
+        }
+
+        private static bool TryGetRendererBounds(GameObject go, out Bounds bounds)
+        {
+            bounds = default;
+            var rs = go.GetComponentsInChildren<Renderer>(includeInactive: true);
+            bool has = false;
+            for (int i = 0; i < rs.Length; i++)
+            {
+                var r = rs[i];
+                if (r == null) continue;
+                if (!has)
+                {
+                    bounds = r.bounds;
+                    has = true;
+                }
+                else
+                {
+                    bounds.Encapsulate(r.bounds);
+                }
+            }
+            return has;
         }
     }
 }

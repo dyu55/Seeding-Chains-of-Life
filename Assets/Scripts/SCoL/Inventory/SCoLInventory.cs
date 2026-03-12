@@ -10,6 +10,11 @@ namespace SCoL.Inventory
     public class SCoLInventory : MonoBehaviour
     {
         public int seeds = 0;
+        [Header("Seed Types")]
+        public int seedV1 = 0;
+        public int seedV2 = 0;
+        public int seedV3 = 0;
+        public int seedType1 = 0; // "seed1" special lineage
         public int water = 0;
         public int fire = 0;
         public int plants = 0;
@@ -40,6 +45,84 @@ namespace SCoL.Inventory
                 SCoLItemType.Plant => plants,
                 _ => 0
             };
+        }
+
+        public int GetSeedTypeCount(int variantIndex)
+        {
+            return variantIndex switch
+            {
+                0 => seedV1,
+                1 => seedV2,
+                2 => seedV3,
+                3 => seedType1,
+                _ => 0
+            };
+        }
+
+        public void AddSeedType(int variantIndex, int amount = 1)
+        {
+            if (amount <= 0) return;
+
+            switch (variantIndex)
+            {
+                case 0: seedV1 += amount; break;
+                case 1: seedV2 += amount; break;
+                case 2: seedV3 += amount; break;
+                case 3: seedType1 += amount; break;
+                default:
+                    Add(SCoLItemType.Seed, amount);
+                    return;
+            }
+
+            seeds += amount;
+            Discover(SCoLItemType.Seed);
+        }
+
+        public bool TryConsumeSeedType(int variantIndex, int amount = 1)
+        {
+            if (amount <= 0) return true;
+
+            switch (variantIndex)
+            {
+                case 0:
+                    if (seedV1 < amount) return false;
+                    seedV1 -= amount;
+                    break;
+                case 1:
+                    if (seedV2 < amount) return false;
+                    seedV2 -= amount;
+                    break;
+                case 2:
+                    if (seedV3 < amount) return false;
+                    seedV3 -= amount;
+                    break;
+                case 3:
+                    if (seedType1 < amount) return false;
+                    seedType1 -= amount;
+                    break;
+                default:
+                    return TryConsume(SCoLItemType.Seed, amount);
+            }
+
+            seeds = Mathf.Max(0, seeds - amount);
+            return true;
+        }
+
+        public string GetSeedTypeDisplayName(int variantIndex)
+        {
+            return variantIndex switch
+            {
+                0 => "SeedV1",
+                1 => "SeedV2",
+                2 => "SeedV3",
+                3 => "seed1",
+                _ => "Seed"
+            };
+        }
+
+        public string GetSeedTypeSummary()
+        {
+            return $"SeedV1:{seedV1} SeedV2:{seedV2} SeedV3:{seedV3} seed1:{seedType1}";
         }
 
         public void Add(SCoLItemType type, int amount = 1)
@@ -152,6 +235,7 @@ namespace SCoL.Inventory
 
         private void SyncDiscoveryFromCounts()
         {
+            seeds = Mathf.Max(seeds, seedV1 + seedV2 + seedV3 + seedType1);
             if (seeds > 0) discoveredSeed = true;
             if (water > 0) discoveredWater = true;
             if (fire > 0) discoveredFire = true;

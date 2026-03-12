@@ -165,6 +165,11 @@ namespace SCoL.Visualization
                 {
                     _sb.AppendLine($"Item: {_inventory.GetItemDisplayName(currentItem, unknownIfUndiscovered: true)}");
                     _sb.AppendLine(_inventory.GetItemDescription(currentItem, unknownIfUndiscovered: true));
+                    if (_fpsInteractor != null && _fpsInteractor.currentTool == FPSRaycastInteractor.ApplyTool.Seed)
+                    {
+                        int idx = _fpsInteractor.GetSelectedSeedVariantIndex();
+                        _sb.AppendLine($"Seed Type: {_inventory.GetSeedTypeDisplayName(idx)} ({_inventory.GetSeedTypeCount(idx)})");
+                    }
                 }
             }
 
@@ -220,7 +225,17 @@ namespace SCoL.Visualization
                 _invText.enabled = visible && showInventory && _inventory != null;
                 if (showInventory && _inventory != null)
                 {
-                    _invText.text = $"Seed: {_inventory.seeds}\nWater: {_inventory.water}\nFire: {_inventory.fire}\nPlant: {_inventory.plants}";
+                    int selected = _fpsInteractor != null ? _fpsInteractor.GetSelectedSeedVariantIndex() : 0;
+                    _invText.text =
+                        $"Seed: {_inventory.seeds}\n" +
+                        $"  SeedV1: {_inventory.seedV1}\n" +
+                        $"  SeedV2: {_inventory.seedV2}\n" +
+                        $"  SeedV3: {_inventory.seedV3}\n" +
+                        $"  seed1: {_inventory.seedType1}\n" +
+                        $"Selected: {_inventory.GetSeedTypeDisplayName(selected)}\n" +
+                        $"Water: {_inventory.water}\n" +
+                        $"Fire: {_inventory.fire}\n" +
+                        $"Plant: {_inventory.plants}";
                 }
             }
 

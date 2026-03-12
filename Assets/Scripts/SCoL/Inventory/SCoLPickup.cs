@@ -1,7 +1,4 @@
 using UnityEngine;
-#if UNITY_EDITOR
-using UnityEditor;
-#endif
 
 namespace SCoL.Inventory
 {
@@ -13,6 +10,8 @@ namespace SCoL.Inventory
     {
         public SCoLItemType type = SCoLItemType.Seed;
         public int amount = 1;
+        [Tooltip("For Seed pickups: which growth variant to plant. -1 keeps current selected variant.")]
+        public int seedVariantIndex = -1;
 
         public Color colorSeed = new Color(0.15f, 0.95f, 0.2f);
         public Color colorWater = new Color(0.2f, 0.55f, 1f);
@@ -23,6 +22,8 @@ namespace SCoL.Inventory
         public Texture2D waterTexture;
         public Texture2D fireTexture;
         public Texture2D plantTexture;
+        [Tooltip("When true and no explicit texture is assigned for this type, keeps prefab-authored materials unchanged.")]
+        public bool preserveExistingMaterials = true;
 
         private void Reset()
         {
@@ -36,8 +37,6 @@ namespace SCoL.Inventory
 
         public void ApplyVisual()
         {
-            TryAutoAssignFireTexture();
-
             Color tint = type switch
             {
                 SCoLItemType.Seed => colorSeed,
@@ -55,6 +54,9 @@ namespace SCoL.Inventory
                 SCoLItemType.Plant => plantTexture,
                 _ => null
             };
+
+            if (preserveExistingMaterials && tex == null)
+                return;
 
             var renderers = GetComponentsInChildren<Renderer>(includeInactive: true);
             for (int i = 0; i < renderers.Length; i++)
@@ -77,23 +79,6 @@ namespace SCoL.Inventory
                     if (m.HasProperty("_Color")) m.SetColor("_Color", tint);
                 }
             }
-        }
-
-        private void TryAutoAssignFireTexture()
-        {
-#if UNITY_EDITOR
-            if (seedTexture == null)
-            {
-                seedTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(
-                    "Assets/Models/Modeling/Squash seed/kirby-seed.png");
-            }
-
-            if (fireTexture == null)
-            {
-                fireTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(
-                    "Assets/Models/Modeling/Squash seed/Diffuse.png");
-            }
-#endif
         }
     }
 }

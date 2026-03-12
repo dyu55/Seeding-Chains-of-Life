@@ -4,6 +4,8 @@ using SCoL.Visualization;
 using SCoL.Weather;
 using SCoL.Inventory;
 using SCoL.Voxels;
+using UnityEngine.Animations;
+using UnityEngine.Playables;
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
@@ -64,6 +66,19 @@ public class FPSRaycastInteractor : MonoBehaviour
     [Range(0.1f, 2f)] public float waterSpreadVisualScale = 1.15f;
     [Range(0.1f, 2f)] public float fireSpreadVisualScale = 1.00f;
     [Min(0f)] public float spreadVisualLift = 0.02f;
+    [Header("Fire Place Models (optional)")]
+    [Tooltip("If assigned, fire spread visuals will instantiate these prefabs instead of primitive blocks.")]
+    public GameObject[] firePlacePrefabs;
+    [Range(0.1f, 3f)] public float firePlacePrefabScale = 0.9f;
+    [Range(1f, 20f)] public float firePlacePrefabSizeMultiplier = 10f;
+    [Tooltip("If enabled, spawned fire models auto-play imported animation clips.")]
+    public bool autoPlayFireModelAnimation = true;
+    [Tooltip("Optional explicit fire animation clips. If empty, clips are auto-loaded from GroundFireV1/V2 in editor.")]
+    public AnimationClip[] firePlaceAnimationClips;
+    [Tooltip("Optional clips specifically for GroundFireV1.")]
+    public AnimationClip[] firePlaceV1AnimationClips;
+    [Tooltip("Optional clips specifically for GroundFireV2.")]
+    public AnimationClip[] firePlaceV2AnimationClips;
 
     [Header("Seed Growth Models (Optional)")]
     public bool useImportedPlantStageModels = true;
@@ -82,6 +97,7 @@ public class FPSRaycastInteractor : MonoBehaviour
     public bool fireCanDestroyPlants = false;
     [Range(0f, 1f)] public float fireDestroyChance = 0.5f;
     [Min(0f)] public float fireDestroyDelaySeconds = 0.25f;
+    [Min(0f)] public float fireBurnToBlackDelaySeconds = 2.5f;
     [Range(0.05f, 1f)] public float fireBurnRadiusScale = 0.25f;
     [Min(0.1f)] public float fireExtinguishRadius = 2.0f;
 
@@ -148,6 +164,7 @@ public class FPSRaycastInteractor : MonoBehaviour
 
         EnsureFpsFeedbackSystems();
         AutoAssignFinalFlowerStagePrefab();
+        AutoAssignFirePlacePrefabs();
 
         _inventory = FindFirstObjectByType<SCoL.Inventory.SCoLInventory>();
         if (_inventory == null)
@@ -212,6 +229,69 @@ public class FPSRaycastInteractor : MonoBehaviour
             matureStagePrefab = flower0;
 #endif
     }
+
+    private void AutoAssignFirePlacePrefabs()
+    {
+#if UNITY_EDITOR
+        if (firePlacePrefabs != null && firePlacePrefabs.Length > 0)
+        {
+            for (int i = 0; i < firePlacePrefabs.Length; i++)
+                if (firePlacePrefabs[i] != null)
+                    return;
+        }
+
+        var a = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Models/Modeling/_Incoming/Fire/GroundFireV1.fbx");
+        var b = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Models/Modeling/_Incoming/Fire/GroundFireV2.fbx");
+        if (a == null && b == null)
+            return;
+        if (a != null && b != null)
+            firePlacePrefabs = new[] { a, b };
+        else
+            firePlacePrefabs = new[] { a != null ? a : b };
+
+        if (firePlaceAnimationClips == null || firePlaceAnimationClips.Length == 0)
+        {
+            var clips = new System.Collections.Generic.List<AnimationClip>(4);
+            AppendAnimationClipsFromAsset(clips, "Assets/Models/Modeling/_Incoming/Fire/GroundFireV1.fbx");
+            AppendAnimationClipsFromAsset(clips, "Assets/Models/Modeling/_Incoming/Fire/GroundFireV2.fbx");
+            firePlaceAnimationClips = clips.ToArray();
+        }
+
+        if (firePlaceV1AnimationClips == null || firePlaceV1AnimationClips.Length == 0)
+        {
+            var clips = new System.Collections.Generic.List<AnimationClip>(2);
+            AppendAnimationClipsFromAsset(clips, "Assets/Models/Modeling/_Incoming/Fire/GroundFireV1.fbx");
+            firePlaceV1AnimationClips = clips.ToArray();
+        }
+
+        if (firePlaceV2AnimationClips == null || firePlaceV2AnimationClips.Length == 0)
+        {
+            var clips = new System.Collections.Generic.List<AnimationClip>(2);
+            AppendAnimationClipsFromAsset(clips, "Assets/Models/Modeling/_Incoming/Fire/GroundFireV2.fbx");
+            firePlaceV2AnimationClips = clips.ToArray();
+        }
+#endif
+    }
+
+#if UNITY_EDITOR
+    private static void AppendAnimationClipsFromAsset(System.Collections.Generic.List<AnimationClip> outClips, string path)
+    {
+        if (outClips == null || string.IsNullOrEmpty(path))
+            return;
+        var objs = AssetDatabase.LoadAllAssetRepresentationsAtPath(path);
+        if (objs == null || objs.Length == 0)
+            return;
+        for (int i = 0; i < objs.Length; i++)
+        {
+            if (!(objs[i] is AnimationClip clip) || clip == null)
+                continue;
+            if (clip.name != null && clip.name.StartsWith("__preview__", System.StringComparison.OrdinalIgnoreCase))
+                continue;
+            if (!outClips.Contains(clip))
+                outClips.Add(clip);
+        }
+    }
+#endif
 
     void Update()
     {
@@ -309,6 +389,10 @@ public class FPSRaycastInteractor : MonoBehaviour
             if (_inventory == null)
                 return;
 
+            // Allow collecting pickups with RMB too (useful for laptop/trackpad workflows).
+            if (collectPickupsOnRightClick && TryCollectPickupAtHit(hit))
+                return;
+
             if (TryHandlePlantDestroyClick(hit))
                 return;
 
@@ -320,9 +404,10 @@ public class FPSRaycastInteractor : MonoBehaviour
                     if (hit.normal.y < 0.35f)
                         return;
 
-                    if (!_inventory.TryConsume(SCoL.Inventory.SCoLItemType.Seed, 1))
+                    int selectedSeedVariant = GetSelectedSeedVariantIndex();
+                    if (!_inventory.TryConsumeSeedType(selectedSeedVariant, 1))
                     {
-                        if (logHits) Debug.Log("[FPSRaycastInteractor] No seeds to plant");
+                        if (logHits) Debug.Log($"[FPSRaycastInteractor] No selected seed to plant: {_inventory.GetSeedTypeDisplayName(selectedSeedVariant)}");
                         return;
                     }
 
@@ -337,7 +422,7 @@ public class FPSRaycastInteractor : MonoBehaviour
                         if (!plantedByRuntime)
                         {
                             // Runtime rejected the placement (invalid tile/terrain), refund consumed seed.
-                            _inventory.Add(SCoL.Inventory.SCoLItemType.Seed, 1);
+                            _inventory.AddSeedType(selectedSeedVariant, 1);
                             if (logHits) Debug.Log("[FPSRaycastInteractor] Runtime seed placement rejected.");
                             return;
                         }
@@ -395,8 +480,13 @@ public class FPSRaycastInteractor : MonoBehaviour
 
                 case ApplyTool.Fire:
                 {
-                    // treat upward-facing surfaces as ground
-                    if (hit.normal.y < 0.35f)
+                    bool targetingPlant =
+                        (hit.collider != null && hit.collider.GetComponentInParent<FPSSeedGrowth>() != null) ||
+                        (hit.collider != null && IsHarvestableHierarchy(hit.collider.transform)) ||
+                        TryResolveCAPlantCellFromWorld(hit.point, out _, out _);
+
+                    // Allow fire on plants even if surface normal is not upward.
+                    if (!targetingPlant && hit.normal.y < 0.35f)
                         return;
 
                     if (!_inventory.TryConsume(SCoL.Inventory.SCoLItemType.Fire, 1))
@@ -411,6 +501,8 @@ public class FPSRaycastInteractor : MonoBehaviour
                         _runtime = FindFirstObjectByType<SCoLRuntime>();
                     if (_runtime != null)
                     {
+                        // Let fire visuals appear first, then scorch target plant into burnt black square.
+                        StartCoroutine(ScorchAfterDelay(hit.point, Mathf.Max(0f, fireBurnToBlackDelaySeconds)));
                         int n = _runtime.IgniteAroundWorld(hit.point, radius: 1.35f, fuel: 1.0f);
                         if (logHits) Debug.Log($"[FPSRaycastInteractor] Runtime ignite affected cells: {n}");
                     }
@@ -451,8 +543,26 @@ public class FPSRaycastInteractor : MonoBehaviour
         if (pickup == null || _inventory == null)
             return false;
 
-        _inventory.Add(pickup.type, Mathf.Max(1, pickup.amount));
-        if (logHits) Debug.Log($"[FPSRaycastInteractor] Collected pickup: {pickup.type} +{Mathf.Max(1, pickup.amount)}");
+        int amount = Mathf.Max(1, pickup.amount);
+        if (pickup.type == SCoLItemType.Seed && pickup.seedVariantIndex >= 0)
+            _inventory.AddSeedType(pickup.seedVariantIndex, amount);
+        else
+            _inventory.Add(pickup.type, amount);
+
+        if (pickup.type == SCoLItemType.Seed && pickup.seedVariantIndex >= 0)
+        {
+            if (_plantRenderer == null)
+                _plantRenderer = FindFirstObjectByType<PlantVoxelRenderer>();
+            if (_plantRenderer != null)
+                _plantRenderer.SetSelectedFlowerVariantIndex(pickup.seedVariantIndex);
+        }
+        if (logHits)
+        {
+            if (pickup.type == SCoLItemType.Seed && pickup.seedVariantIndex >= 0)
+                Debug.Log($"[FPSRaycastInteractor] Collected pickup: Seed {_inventory.GetSeedTypeDisplayName(pickup.seedVariantIndex)} +{amount}");
+            else
+                Debug.Log($"[FPSRaycastInteractor] Collected pickup: {pickup.type} +{amount}");
+        }
         Destroy(pickup.gameObject);
         return true;
     }
@@ -648,7 +758,8 @@ public class FPSRaycastInteractor : MonoBehaviour
 
         if (_plantRenderer == null)
             _plantRenderer = FindFirstObjectByType<PlantVoxelRenderer>();
-        _runtime.PlaceSeedAt(worldPoint);
+        int variantIndex = _plantRenderer != null ? _plantRenderer.GetSelectedFlowerVariantIndex() : -1;
+        _runtime.PlaceSeedAt(worldPoint, variantIndex);
 
         var after = _runtime.Grid.Get(x, y);
         if (after == null)
@@ -811,9 +922,9 @@ public class FPSRaycastInteractor : MonoBehaviour
     {
         if (SCoL.Interaction.SCoLInteractionInput.ToolSlotPressed(1))
         {
-            // Key 1 always enters Seed tool and advances to next flower variant.
+            // Key 1 enters Seed tool and cycles owned seed types.
             currentTool = ApplyTool.Seed;
-            TryCycleSeedFlowerVariant();
+            TryCycleOwnedSeedVariant();
         }
         if (SCoL.Interaction.SCoLInteractionInput.ToolSlotPressed(2)) currentTool = ApplyTool.Water;
         if (SCoL.Interaction.SCoLInteractionInput.ToolSlotPressed(3)) currentTool = ApplyTool.Fire;
@@ -843,6 +954,32 @@ public class FPSRaycastInteractor : MonoBehaviour
         return true;
     }
 
+    bool TryCycleOwnedSeedVariant()
+    {
+        if (_inventory == null)
+            _inventory = FindFirstObjectByType<SCoL.Inventory.SCoLInventory>();
+        if (_plantRenderer == null)
+            _plantRenderer = FindFirstObjectByType<PlantVoxelRenderer>();
+        if (_inventory == null || _plantRenderer == null)
+            return TryCycleSeedFlowerVariant();
+
+        int current = GetSelectedSeedVariantIndex();
+        for (int step = 1; step <= 4; step++)
+        {
+            int candidate = (current + step) % 4;
+            if (_inventory.GetSeedTypeCount(candidate) > 0)
+            {
+                _plantRenderer.SetSelectedFlowerVariantIndex(candidate);
+                _runtime?.ForceRender();
+                if (logHits) Debug.Log($"[FPSRaycastInteractor] Seed type switched: {_inventory.GetSeedTypeDisplayName(candidate)}");
+                return true;
+            }
+        }
+
+        // No typed seeds collected yet, fallback to previous behavior.
+        return TryCycleSeedFlowerVariant();
+    }
+
     public string GetSelectedFlowerName()
     {
         if (_plantRenderer == null)
@@ -850,6 +987,15 @@ public class FPSRaycastInteractor : MonoBehaviour
         if (_plantRenderer == null)
             return "Default Flower";
         return _plantRenderer.GetSelectedFlowerName();
+    }
+
+    public int GetSelectedSeedVariantIndex()
+    {
+        if (_plantRenderer == null)
+            _plantRenderer = FindFirstObjectByType<PlantVoxelRenderer>();
+        if (_plantRenderer == null)
+            return 0;
+        return _plantRenderer.GetSelectedFlowerVariantIndex();
     }
 
     void CycleTool(int delta)
@@ -943,12 +1089,27 @@ public class FPSRaycastInteractor : MonoBehaviour
             WaterAffectSeedGrowthAtTile(surfacePos, Mathf.Max(0.05f, blockScale * 0.55f));
         }
 
-        if (suppressTempSpreadVisualsOnLowPoly && IsLowPolyTerrainVisualActive())
+        var firePrefab = burnTargets ? PickFirePlacePrefab() : null;
+        if (suppressTempSpreadVisualsOnLowPoly && IsLowPolyTerrainVisualActive() && firePrefab == null)
             return;
 
-        var go = GameObject.CreatePrimitive(useSoftDecalSpreadVisuals ? PrimitiveType.Quad : (waterTargets ? PrimitiveType.Sphere : PrimitiveType.Cube));
-        go.name = currentTool == ApplyTool.Water ? "WaterTempBlock" : "FireTempBlock";
-        if (useSoftDecalSpreadVisuals)
+        string firePrefabName = firePrefab != null ? firePrefab.name : string.Empty;
+        var go = firePrefab != null
+            ? Instantiate(firePrefab)
+            : GameObject.CreatePrimitive(useSoftDecalSpreadVisuals ? PrimitiveType.Quad : (waterTargets ? PrimitiveType.Sphere : PrimitiveType.Cube));
+        go.name = currentTool == ApplyTool.Water
+            ? "WaterTempBlock"
+            : (firePrefab != null ? $"{firePrefabName}_FireTempBlock" : "FireTempBlock");
+        if (firePrefab != null)
+        {
+            Vector3 n = surfaceNormal.sqrMagnitude > 0.0001f ? surfaceNormal.normalized : Vector3.up;
+            float scale = Mathf.Max(0.1f, firePlacePrefabScale * blockScale * Mathf.Max(1f, firePlacePrefabSizeMultiplier));
+            go.transform.position = surfacePos + n * Mathf.Max(0f, spreadVisualLift);
+            go.transform.rotation = Quaternion.FromToRotation(Vector3.up, n) * Quaternion.AngleAxis(Random.Range(0f, 360f), n);
+            go.transform.localScale = go.transform.localScale * scale;
+            TryPlayFireModelAnimation(go, firePrefabName);
+        }
+        else if (useSoftDecalSpreadVisuals)
         {
             Vector3 n = surfaceNormal.sqrMagnitude > 0.0001f ? surfaceNormal.normalized : Vector3.up;
             float scale = Mathf.Max(0.1f, blockScale * (waterTargets ? waterSpreadVisualScale : fireSpreadVisualScale));
@@ -966,7 +1127,7 @@ public class FPSRaycastInteractor : MonoBehaviour
         }
 
         var r = go.GetComponent<Renderer>();
-        if (r != null && mat != null)
+        if (firePrefab == null && r != null && mat != null)
         {
             r.sharedMaterial = mat;
             r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
@@ -978,6 +1139,129 @@ public class FPSRaycastInteractor : MonoBehaviour
             Destroy(c);
 
         sink.Add(go);
+    }
+
+    void TryPlayFireModelAnimation(GameObject fireGO, string sourcePrefabName)
+    {
+        if (!autoPlayFireModelAnimation || fireGO == null)
+            return;
+
+        // If prefab already has a configured animator controller, let it run naturally.
+        var animator = fireGO.GetComponentInChildren<Animator>(includeInactive: true);
+        if (animator != null && animator.runtimeAnimatorController != null)
+            return;
+
+        var clip = PickFireAnimationClipForModel(sourcePrefabName);
+        if (clip == null)
+            return;
+
+        var player = fireGO.GetComponent<FireModelClipPlayer>();
+        if (player == null)
+            player = fireGO.AddComponent<FireModelClipPlayer>();
+        player.Play(clip, loop: true);
+    }
+
+    AnimationClip PickFireAnimationClipForModel(string sourcePrefabName)
+    {
+        if (!string.IsNullOrEmpty(sourcePrefabName))
+        {
+            string n = sourcePrefabName.ToLowerInvariant();
+            if (n.Contains("v1"))
+            {
+                var v1 = PickAnyClip(firePlaceV1AnimationClips);
+                if (v1 != null) return v1;
+            }
+            if (n.Contains("v2"))
+            {
+                var v2 = PickAnyClip(firePlaceV2AnimationClips);
+                if (v2 != null) return v2;
+            }
+        }
+
+        var any = PickAnyClip(firePlaceAnimationClips);
+        if (any != null) return any;
+        any = PickAnyClip(firePlaceV1AnimationClips);
+        if (any != null) return any;
+        return PickAnyClip(firePlaceV2AnimationClips);
+    }
+
+    static AnimationClip PickAnyClip(AnimationClip[] clips)
+    {
+        if (clips == null || clips.Length == 0)
+            return null;
+        int valid = 0;
+        for (int i = 0; i < clips.Length; i++)
+            if (clips[i] != null) valid++;
+        if (valid == 0)
+            return null;
+        int pick = Random.Range(0, valid);
+        int seen = 0;
+        for (int i = 0; i < clips.Length; i++)
+        {
+            var c = clips[i];
+            if (c == null) continue;
+            if (seen == pick) return c;
+            seen++;
+        }
+        return null;
+    }
+
+    AnimationClip PickFireAnimationClip()
+    {
+        if (firePlaceAnimationClips == null || firePlaceAnimationClips.Length == 0)
+            return null;
+        int valid = 0;
+        for (int i = 0; i < firePlaceAnimationClips.Length; i++)
+            if (firePlaceAnimationClips[i] != null) valid++;
+        if (valid == 0)
+            return null;
+        int pick = Random.Range(0, valid);
+        int seen = 0;
+        for (int i = 0; i < firePlaceAnimationClips.Length; i++)
+        {
+            var c = firePlaceAnimationClips[i];
+            if (c == null) continue;
+            if (seen == pick) return c;
+            seen++;
+        }
+        return null;
+    }
+
+    System.Collections.IEnumerator ScorchAfterDelay(Vector3 worldPoint, float delaySeconds)
+    {
+        if (delaySeconds > 0f)
+            yield return new WaitForSeconds(delaySeconds);
+
+        if (_runtime == null || !_runtime.isActiveAndEnabled)
+            _runtime = FindFirstObjectByType<SCoLRuntime>();
+        if (_runtime == null)
+            yield break;
+
+        int scorched = _runtime.ScorchAroundWorld(worldPoint, radius: 0.75f, maxPlants: 1);
+        if (logHits && scorched > 0)
+            Debug.Log($"[FPSRaycastInteractor] Runtime scorched cells: {scorched}");
+    }
+
+    GameObject PickFirePlacePrefab()
+    {
+        if (firePlacePrefabs == null || firePlacePrefabs.Length == 0)
+            return null;
+        int valid = 0;
+        for (int i = 0; i < firePlacePrefabs.Length; i++)
+            if (firePlacePrefabs[i] != null) valid++;
+        if (valid == 0)
+            return null;
+
+        int pick = Random.Range(0, valid);
+        int seen = 0;
+        for (int i = 0; i < firePlacePrefabs.Length; i++)
+        {
+            var p = firePlacePrefabs[i];
+            if (p == null) continue;
+            if (seen == pick) return p;
+            seen++;
+        }
+        return null;
     }
 
     bool IsLowPolyTerrainVisualActive()
@@ -1271,6 +1555,45 @@ public class FPSRaycastInteractor : MonoBehaviour
     }
 
     sealed class FPSHarvestedMarker : MonoBehaviour { }
+    sealed class FireModelClipPlayer : MonoBehaviour
+    {
+        PlayableGraph _graph;
+        bool _created;
+
+        public void Play(AnimationClip clip, bool loop)
+        {
+            if (clip == null)
+                return;
+            Stop();
+
+            var animator = GetComponentInChildren<Animator>(includeInactive: true);
+            if (animator == null)
+                animator = gameObject.AddComponent<Animator>();
+
+            _graph = PlayableGraph.Create("FireModelClipPlayer");
+            var output = AnimationPlayableOutput.Create(_graph, "Animation", animator);
+            var playable = AnimationClipPlayable.Create(_graph, clip);
+            playable.SetApplyFootIK(false);
+            playable.SetApplyPlayableIK(false);
+            if (loop)
+                playable.SetDuration(double.PositiveInfinity);
+            output.SetSourcePlayable(playable);
+            _graph.Play();
+            _created = true;
+        }
+
+        void OnDisable() => Stop();
+        void OnDestroy() => Stop();
+
+        void Stop()
+        {
+            if (!_created)
+                return;
+            if (_graph.IsValid())
+                _graph.Destroy();
+            _created = false;
+        }
+    }
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void EnsureExists()

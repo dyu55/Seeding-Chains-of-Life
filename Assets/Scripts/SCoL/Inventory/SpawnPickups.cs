@@ -12,18 +12,22 @@ namespace SCoL.Inventory
     /// </summary>
     public class SpawnPickups : MonoBehaviour
     {
-        public int seedCount = 12;
-        public int fireCount = 8;
+        public int seedCount = 20;
+        public int fireCount = 20;
 
         [Header("Prefabs (optional)")]
-        [Tooltip("If assigned, used for seed pickups.")]
+        [Tooltip("Legacy single seed pickup prefab.")]
         public GameObject seedPickupPrefab;
-        [Tooltip("If assigned, used for torch/fire pickups.")]
+        [Tooltip("Legacy single torch/branch pickup prefab.")]
         public GameObject firePickupPrefab;
+        [Tooltip("Seed pickup prefab variants (preferred). Drag seed model prefabs here.")]
+        public GameObject[] seedPickupPrefabs;
+        [Tooltip("Fire pickup prefab variants (preferred). Drag branch/torch model prefabs here.")]
+        public GameObject[] firePickupPrefabs;
         [Header("Seed Variants")]
-        [Tooltip("Optional seed textures. If empty, tries auto-load: seed1..seed4 from Squash seed folder.")]
+        [Tooltip("Optional seed textures for primitive fallback only.")]
         public Texture2D[] seedVariantTextures;
-        public bool useSeedShapeVariants = true;
+        public bool useSeedShapeVariants = false;
 
         [Header("Placement")]
         public bool scatterAcrossGrid = true;
@@ -37,8 +41,14 @@ namespace SCoL.Inventory
         [Tooltip("Vertical offset above ground/tile for spawned pickups.")]
         public float yOffset = 0.25f;
         [Min(0.5f)] public float pickupGlobalScaleMultiplier = 1.35f;
+        [Header("Ground Snap")]
+        [Min(0.1f)] public float groundSnapProbeHeight = 20f;
+        [Min(0.5f)] public float groundSnapProbeDistance = 80f;
+        [Min(0f)] public float groundClearance = 0.01f;
         public Vector2 randomScaleRange = new Vector2(0.75f, 1.25f);
         [Min(1)] public int maxSpawnAttemptsPerItem = 18;
+        [Tooltip("If true, never spawn primitive placeholder objects. Only assigned/imported model prefabs are allowed.")]
+        public bool modelsOnly = true;
 
         private SCoL.SCoLRuntime _runtime;
         private SCoL.Voxels.VoxelWorld _voxelWorld;
@@ -67,11 +77,12 @@ namespace SCoL.Inventory
                     break;
                 yield return null;
             }
+            EnsureAutoAssignPickupPrefabs();
             EnsureSeedVariantTexturesLoaded();
 
             int spawnedSeeds = Spawn(SCoLItemType.Seed, seedCount, 0f);
             int spawnedFire = Spawn(SCoLItemType.Fire, fireCount, 3.0f);
-            if (spawnedSeeds + spawnedFire == 0)
+            if (!modelsOnly && spawnedSeeds + spawnedFire == 0)
             {
                 // Hard fallback for debugging/first-use: always spawn a visible cluster near player.
                 SpawnFallbackClusterNearPlayer();
@@ -107,10 +118,15 @@ namespace SCoL.Inventory
                     }
                 }
 
-                var prefab = GetPickupPrefab(type);
+                var prefab = GetPickupPrefab(type, i);
                 PrimitiveType? seedShape = null;
-                if (prefab == null && type == SCoLItemType.Seed && useSeedShapeVariants)
-                    seedShape = SeedShapeVariants[Mathf.Abs(i) % SeedShapeVariants.Length];
+                if (prefab == null)
+                {
+                    if (modelsOnly)
+                        continue;
+                    if (type == SCoLItemType.Seed && useSeedShapeVariants)
+                        seedShape = SeedShapeVariants[Mathf.Abs(i) % SeedShapeVariants.Length];
+                }
 
                 GameObject go = prefab != null
                     ? Instantiate(prefab, pos, Quaternion.Euler(0f, Random.Range(0f, 360f), 0f))
@@ -124,6 +140,7 @@ namespace SCoL.Inventory
                 SetLayerRecursive(go, 0); // Default layer for raycast pickup parity.
                 float s = Random.Range(Mathf.Min(randomScaleRange.x, randomScaleRange.y), Mathf.Max(randomScaleRange.x, randomScaleRange.y));
                 go.transform.localScale = go.transform.localScale * s * Mathf.Max(0.5f, pickupGlobalScaleMultiplier);
+                SnapBottomToGround(go, pos);
 
                 var rb = go.GetComponent<Rigidbody>();
                 if (rb == null) rb = go.AddComponent<Rigidbody>();
@@ -135,6 +152,9 @@ namespace SCoL.Inventory
                 if (p == null) p = go.AddComponent<SCoLPickup>();
                 p.type = type;
                 p.amount = 1;
+                p.preserveExistingMaterials = prefab != null;
+                if (type == SCoLItemType.Seed)
+                    p.seedVariantIndex = ResolveSeedVariantIndexForPrefab(prefab, i);
                 if (type == SCoLItemType.Seed)
                 {
                     var seedTex = PickSeedVariantTexture(i);
@@ -149,14 +169,23 @@ namespace SCoL.Inventory
             return spawned;
         }
 
-        private GameObject GetPickupPrefab(SCoLItemType type)
+        private GameObject GetPickupPrefab(SCoLItemType type, int variantIndex)
         {
-            return type switch
+            if (type == SCoLItemType.Seed)
             {
-                SCoLItemType.Seed => seedPickupPrefab,
-                SCoLItemType.Fire => firePickupPrefab,
-                _ => null
-            };
+                var v = PickVariantPrefab(seedPickupPrefabs, variantIndex);
+                if (v != null) return v;
+                return seedPickupPrefab;
+            }
+
+            if (type == SCoLItemType.Fire)
+            {
+                var v = PickVariantPrefab(firePickupPrefabs, variantIndex);
+                if (v != null) return v;
+                return firePickupPrefab;
+            }
+
+            return null;
         }
 
         private bool TryFindSpawnPointOnLand(out Vector3 pos)
@@ -243,7 +272,9 @@ namespace SCoL.Inventory
 
         private void SpawnOneAt(SCoLItemType type, Vector3 pos, string name)
         {
-            var prefab = GetPickupPrefab(type);
+            var prefab = GetPickupPrefab(type, Mathf.Abs(name.GetHashCode()));
+            if (prefab == null && modelsOnly)
+                return;
             PrimitiveType? seedShape = null;
             if (prefab == null && type == SCoLItemType.Seed && useSeedShapeVariants)
                 seedShape = SeedShapeVariants[Mathf.Abs(name.GetHashCode()) % SeedShapeVariants.Length];
@@ -259,6 +290,7 @@ namespace SCoL.Inventory
             }
             SetLayerRecursive(go, 0);
             go.transform.localScale = go.transform.localScale * Mathf.Max(0.5f, pickupGlobalScaleMultiplier);
+            SnapBottomToGround(go, pos);
 
             var rb = go.GetComponent<Rigidbody>();
             if (rb == null) rb = go.AddComponent<Rigidbody>();
@@ -269,6 +301,9 @@ namespace SCoL.Inventory
             if (p == null) p = go.AddComponent<SCoLPickup>();
             p.type = type;
             p.amount = 1;
+            p.preserveExistingMaterials = prefab != null;
+            if (type == SCoLItemType.Seed)
+                p.seedVariantIndex = ResolveSeedVariantIndexForPrefab(prefab, Mathf.Abs(name.GetHashCode()));
             if (type == SCoLItemType.Seed)
             {
                 var seedTex = PickSeedVariantTexture(Mathf.Abs(name.GetHashCode()));
@@ -276,6 +311,29 @@ namespace SCoL.Inventory
             }
             p.ApplyVisual();
             EnsureCollider(go);
+        }
+
+        private static GameObject PickVariantPrefab(GameObject[] variants, int variantIndex)
+        {
+            if (variants == null || variants.Length == 0)
+                return null;
+
+            int validCount = 0;
+            for (int i = 0; i < variants.Length; i++)
+                if (variants[i] != null) validCount++;
+            if (validCount == 0)
+                return null;
+
+            int pick = Mathf.Abs(variantIndex) % validCount;
+            int seen = 0;
+            for (int i = 0; i < variants.Length; i++)
+            {
+                var v = variants[i];
+                if (v == null) continue;
+                if (seen == pick) return v;
+                seen++;
+            }
+            return null;
         }
 
         private Texture2D PickSeedVariantTexture(int i)
@@ -304,6 +362,16 @@ namespace SCoL.Inventory
 
         private void EnsureSeedVariantTexturesLoaded()
         {
+            // If seed models are assigned, keep prefab materials and skip texture auto-load.
+            if (seedPickupPrefabs != null)
+            {
+                for (int i = 0; i < seedPickupPrefabs.Length; i++)
+                    if (seedPickupPrefabs[i] != null)
+                        return;
+            }
+            if (seedPickupPrefab != null)
+                return;
+
             bool hasAny = false;
             if (seedVariantTextures != null)
             {
@@ -332,6 +400,141 @@ namespace SCoL.Inventory
 #endif
             if (loaded.Count > 0)
                 seedVariantTextures = loaded.ToArray();
+        }
+
+        private void EnsureAutoAssignPickupPrefabs()
+        {
+#if UNITY_EDITOR
+            if ((seedPickupPrefabs == null || seedPickupPrefabs.Length == 0) && seedPickupPrefab == null)
+            {
+                seedPickupPrefabs = LoadPrefabArray(
+                    "Assets/Models/Modeling/_Incoming/seed1/seed1.obj",
+                    "Assets/Models/Modeling/_Incoming/3stageFlowers/Seed/SeedV1.obj",
+                    "Assets/Models/Modeling/_Incoming/3stageFlowers/Seed/SeedV2.obj",
+                    "Assets/Models/Modeling/_Incoming/3stageFlowers/Seed/SeedV3.obj",
+                    "Assets/Models/Modeling/_Incoming/Seeds/lightBrownSeed.fbx",
+                    "Assets/Models/Modeling/_Incoming/Seeds/brownSeed.fbx",
+                    "Assets/Models/Modeling/_Incoming/Seeds/bean.fbx",
+                    "Assets/Models/Modeling/_Incoming/Seeds/longSeed.fbx"
+                );
+            }
+
+            // Intentionally do not auto-assign branch/torch pickups for strict "models only" list.
+            if (firePickupPrefabs == null || firePickupPrefabs.Length == 0)
+                firePickupPrefabs = null;
+            firePickupPrefab = null;
+#endif
+        }
+
+        private static int ResolveSeedVariantIndexForPrefab(GameObject prefab, int fallbackSeed)
+        {
+            string n = (prefab != null && !string.IsNullOrEmpty(prefab.name))
+                ? prefab.name.ToLowerInvariant()
+                : string.Empty;
+
+            // Requested mappings:
+            // SeedV1 -> 0, SeedV2 -> 1, SeedV3 -> 2, seed1 -> 3.
+            if (n.Contains("seedv1")) return 0;
+            if (n.Contains("seedv2")) return 1;
+            if (n.Contains("seedv3")) return 2;
+            if (n.Contains("seed1")) return 3;
+
+            // Fallback for older seed names from Seeds folder.
+            if (n.Contains("bean")) return 2;
+            if (n.Contains("longseed") || n.Contains("long_seed")) return 1;
+            if (n.Contains("brownseed") || n.Contains("lightbrownseed")) return 0;
+
+            return Mathf.Abs(fallbackSeed) % 4;
+        }
+
+        private void SnapBottomToGround(GameObject go, Vector3 aroundPos)
+        {
+            if (go == null)
+                return;
+
+            if (!TryGetBottomY(go, out float bottomY))
+                return;
+
+            float targetGroundY = aroundPos.y;
+            Vector3 probeOrigin = new Vector3(aroundPos.x, aroundPos.y + Mathf.Max(0.1f, groundSnapProbeHeight), aroundPos.z);
+            float probeDist = Mathf.Max(0.5f, groundSnapProbeDistance);
+            if (Physics.Raycast(probeOrigin, Vector3.down, out var hit, probeDist, ~0, QueryTriggerInteraction.Ignore))
+                targetGroundY = hit.point.y;
+
+            float targetBottom = targetGroundY + Mathf.Max(0f, groundClearance);
+            float dy = targetBottom - bottomY;
+            if (!Mathf.Approximately(dy, 0f))
+                go.transform.position += Vector3.up * dy;
+        }
+
+        private static bool TryGetBottomY(GameObject go, out float bottomY)
+        {
+            bottomY = 0f;
+            if (go == null)
+                return false;
+
+            var renderers = go.GetComponentsInChildren<Renderer>(includeInactive: true);
+            bool has = false;
+            Bounds b = new Bounds();
+            for (int i = 0; i < renderers.Length; i++)
+            {
+                var r = renderers[i];
+                if (r == null) continue;
+                if (!has)
+                {
+                    b = r.bounds;
+                    has = true;
+                }
+                else
+                {
+                    b.Encapsulate(r.bounds);
+                }
+            }
+
+            if (!has)
+            {
+                var cols = go.GetComponentsInChildren<Collider>(includeInactive: true);
+                for (int i = 0; i < cols.Length; i++)
+                {
+                    var c = cols[i];
+                    if (c == null) continue;
+                    if (!has)
+                    {
+                        b = c.bounds;
+                        has = true;
+                    }
+                    else
+                    {
+                        b.Encapsulate(c.bounds);
+                    }
+                }
+            }
+
+            if (!has)
+                return false;
+
+            bottomY = b.min.y;
+            return true;
+        }
+
+        private static GameObject[] LoadPrefabArray(params string[] paths)
+        {
+#if UNITY_EDITOR
+            var list = new System.Collections.Generic.List<GameObject>(paths != null ? paths.Length : 0);
+            if (paths != null)
+            {
+                for (int i = 0; i < paths.Length; i++)
+                {
+                    var p = paths[i];
+                    if (string.IsNullOrEmpty(p)) continue;
+                    var g = AssetDatabase.LoadAssetAtPath<GameObject>(p);
+                    if (g != null) list.Add(g);
+                }
+            }
+            return list.ToArray();
+#else
+            return null;
+#endif
         }
 
         private static Vector3 DefaultShapeScale(PrimitiveType type)
