@@ -29,7 +29,7 @@ Shader "SCoL/StylizedAnimatedWater"
             Name "ForwardLit"
             Blend SrcAlpha OneMinusSrcAlpha
             ZWrite Off
-            Cull Off
+            Cull Off // Reverted to Cull Off: The Voxel mesh generation culls top faces if set to Back
 
             HLSLPROGRAM
             #pragma vertex vert
@@ -41,19 +41,16 @@ Shader "SCoL/StylizedAnimatedWater"
             struct Attributes
             {
                 float4 positionOS : POSITION;
-                float2 uv : TEXCOORD0;
+                float3 normalOS : NORMAL;
             };
 
             struct Varyings
             {
                 float4 positionHCS : SV_POSITION;
                 float3 positionWS : TEXCOORD0;
-                float2 uv : TEXCOORD1;
+                float3 normalWS : TEXCOORD1;
                 float3 viewDirWS : TEXCOORD2;
             };
-
-            TEXTURE2D(_NormalMap);
-            SAMPLER(sampler_NormalMap);
 
             CBUFFER_START(UnityPerMaterial)
                 float4 _BaseColor;
@@ -71,53 +68,112 @@ Shader "SCoL/StylizedAnimatedWater"
             Varyings vert(Attributes IN)
             {
                 Varyings OUT;
-                VertexPositionInputs pos = GetVertexPositionInputs(IN.positionOS.xyz);
-                OUT.positionHCS = pos.positionCS;
-                OUT.positionWS = pos.positionWS;
-                OUT.uv = IN.uv;
-                OUT.viewDirWS = GetWorldSpaceNormalizeViewDir(pos.positionWS);
+                
+                // --- Vertex Displacement (Physical Waves) ---
+                // Convert to world space first so chunks seamlessly match each other
+                float3 worldPos = TransformObjectToWorld(IN.positionOS.xyz);
+                
+                float time = _Time.y * 1.2f;
+                // Two overlapping waves for organic, non-repeating vertical movement
+                float waveA = sin(worldPos.x * 0.6f + time) * cos(worldPos.z * 0.45f + time * 0.8f);
+                float waveB = sin(worldPos.x * 0.85f - time * 0.7f) * cos(worldPos.z * 0.75f + time * 1.1f);
+                
+                // Lift Y-axis by amplitude (approx 0.25 meters total variance, reduced by half)
+                worldPos.y += (waveA + waveB) * 0.125f;
+                
+                // Finalize passing displaced positions to fragment shader
+                OUT.positionHCS = TransformWorldToHClip(worldPos);
+                OUT.positionWS = worldPos;
+                
+                VertexNormalInputs norm = GetVertexNormalInputs(IN.normalOS);
+                OUT.normalWS = norm.normalWS;
+                OUT.viewDirWS = GetWorldSpaceNormalizeViewDir(worldPos);
+                
                 return OUT;
             }
 
-            half3 SampleAnimatedNormal(float2 uv, float3 worldPos)
-            {
-                float2 flowUV = worldPos.xz * _NormalTiling + uv * 0.15;
-                float2 uvA = flowUV + _Time.y * _ScrollA.xy;
-                float2 uvB = flowUV + _Time.y * _ScrollB.xy;
-
-                half3 nA = UnpackNormalScale(SAMPLE_TEXTURE2D(_NormalMap, sampler_NormalMap, uvA), _NormalStrength);
-                half3 nB = UnpackNormalScale(SAMPLE_TEXTURE2D(_NormalMap, sampler_NormalMap, uvB), _NormalStrength);
-
-                half3 n = normalize(half3(nA.xy + nB.xy, nA.z * nB.z));
-                return n;
-            }
+            TEXTURE2D(_NormalMap);
+            SAMPLER(sampler_NormalMap);
 
             half4 frag(Varyings IN) : SV_Target
             {
-                half3 normalWS = SampleAnimatedNormal(IN.uv, IN.positionWS);
+                float time = _Time.y;
+                float2 wPos = IN.positionWS.xz * max(_NormalTiling, 0.05h);
+                
+                // Animate UVs for the flowing effect
+                float2 uvA = wPos + time * _ScrollA.xy;
+                float2 uvB = wPos + time * _ScrollB.xy;
+                
+                // 1. Correctly unpack the Unity Normal Map (Handles DXT5nm compression)
+                // If it was just a flat blue texture, this returns (0,0,1).
+                half3 nA = UnpackNormalScale(SAMPLE_TEXTURE2D(_NormalMap, sampler_NormalMap, uvA), _NormalStrength);
+                half3 nB = UnpackNormalScale(SAMPLE_TEXTURE2D(_NormalMap, sampler_NormalMap, uvB), _NormalStrength);
+                
+                // 2. Procedural Domain Warping (Math Waves)
+                // This ensures the water is ALWAYS moving and organic, even if the normal map is completely missing!
+                float2 mathDistort = float2(
+                    sin(uvA.y * 3.0h) * cos(uvB.x * 2.0h),
+                    cos(uvA.x * 2.5h) * sin(uvB.y * 3.5h)
+                );
+                
+                // Combine texture normals and procedural mathematical normals
+                half2 finalDistort = half2(nA.x + nB.x, nA.y + nB.y) + mathDistort * 0.15h * _NormalStrength;
+                
+                // Apply wobbly distortion to the actual world normal
+                half3 normalWS = normalize(IN.normalWS + half3(finalDistort.x, 0.0h, finalDistort.y));
                 half3 viewDir = normalize(IN.viewDirWS);
+                
                 Light mainLight = GetMainLight();
                 half3 lightDir = normalize(mainLight.direction);
-                half fresnel = pow(saturate(1.0h - dot(viewDir, normalWS)), _FresnelPower);
+                
+                // --- Lighting ---
                 half ndotl = saturate(dot(normalWS, lightDir));
-                half ripple = saturate((normalWS.x + normalWS.y) * 0.5h + 0.5h);
-                half flow = sin(IN.positionWS.x * 0.24h + _Time.y * 2.8h) * 0.5h + 0.5h;
-                flow = lerp(flow, sin(IN.positionWS.z * 0.31h - _Time.y * 1.9h) * 0.5h + 0.5h, 0.5h);
-                half band = sin((IN.positionWS.x + IN.positionWS.z) * 0.42h + _Time.y * 2.2h) * 0.5h + 0.5h;
+                half3 ambient = SampleSH(normalWS);
+                ambient = max(ambient, half3(0.08h, 0.12h, 0.18h)); // Prevent pitch black in shadow
+                
+                half directDiffuse = smoothstep(0.4h, 0.45h, ndotl); // Sharp toon ramp
+                half3 directLightColor = mainLight.color.rgb * directDiffuse;
+                half3 totalLight = ambient + directLightColor;
 
-                half3 color = _BaseColor.rgb;
-                color *= lerp(0.84h, 1.06h, ripple);
-                color *= lerp(1.0h - _FlowContrast, 1.0h + _FlowContrast, flow);
-                color += band * 0.035h;
-                half directLight = lerp(0.42h, 1.42h, ndotl);
-                half3 lightTint = lerp(half3(1.0h, 1.0h, 1.0h), mainLight.color.rgb, 0.35h);
-                color *= lerp(1.0h, directLight, _LightingStrength);
-                color *= lerp(half3(1.0h, 1.0h, 1.0h), lightTint, _LightingStrength * 0.45h);
-                color += fresnel * _HighlightStrength;
-                color += pow(ndotl, 10.0h) * fresnel * _HighlightStrength * 2.8h * mainLight.color.rgb;
+                // --- Base Color ---
+                half3 finalColor = _BaseColor.rgb * lerp(half3(1.0h, 1.0h, 1.0h), totalLight, _LightingStrength);
 
-                half alpha = saturate(_Opacity * lerp(0.88h, 1.03h, ripple) * lerp(0.92h, 1.06h, band));
-                return half4(color, alpha);
+                // --- Stylized Organic Caustics/Foam Networks ---
+                // We use "Domain Warping", stretching sine waves inside other sine waves to create water ripples instead of dots!
+                float2 foamUV = wPos * 1.5h + finalDistort * 1.8h;
+                
+                float2 q = float2(
+                    sin(foamUV.x + time * 1.2h),
+                    cos(foamUV.y + time * 1.5h)
+                );
+                
+                // The organic network formula (generates interconnected lines, not polka dots)
+                half organicNoise = sin(foamUV.x + q.y * 2.5h) + cos(foamUV.y + q.x * 2.5h); // Range roughly [-2, 2]
+                
+                // Control thickness via FlowContrast
+                half foamLines = smoothstep(0.8h - _FlowContrast * 0.5h, 1.8h, organicNoise);
+                
+                // Harmonize the foam color by making it a brightened version of the base color
+                // This prevents stark contrast against a darker colored lake
+                half3 foamColor = saturate(_BaseColor.rgb * 1.3h + half3(0.05h, 0.1h, 0.15h)) * totalLight;
+                finalColor = lerp(finalColor, foamColor, foamLines * 0.5h);
+
+                // --- Fresnel Edge ---
+                half fresnel = pow(saturate(1.0h - dot(viewDir, normalWS)), _FresnelPower);
+                finalColor += fresnel * ambient * _HighlightStrength * 1.5h;
+
+                // --- Stylized Sun Specular ---
+                half3 halfVector = normalize(lightDir + viewDir);
+                half ndoth = saturate(dot(normalWS, halfVector));
+                half specular = pow(ndoth, 150.0h);
+                specular = smoothstep(0.5h, 0.55h, specular); // Sharp toon cutoff
+                finalColor += specular * _HighlightStrength * 3.0h * mainLight.color.rgb;
+
+                // --- Final Opacity ---
+                // Water becomes opaquer where there are highlights, foam, or edges
+                half alpha = saturate(_Opacity + foamLines * 0.6h + specular + fresnel * 0.4h);
+                
+                return half4(finalColor, alpha);
             }
             ENDHLSL
         }

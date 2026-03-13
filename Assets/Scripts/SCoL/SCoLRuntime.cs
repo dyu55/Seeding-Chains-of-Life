@@ -763,7 +763,7 @@ namespace SCoL
             return Grid != null && Grid.TryWorldToCell(world, out x, out y);
         }
 
-        public void PlaceSeedAt(Vector3 world, int flowerVariantIndex = -1)
+        public void PlaceSeedAt(Vector3 world, int flowerVariantIndex)
         {
             if (!TryWorldToCell(world, out int x, out int y)) return;
 
@@ -811,6 +811,13 @@ namespace SCoL
             _plantRenderer?.RenderNow();
         }
 
+        /// <summary>
+        /// Backward-compatible overload for UnityEvents and standard usage.
+        /// </summary>
+        public void PlaceSeedAt(Vector3 world)
+        {
+            PlaceSeedAt(world, -1);
+        }
         public bool TryDestroyPlantAtCell(int x, int y)
         {
             if (Grid == null || !Grid.InBounds(x, y))

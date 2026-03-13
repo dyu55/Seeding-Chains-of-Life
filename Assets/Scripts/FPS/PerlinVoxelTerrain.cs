@@ -111,6 +111,7 @@ public class PerlinVoxelTerrain : MonoBehaviour
         return m;
     }
 
+    /*
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void EnsureExists()
     {
@@ -120,4 +121,5 @@ public class PerlinVoxelTerrain : MonoBehaviour
         DontDestroyOnLoad(go);
         go.AddComponent<PerlinVoxelTerrain>();
     }
+    */
 }
