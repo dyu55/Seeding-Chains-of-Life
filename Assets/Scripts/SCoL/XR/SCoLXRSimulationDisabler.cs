@@ -1,40 +1,56 @@
+using System.Collections;
 using UnityEngine;
 
 namespace SCoL.XR
 {
     /// <summary>
-    /// Disables the XR Simulation environment layer so grey simulation cubes/planes
-    /// do not appear when running a device build on Meta Quest.
+    /// Destroys XR Device Simulator / AR Foundation Simulation environment objects
+    /// (the grey cubes that appear on Quest builds when SimulationLoader is still active).
     ///
-    /// Attach to any persistent GameObject in the scene (e.g. SCoLRuntime).
-    /// This is a runtime guard for when the XR Simulation loader is still listed in the
-    /// build's XR loader list – the simulation environment renders on Layer 30 by default.
+    /// Runs continuously for the first several seconds after Start so it catches
+    /// objects that are spawned asynchronously by the simulation subsystem.
     /// </summary>
     [DefaultExecutionOrder(-100)]
     public class SCoLXRSimulationDisabler : MonoBehaviour
     {
-        [Tooltip("Layer index used by XR Simulation for its environment. Default = 30.")]
+        [Tooltip("Layer index used by XR Simulation for its environment objects. Default = 30.")]
         public int simulationLayer = 30;
 
-        [Tooltip("Also strip the Simulation layer from all cameras' culling masks.")]
+        [Tooltip("Strip the Simulation layer from all cameras culling masks.")]
         public bool removeFromCamerasCullingMask = true;
 
-        private void Awake()
-        {
-            // Destroy every GameObject on the simulation environment layer immediately
-            DisableSimulationLayerObjects();
+        [Tooltip("How many seconds to keep checking for late-spawned simulation objects.")]
+        public float watchDurationSeconds = 6f;
 
-            // Strip layer from all cameras so even if objects appear later they won't render
-            if (removeFromCamerasCullingMask)
-                StripSimulationLayerFromCameras();
+        [Tooltip("How often (seconds) to re-check while watching.")]
+        public float checkIntervalSeconds = 0.25f;
+
+        private void Start()
+        {
+            // Immediate pass
+            RunCleanup();
+            // Repeat for a few seconds to catch async-spawned objects
+            StartCoroutine(WatchRoutine());
         }
 
-        private void DisableSimulationLayerObjects()
+        private IEnumerator WatchRoutine()
         {
-            // FindObjectsByType works even with DontDestroyOnLoad objects
-            var all = FindObjectsByType<GameObject>(FindObjectsInactive.Include, FindObjectsSortMode.None);
-            int layerMask = 1 << simulationLayer;
+            float elapsed = 0f;
+            while (elapsed < watchDurationSeconds)
+            {
+                yield return new WaitForSeconds(checkIntervalSeconds);
+                elapsed += checkIntervalSeconds;
+                RunCleanup();
+            }
+        }
+
+        private void RunCleanup()
+        {
+            int layerBit = 1 << simulationLayer;
             int killed = 0;
+
+            // Destroy objects on the simulation layer
+            var all = FindObjectsByType<GameObject>(FindObjectsInactive.Include, FindObjectsSortMode.None);
             foreach (var go in all)
             {
                 if (go == null || go == gameObject) continue;
@@ -44,20 +60,21 @@ namespace SCoL.XR
                     killed++;
                 }
             }
-            if (killed > 0)
-                Debug.Log($"[SCoLXRSimulationDisabler] Destroyed {killed} XR Simulation environment object(s) on layer {simulationLayer}.");
-        }
 
-        private void StripSimulationLayerFromCameras()
-        {
-            var cams = FindObjectsByType<Camera>(FindObjectsInactive.Include, FindObjectsSortMode.None);
-            int layerBit = 1 << simulationLayer;
-            foreach (var cam in cams)
+            if (killed > 0)
+                Debug.Log("[SCoLXRSimulationDisabler] Destroyed " + killed +
+                          " XR Simulation object(s) on layer " + simulationLayer + ".");
+
+            // Strip layer from camera culling masks
+            if (removeFromCamerasCullingMask)
             {
-                if ((cam.cullingMask & layerBit) != 0)
+                var cams = FindObjectsByType<Camera>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+                foreach (var cam in cams)
                 {
-                    cam.cullingMask &= ~layerBit;
-                    Debug.Log($"[SCoLXRSimulationDisabler] Stripped simulation layer from camera: {cam.name}");
+                    if ((cam.cullingMask & layerBit) != 0)
+                    {
+                        cam.cullingMask &= ~layerBit;
+                    }
                 }
             }
         }
