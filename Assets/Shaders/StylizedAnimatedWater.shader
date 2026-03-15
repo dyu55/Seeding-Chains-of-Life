@@ -42,6 +42,7 @@ Shader "SCoL/StylizedAnimatedWater"
             {
                 float4 positionOS : POSITION;
                 float3 normalOS : NORMAL;
+                UNITY_VERTEX_INPUT_INSTANCE_ID
             };
 
             struct Varyings
@@ -50,6 +51,8 @@ Shader "SCoL/StylizedAnimatedWater"
                 float3 positionWS : TEXCOORD0;
                 float3 normalWS : TEXCOORD1;
                 float3 viewDirWS : TEXCOORD2;
+                UNITY_VERTEX_INPUT_INSTANCE_ID
+                UNITY_VERTEX_OUTPUT_STEREO
             };
 
             CBUFFER_START(UnityPerMaterial)
@@ -68,6 +71,9 @@ Shader "SCoL/StylizedAnimatedWater"
             Varyings vert(Attributes IN)
             {
                 Varyings OUT;
+                UNITY_SETUP_INSTANCE_ID(IN);
+                UNITY_TRANSFER_INSTANCE_ID(IN, OUT);
+                UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(OUT);
                 
                 // --- Vertex Displacement (Physical Waves) ---
                 // Convert to world space first so chunks seamlessly match each other
@@ -97,6 +103,9 @@ Shader "SCoL/StylizedAnimatedWater"
 
             half4 frag(Varyings IN) : SV_Target
             {
+                UNITY_SETUP_INSTANCE_ID(IN);
+                UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(IN);
+                
                 float time = _Time.y;
                 float2 wPos = IN.positionWS.xz * max(_NormalTiling, 0.05h);
                 

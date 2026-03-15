@@ -1221,8 +1221,9 @@ namespace SCoL
 
             // XR Origin position is typically the tracking-space "floor"; camera height comes from a child offset.
             // Put the floor slightly above the surface to avoid starting inside the collider.
-            // Spawn a bit higher so the CharacterController/Rigidbody has time to settle onto the collider.
-            Vector3 snapped = _voxelWorld.OriginWorld + new Vector3(x + 0.5f, surfaceY + 1.75f, z + 0.5f);
+            // For VR, we don't need the 1.75f height (which was for the FPS capsule center), the XR Floor is 0.
+            // Voxel tops are at surfaceY + 1.0f. Spawn at 1.1f to prevent CharacterController from clipping through.
+            Vector3 snapped = _voxelWorld.OriginWorld + new Vector3(x + 0.5f, surfaceY + 1.1f, z + 0.5f);
             xrOrigin.transform.position = snapped;
 
             // Ensure the chunk under the player is active and collidable even with streaming.
