@@ -4,27 +4,33 @@ using UnityEngine.XR;
 namespace SCoL.XR
 {
     /// <summary>
-    /// Spawns XR Controller prefabs from the XRI Starter Assets at runtime.
-    /// Falls back to simple sphere hands if the prefabs are not found.
-    /// Attach this to XR Origin (VR).
+    /// Spawns XR Controller prefabs at runtime.
+    /// Works in both Editor and Device Builds:
+    ///   - First tries inspector-assigned prefabs
+    ///   - Then tries Resources.Load("XR Controller Left" / "XR Controller Right")
+    ///   - Falls back to tracked spheres if nothing found
+    /// Attach to XR Origin (VR).
     /// </summary>
     public class SCoLXRHandsAndPropsSpawner : MonoBehaviour
     {
         public Transform trackingOrigin;
 
-        [Header("Controller Prefabs (auto-loaded from Starter Assets)")]
-        [Tooltip("If set, use this prefab for the left hand. Otherwise auto-loads from Starter Assets path.")]
+        [Header("Controller Prefabs")]
+        [Tooltip("Assign the XR Controller Left prefab directly (drag from Project).")]
         public GameObject leftControllerPrefab;
-        [Tooltip("If set, use this prefab for the right hand. Otherwise auto-loads from Starter Assets path.")]
+        [Tooltip("Assign the XR Controller Right prefab directly (drag from Project).")]
         public GameObject rightControllerPrefab;
 
-        [Header("Fallback Hands")]
-        public float handVisualScale = 0.08f;
+        [Header("Resources Fallback Names")]
+        [Tooltip("Name (without extension) of the left controller prefab inside any Resources folder.")]
+        public string leftResourcesName = "XR Controller Left";
+        [Tooltip("Name (without extension) of the right controller prefab inside any Resources folder.")]
+        public string rightResourcesName = "XR Controller Right";
+
+        [Header("Fallback Hand Sphere")]
+        public float handVisualScale = 0.06f;
 
         private bool _spawned;
-
-        private const string LEFT_PREFAB_PATH = "Assets/Samples/XR Interaction Toolkit/3.3.1/Starter Assets/Prefabs/Controllers/XR Controller Left.prefab";
-        private const string RIGHT_PREFAB_PATH = "Assets/Samples/XR Interaction Toolkit/3.3.1/Starter Assets/Prefabs/Controllers/XR Controller Right.prefab";
 
         private void Awake()
         {
@@ -37,69 +43,86 @@ namespace SCoL.XR
             if (_spawned) return;
             _spawned = true;
 
-            // Ensure the turn provider setup script is on this GameObject
+            // Ensure turn provider is on the rig
             if (GetComponent<SCoLXRTurnSetup>() == null)
                 gameObject.AddComponent<SCoLXRTurnSetup>();
 
-            // Try to find Camera Offset to parent the controllers under
+            // Find the "Camera Offset" child to parent hands under (standard XRI hierarchy)
             Transform cameraOffset = transform.Find("Camera Offset");
             Transform parentTransform = cameraOffset != null ? cameraOffset : transform;
 
-            // Try loading prefabs from Starter Assets if not assigned in inspector
-            if (leftControllerPrefab == null || rightControllerPrefab == null)
-            {
+            // Resolve prefabs: Inspector → Resources folder → fallback sphere
+            ResolveControllerPrefab(ref leftControllerPrefab, leftResourcesName);
+            ResolveControllerPrefab(ref rightControllerPrefab, rightResourcesName);
+
+            SpawnHand("Left", XRNode.LeftHand, leftControllerPrefab, new Color(0.4f, 0.7f, 0.9f), parentTransform);
+            SpawnHand("Right", XRNode.RightHand, rightControllerPrefab, new Color(0.9f, 0.7f, 0.4f), parentTransform);
+        }
+
+        private static void ResolveControllerPrefab(ref GameObject prefab, string resourcesName)
+        {
+            if (prefab != null) return;
+
 #if UNITY_EDITOR
-                if (leftControllerPrefab == null)
-                    leftControllerPrefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>(LEFT_PREFAB_PATH);
-                if (rightControllerPrefab == null)
-                    rightControllerPrefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>(RIGHT_PREFAB_PATH);
+            // In Editor: also try AssetDatabase for convenience
+            if (prefab == null)
+            {
+                var guids = UnityEditor.AssetDatabase.FindAssets(resourcesName + " t:Prefab");
+                foreach (var guid in guids)
+                {
+                    var path = UnityEditor.AssetDatabase.GUIDToAssetPath(guid);
+                    if (path.EndsWith(resourcesName + ".prefab"))
+                    {
+                        prefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>(path);
+                        if (prefab != null) return;
+                    }
+                }
+            }
 #endif
-            }
+            // Always try Resources.Load (works in builds too)
+            if (prefab == null && !string.IsNullOrEmpty(resourcesName))
+                prefab = Resources.Load<GameObject>(resourcesName);
+        }
 
-            // Spawn real controller prefabs if available
-            if (leftControllerPrefab != null)
+        private void SpawnHand(string side, XRNode node, GameObject prefab, Color fallbackColor, Transform parent)
+        {
+            if (prefab != null)
             {
-                var leftGO = Instantiate(leftControllerPrefab, parentTransform);
-                leftGO.name = "XR Controller Left";
-                leftGO.transform.localPosition = Vector3.zero;
-                leftGO.transform.localRotation = Quaternion.identity;
-                Debug.Log("[SCoLXRHandsAndPropsSpawner] Spawned XR Controller Left from Starter Assets prefab.");
+                var go = Instantiate(prefab, parent);
+                go.name = $"XR Controller {side}";
+                go.transform.localPosition = Vector3.zero;
+                go.transform.localRotation = Quaternion.identity;
+                Debug.Log($"[SCoLXRHandsAndPropsSpawner] Spawned XR Controller {side} from prefab.");
             }
             else
             {
-                // Fallback: spawn a tracked sphere
-                SpawnFallbackHand("LeftHand", XRNode.LeftHand, new Color(0.4f, 0.7f, 0.9f), parentTransform);
-                Debug.LogWarning("[SCoLXRHandsAndPropsSpawner] Left controller prefab not found, using fallback sphere.");
-            }
-
-            if (rightControllerPrefab != null)
-            {
-                var rightGO = Instantiate(rightControllerPrefab, parentTransform);
-                rightGO.name = "XR Controller Right";
-                rightGO.transform.localPosition = Vector3.zero;
-                rightGO.transform.localRotation = Quaternion.identity;
-                Debug.Log("[SCoLXRHandsAndPropsSpawner] Spawned XR Controller Right from Starter Assets prefab.");
-            }
-            else
-            {
-                SpawnFallbackHand("RightHand", XRNode.RightHand, new Color(0.9f, 0.7f, 0.4f), parentTransform);
-                Debug.LogWarning("[SCoLXRHandsAndPropsSpawner] Right controller prefab not found, using fallback sphere.");
+                SpawnFallbackHand(side, node, fallbackColor, parent);
+                Debug.LogWarning($"[SCoLXRHandsAndPropsSpawner] {side} controller prefab not found – using fallback sphere. " +
+                                 $"Add '{side == "Left" ? leftResourcesName : rightResourcesName}.prefab' to a Resources folder.");
             }
         }
 
-        private void SpawnFallbackHand(string name, XRNode node, Color color, Transform parent)
+        private void SpawnFallbackHand(string side, XRNode node, Color color, Transform parent)
         {
             var go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            go.name = name;
+            go.name = $"{side}Hand_Fallback";
             go.transform.SetParent(parent, false);
             go.transform.localScale = Vector3.one * handVisualScale;
 
+            // Assign a visible color
             var r = go.GetComponent<Renderer>();
-            if (r != null) r.material.color = color;
+            if (r != null)
+            {
+                // Use a new material instance so we don't share across fallbacks
+                r.material = new Material(r.sharedMaterial);
+                r.material.color = color;
+            }
 
+            // No physics collision needed for the hand visual
             var col = go.GetComponent<SphereCollider>();
-            col.isTrigger = true;
+            if (col != null) col.isTrigger = true;
 
+            // Add the grabber for interaction; trackingOrigin is the XR origin transform
             var grabber = go.AddComponent<SCoLHandGrabber>();
             grabber.hand = node;
             grabber.trackingOrigin = trackingOrigin;

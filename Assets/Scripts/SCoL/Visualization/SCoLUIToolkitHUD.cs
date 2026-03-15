@@ -1,6 +1,8 @@
 using System.Text;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.XR;
 using SCoL.Inventory;
 #if UNITY_EDITOR
 using UnityEditor;
@@ -21,6 +23,16 @@ namespace SCoL.Visualization
         public LayerMask hitMask = ~0;
         public bool visible = true;
         [Min(0.02f)] public float updateInterval = 0.10f;
+
+        [Header("VR / World-Space HUD")]
+        [Tooltip("When XR is active, switch the canvas to World Space so it renders inside the headset.")]
+        public bool useWorldSpaceInXR = true;
+        [Tooltip("Distance in front of the camera for the world-space HUD panel (metres).")]
+        [Range(0.3f, 3f)] public float vrHudDistance = 1.2f;
+        [Tooltip("Scale of the world-space canvas (metres per canvas unit). Smaller = larger on screen.")]
+        [Range(0.0002f, 0.003f)] public float vrHudScale = 0.0009f;
+        [Tooltip("Offset from camera centre: +x right, +y up (metres).")]
+        public Vector2 vrHudOffset = new Vector2(0f, 0f);
 
         [Header("SimpleUIKit")]
         public bool useSimpleUIKitPanelPrefabs = true;
@@ -101,6 +113,7 @@ namespace SCoL.Visualization
             DisableLegacyHudObjects();
 
             EnsureUI();
+            EnsureCanvasMode();
         }
 
         private void Update()
@@ -109,6 +122,9 @@ namespace SCoL.Visualization
                 EnsureUI();
             if (_canvas == null)
                 return;
+
+            // Keep canvas mode in sync (XR may come online after Awake)
+            EnsureCanvasMode();
 
             _canvas.enabled = visible;
             if (!visible)
@@ -134,6 +150,98 @@ namespace SCoL.Visualization
             UpdateHealth();
         }
 
+        // ──────────────────────────────────────────────────────────────────────
+        // VR Canvas Mode Management
+        // ──────────────────────────────────────────────────────────────────────
+
+        private bool IsXRActive()
+        {
+            if (XRSettings.isDeviceActive) return true;
+
+            // Controller check
+            var l = InputDevices.GetDeviceAtXRNode(XRNode.LeftHand);
+            var r = InputDevices.GetDeviceAtXRNode(XRNode.RightHand);
+            if (l.isValid || r.isValid) return true;
+
+            // XR display subsystem check
+            var displays = new List<XRDisplaySubsystem>();
+            SubsystemManager.GetSubsystems(displays);
+            foreach (var d in displays)
+                if (d.running) return true;
+
+            // XROrigin present check
+            var xrOrigin = FindFirstObjectByType<Unity.XR.CoreUtils.XROrigin>();
+            if (xrOrigin != null && xrOrigin.Camera != null) return true;
+
+            return false;
+        }
+
+        private bool _wasXRActive;
+
+        private void EnsureCanvasMode()
+        {
+            if (_canvas == null) return;
+            if (cameraSource == null) cameraSource = Camera.main;
+
+            bool xrActive = useWorldSpaceInXR && IsXRActive();
+
+            if (xrActive)
+            {
+                if (_canvas.renderMode != RenderMode.WorldSpace)
+                {
+                    _canvas.renderMode = RenderMode.WorldSpace;
+                    _canvas.worldCamera = cameraSource;
+                    // Give the canvas a size that makes sense in world-space
+                    if (_root != null)
+                        _root.sizeDelta = new Vector2(2000f, 1200f);
+                    Debug.Log("[SCoLUIToolkitHUD] Switched to WorldSpace canvas for VR.");
+                }
+
+                // Each frame: billboard & position in front of camera
+                PositionVRCanvas();
+            }
+            else
+            {
+                if (_canvas.renderMode != RenderMode.ScreenSpaceOverlay)
+                {
+                    _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+                    _canvas.sortingOrder = short.MaxValue - 2;
+                    if (_root != null)
+                    {
+                        _root.anchorMin = Vector2.zero;
+                        _root.anchorMax = Vector2.one;
+                        _root.offsetMin = Vector2.zero;
+                        _root.offsetMax = Vector2.zero;
+                    }
+                }
+            }
+
+            _wasXRActive = xrActive;
+        }
+
+        private void PositionVRCanvas()
+        {
+            if (cameraSource == null) return;
+            if (_canvas == null) return;
+
+            var camT = cameraSource.transform;
+
+            // Scale so the canvas is readable at the chosen distance
+            _canvas.transform.localScale = Vector3.one * vrHudScale;
+
+            // Position: directly in front of camera with optional offset
+            Vector3 pos = camT.position
+                + camT.forward * vrHudDistance
+                + camT.right   * vrHudOffset.x
+                + camT.up      * vrHudOffset.y;
+            _canvas.transform.position = pos;
+
+            // Billboard: face the camera
+            _canvas.transform.rotation = Quaternion.LookRotation(
+                pos - camT.position,
+                camT.up);
+        }
+
         private void EnsureUI()
         {
             if (_canvas != null && _root != null)
@@ -145,6 +253,7 @@ namespace SCoL.Visualization
             canvasGO.transform.SetParent(transform, worldPositionStays: false);
 
             _canvas = canvasGO.GetComponent<Canvas>();
+            // Start as overlay; EnsureCanvasMode will switch to WorldSpace when XR is active
             _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
             _canvas.sortingOrder = short.MaxValue - 2;
             _canvas.pixelPerfect = false;

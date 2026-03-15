@@ -145,7 +145,13 @@ namespace SCoL
             var fpsCrosshair = FindFirstObjectByType<FPSCrosshair>();
             if (fpsCrosshair != null)
                 fpsCrosshair.enabled = false;
+
+            // Kill XR Simulation environment objects (grey cubes from XR Device Simulator)
+            // that appear when SimulationLoader is still in the XR loader list.
+            if (GetComponent<SCoL.XR.SCoLXRSimulationDisabler>() == null)
+                gameObject.AddComponent<SCoL.XR.SCoLXRSimulationDisabler>();
         }
+
 
         private void EnsureUnderwaterEffect()
         {
