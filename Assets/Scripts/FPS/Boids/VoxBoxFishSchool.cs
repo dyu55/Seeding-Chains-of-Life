@@ -34,6 +34,8 @@ public class VoxBoxFishSchool : MonoBehaviour
     public bool tagAsHarvestable = false;
     public string harvestableTag = "Harvestable";
     public bool disableFishColliders = true;
+    [Tooltip("If true, auto-replace legacy VoxBox fish prefab with local goldfish model for lake spawning.")]
+    public bool preferGoldfishModel = true;
 
     [Header("Debug")]
     public bool logSpawnInfo = false;
@@ -345,9 +347,32 @@ public class VoxBoxFishSchool : MonoBehaviour
 
     private void TryAutoAssignFishPrefab()
     {
-        if (fishPrefab != null) return;
+        if (!preferGoldfishModel && fishPrefab != null) return;
 #if UNITY_EDITOR
-        fishPrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/VoxBox/Prefabs/Sea Creatures/Fish.prefab");
+        bool shouldAssignGoldfish = fishPrefab == null;
+        if (!shouldAssignGoldfish && preferGoldfishModel)
+        {
+            string n = fishPrefab.name != null ? fishPrefab.name.ToLowerInvariant() : string.Empty;
+            string p = AssetDatabase.GetAssetPath(fishPrefab);
+            string lp = string.IsNullOrEmpty(p) ? string.Empty : p.ToLowerInvariant();
+            shouldAssignGoldfish =
+                n == "fish" ||
+                n.Contains("voxbox") ||
+                lp.Contains("/voxbox/");
+        }
+
+        if (shouldAssignGoldfish)
+        {
+            var goldfish = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Models/Modeling/_Incoming/goldfish/goldfish.obj");
+            if (goldfish != null)
+            {
+                fishPrefab = goldfish;
+                return;
+            }
+        }
+
+        if (fishPrefab == null)
+            fishPrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/VoxBox/Prefabs/Sea Creatures/Fish.prefab");
 #endif
     }
 

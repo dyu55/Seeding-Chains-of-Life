@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using SCoL.Voxels;
 using SCoL.Visualization;
+using SCoL.Weather;
 using Unity.XR.CoreUtils;
 
 namespace SCoL
@@ -39,19 +40,21 @@ namespace SCoL
         [Tooltip("Multiplier for flower/plant spread birth rate. 0.5 means half spread speed.")]
         [Range(0f, 1f)] public float flowerSpreadMultiplier = 0.5f;
         [Tooltip("Deterministic age threshold (seconds) for each tree promotion stage.")]
-        [Min(0.5f)] public float secondsPerTreeStage = 3f;
+        [Min(0.5f)] public float secondsPerTreeStage = 7f;
         [Tooltip("If true, watering can accelerate plant growth progression.")]
-        public bool waterCanAccelerateGrowth = false;
+        public bool waterCanAccelerateGrowth = true;
         [Tooltip("When water is applied, add this many growth-age seconds to nearby plants.")]
-        [Min(0f)] public float waterGrowthAgeBoostSeconds = 3f;
+        [Min(0f)] public float waterGrowthAgeBoostSeconds = 5f;
         [Tooltip("When water is applied, boost plant success (0..1) to accelerate growth checks.")]
         [Range(0f, 1f)] public float waterGrowthSuccessBoost = 0.35f;
         [Tooltip("If true, watering promotes planted flowers one stage at a time (Stage1->Stage2->Stage3).")]
-        public bool waterPromotesFlowerStages = true;
+        public bool waterPromotesFlowerStages = false;
         [Tooltip("If true, only player-seeded lineage plants can be promoted by watering.")]
         public bool waterPromotionOnlyForPlayerLineage = true;
         [Tooltip("If true, watering stops at Stage3 (MediumTree) and will not promote to LargeTree.")]
         public bool waterPromotionClampToStage3 = true;
+        [Tooltip("If true, seed-grown plants stop at final flower stage (MediumTree) and never promote to LargeTree.")]
+        public bool stopSeedGrowthAtFinalFlower = true;
 
         [Header("Lineage CA")]
         [Tooltip("If true, only plants seeded by player (and descendants) can spread via CA.")]
@@ -109,6 +112,9 @@ namespace SCoL
         }
 
         private System.Random _rng;
+        private WeatherSystem _weatherSystem;
+        private SeasonSkyboxController _seasonSkybox;
+        private float _nextSeasonProbeAt;
         private float _windDirectionTimer;
         private Vector2Int _windDirection = new Vector2Int(1, 0);
         private static readonly Vector2Int[] WindDirections8 =
@@ -386,6 +392,27 @@ namespace SCoL
             }
         }
 
+        private bool IsWinterSeasonActive()
+        {
+            if (Time.time >= _nextSeasonProbeAt)
+            {
+                if (_weatherSystem == null || !_weatherSystem.isActiveAndEnabled)
+                    _weatherSystem = FindFirstObjectByType<WeatherSystem>();
+
+                if (_weatherSystem != null && _weatherSystem.seasonSource != null)
+                    _seasonSkybox = _weatherSystem.seasonSource;
+                else if (_seasonSkybox == null || !_seasonSkybox.isActiveAndEnabled)
+                    _seasonSkybox = FindFirstObjectByType<SeasonSkyboxController>();
+
+                _nextSeasonProbeAt = Time.time + 1f;
+            }
+
+            if (_seasonSkybox != null)
+                return _seasonSkybox.GetCurrentSeason() == SeasonSkyboxController.Season.Winter;
+
+            return CurrentSeason == Season.Winter;
+        }
+
         private void ApplyDiffusion(CellState[] next)
         {
             int w = Grid.Width;
@@ -462,12 +489,7 @@ namespace SCoL
                             dst.Sunlight -= Config.cloudySunPenalty;
                             break;
                         case WeatherType.Lightning:
-                            // rare ignition
-                            if (_rng.NextDouble() < 0.002)
-                            {
-                                dst.IsOnFire = true;
-                                dst.FireFuel = Mathf.Max(dst.FireFuel, 0.8f);
-                            }
+                            // Thunder plant scorching is handled by FPS interaction (ScorchRandomPlants).
                             break;
                         case WeatherType.Wind:
                             // wind: minor drying
@@ -492,6 +514,7 @@ namespace SCoL
                 {
                     n.PlantStage = PlantStage.Burnt;
                     n.Durability = 0.0f;
+                    n.BurntAutoClearSeconds = 0f;
                 }
                 return;
             }
@@ -521,17 +544,37 @@ namespace SCoL
 
         private void StepGrowth(int x, int y, CellState cur, CellState n)
         {
-            bool pauseForWinter = pausePlantGrowthInWinter && CurrentSeason == Season.Winter;
+            bool pauseForWinter = pausePlantGrowthInWinter && IsWinterSeasonActive();
 
             // if burnt, slowly recover success
             if (cur.PlantStage == PlantStage.Burnt)
             {
+                if (cur.BurntAutoClearSeconds > 0f)
+                {
+                    float remain = Mathf.Max(0f, cur.BurntAutoClearSeconds - Mathf.Max(0.01f, Config.tickSeconds));
+                    n.BurntAutoClearSeconds = remain;
+                    n.PlantAgeSeconds = 0f;
+                    n.Success = cur.Success;
+                    n.IsPlayerSeedLineage = cur.IsPlayerSeedLineage;
+                    n.FlowerVariantIndex = cur.FlowerVariantIndex;
+                    if (remain <= 0f)
+                    {
+                        n.PlantStage = PlantStage.Empty;
+                        n.IsOnFire = false;
+                        n.FireFuel = 0f;
+                        n.IsPlayerSeedLineage = false;
+                        n.FlowerVariantIndex = -1;
+                    }
+                    return;
+                }
+
                 if (pauseForWinter)
                 {
                     n.PlantAgeSeconds = cur.PlantAgeSeconds;
                     n.Success = cur.Success;
                     n.IsPlayerSeedLineage = cur.IsPlayerSeedLineage;
                     n.FlowerVariantIndex = cur.FlowerVariantIndex;
+                    n.BurntAutoClearSeconds = 0f;
                     return;
                 }
 
@@ -539,6 +582,7 @@ namespace SCoL
                 n.Success = Mathf.Clamp01(cur.Success + 0.01f);
                 n.IsPlayerSeedLineage = cur.IsPlayerSeedLineage;
                 n.FlowerVariantIndex = cur.FlowerVariantIndex;
+                n.BurntAutoClearSeconds = 0f;
                 return;
             }
 
@@ -551,6 +595,7 @@ namespace SCoL
                 n.FireFuel = 0f;
                 n.IsPlayerSeedLineage = false;
                 n.FlowerVariantIndex = -1;
+                n.BurntAutoClearSeconds = 0f;
                 n.Success = Mathf.Clamp01(cur.Success - 0.05f);
                 return;
             }
@@ -562,12 +607,14 @@ namespace SCoL
                     n.PlantAgeSeconds = 0f;
                     n.IsPlayerSeedLineage = false;
                     n.FlowerVariantIndex = -1;
+                    n.BurntAutoClearSeconds = 0f;
                 }
                 else
                 {
                     n.PlantAgeSeconds = cur.PlantAgeSeconds;
                     n.IsPlayerSeedLineage = cur.IsPlayerSeedLineage;
                     n.FlowerVariantIndex = cur.FlowerVariantIndex;
+                    n.BurntAutoClearSeconds = cur.BurntAutoClearSeconds;
                 }
                 return;
             }
@@ -692,6 +739,7 @@ namespace SCoL
                 n.PlantAgeSeconds = 0f;
                 n.IsPlayerSeedLineage = false;
                 n.FlowerVariantIndex = -1;
+                n.BurntAutoClearSeconds = 0f;
                 return;
             }
 
@@ -710,6 +758,7 @@ namespace SCoL
                     n.FireFuel = 0f;
                     n.IsPlayerSeedLineage = false;
                     n.FlowerVariantIndex = -1;
+                    n.BurntAutoClearSeconds = 0f;
                     return;
                 }
 
@@ -728,6 +777,8 @@ namespace SCoL
             {
                 n.Durability = Mathf.Clamp01(cur.Durability - 0.02f);
                 n.Success = Mathf.Clamp01(cur.Success - 0.03f);
+                if (cur.IsPlayerSeedLineage)
+                    PromotePlantByAge(ref n);
                 return;
             }
 
@@ -749,7 +800,8 @@ namespace SCoL
                         if (smallPlants >= 3) n.PlantStage = PlantStage.MediumTree;
                         break;
                     case PlantStage.MediumTree:
-                        if (!ShouldClampFlowerAtFinalStage(cur) && anyPlants >= 3) n.PlantStage = PlantStage.LargeTree;
+                        if (!ShouldClampFlowerAtFinalStage(cur) && !stopSeedGrowthAtFinalFlower && anyPlants >= 3)
+                            n.PlantStage = PlantStage.LargeTree;
                         break;
                 }
             }
@@ -771,6 +823,7 @@ namespace SCoL
 
         public void PlaceSeedAt(Vector3 world, int flowerVariantIndex)
         {
+            if (IsWinterSeasonActive()) return;
             if (!TryWorldToCell(world, out int x, out int y)) return;
 
             var c = Grid.Get(x, y);
@@ -791,6 +844,7 @@ namespace SCoL
             c.WaterVisual = 0f;
             c.IsPlayerSeedLineage = true;
             c.FlowerVariantIndex = flowerVariantIndex >= 0 ? flowerVariantIndex : -1;
+            c.BurntAutoClearSeconds = 0f;
 
             // Give nearby dry cells a small hydration nudge so lineage expansion is visible after seeding.
             for (int dy = -1; dy <= 1; dy++)
@@ -839,7 +893,30 @@ namespace SCoL
             c.FireFuel = 0f;
             c.IsPlayerSeedLineage = false;
             c.FlowerVariantIndex = -1;
+            c.BurntAutoClearSeconds = 0f;
             c.Success = Mathf.Clamp01(c.Success - 0.02f);
+
+            _renderer?.Render(Grid);
+            _plantRenderer?.RenderNow();
+            return true;
+        }
+
+        public bool TryResetPlantToSproutAtCell(int x, int y)
+        {
+            if (Grid == null || !Grid.InBounds(x, y))
+                return false;
+
+            var c = Grid.Get(x, y);
+            if (c == null || !c.HasPlant || c.PlantStage == PlantStage.Burnt)
+                return false;
+
+            c.PlantStage = PlantStage.SmallPlant;
+            c.PlantAgeSeconds = 0f;
+            c.Durability = Mathf.Max(c.Durability, 0.85f);
+            c.Success = Mathf.Max(c.Success, 0.65f);
+            c.IsOnFire = false;
+            c.FireFuel = 0f;
+            c.BurntAutoClearSeconds = 0f;
 
             _renderer?.Render(Grid);
             _plantRenderer?.RenderNow();
@@ -1014,8 +1091,8 @@ namespace SCoL
                 if (!c.HasPlant)
                     continue;
 
-                ScorchCell(x, y);
-                ignited++;
+                if (ScorchCell(x, y))
+                    ignited++;
             }
 
             if (ignited > 0)
@@ -1067,8 +1144,8 @@ namespace SCoL
             for (int i = 0; i < candidates.Count && scorched < limit; i++)
             {
                 var c = candidates[i];
-                ScorchCell(c.x, c.y);
-                scorched++;
+                if (ScorchCell(c.x, c.y))
+                    scorched++;
             }
 
             if (scorched > 0)
@@ -1098,8 +1175,8 @@ namespace SCoL
                 if (!Grid.InBounds(x, y))
                     continue;
 
-                ScorchCell(x, y);
-                scorched++;
+                if (ScorchCell(x, y))
+                    scorched++;
             }
 
             if (scorched > 0)
@@ -1148,7 +1225,7 @@ namespace SCoL
                     c.PlantAgeSeconds = Mathf.Max(c.PlantAgeSeconds, Mathf.Max(0.5f, secondsPerTreeStage) * 2f);
                     break;
                 case PlantStage.MediumTree:
-                    if (!waterPromotionClampToStage3)
+                    if (!waterPromotionClampToStage3 && !stopSeedGrowthAtFinalFlower)
                     {
                         c.PlantStage = PlantStage.LargeTree;
                         c.Success = Mathf.Clamp01(Mathf.Max(c.Success, 0.92f));
@@ -1170,17 +1247,20 @@ namespace SCoL
             }
 
             float step = Mathf.Max(0.5f, secondsPerTreeStage);
+            if (CurrentWeather == WeatherType.Rain)
+                step = Mathf.Max(0.5f, step - 5f);
             float age = Mathf.Max(0f, c.PlantAgeSeconds);
 
-            if (age >= step * 3f)
-            {
-                if (!ShouldClampFlowerAtFinalStage(c))
-                    c.PlantStage = PlantStage.LargeTree;
-            }
-            else if (age >= step * 2f && c.PlantStage < PlantStage.MediumTree)
+            if (age >= step * 2f && c.PlantStage < PlantStage.MediumTree)
                 c.PlantStage = PlantStage.MediumTree;
             else if (age >= step && c.PlantStage < PlantStage.SmallTree)
                 c.PlantStage = PlantStage.SmallTree;
+
+            if (!ShouldClampFlowerAtFinalStage(c) && !stopSeedGrowthAtFinalFlower && age >= step * 3f)
+                c.PlantStage = PlantStage.LargeTree;
+            else if ((stopSeedGrowthAtFinalFlower || ShouldClampFlowerAtFinalStage(c)) &&
+                     c.IsPlayerSeedLineage && c.PlantStage == PlantStage.LargeTree)
+                c.PlantStage = PlantStage.MediumTree;
         }
 
         private static bool ShouldClampFlowerAtFinalStage(CellState c)
@@ -1188,17 +1268,66 @@ namespace SCoL
             return c.FlowerVariantIndex >= 0;
         }
 
-        private void ScorchCell(int x, int y)
+        private bool ScorchCell(int x, int y, float autoClearSeconds = 0f)
         {
             if (Grid == null || !Grid.InBounds(x, y))
-                return;
+                return false;
 
             var c = Grid.Get(x, y);
+            if (!c.HasPlant || c.PlantStage == PlantStage.Burnt)
+                return false;
             c.PlantStage = PlantStage.Burnt;
             c.Durability = 0f;
             c.IsOnFire = false;
             c.FireFuel = 0f;
             c.FlowerVariantIndex = -1;
+            c.BurntAutoClearSeconds = Mathf.Max(0f, autoClearSeconds);
+            c.PlantAgeSeconds = 0f;
+            return true;
+        }
+
+        public int ScorchRandomPlants(int minCount = 1, int maxCount = 5, float autoClearSeconds = 5f)
+        {
+            if (Grid == null)
+                return 0;
+
+            int min = Mathf.Max(1, minCount);
+            int max = Mathf.Max(min, maxCount);
+            var candidates = new List<(int x, int y)>(128);
+
+            for (int y = 0; y < Grid.Height; y++)
+            for (int x = 0; x < Grid.Width; x++)
+            {
+                var c = Grid.Get(x, y);
+                if (c == null || !c.HasPlant || c.PlantStage == PlantStage.Burnt)
+                    continue;
+                candidates.Add((x, y));
+            }
+
+            if (candidates.Count == 0)
+                return 0;
+
+            int target = Mathf.Min(candidates.Count, _rng.Next(min, max + 1));
+            int scorched = 0;
+            for (int i = 0; i < target; i++)
+            {
+                int pick = i + _rng.Next(0, candidates.Count - i);
+                var cell = candidates[pick];
+                candidates[pick] = candidates[i];
+                candidates[i] = cell;
+                if (ScorchCell(cell.x, cell.y, autoClearSeconds))
+                    scorched++;
+            }
+
+            if (scorched > 0)
+            {
+                ViewMode = GridViewMode.Stage;
+                OverlayFire = true;
+                _renderer?.Render(Grid);
+                _plantRenderer?.RenderNow();
+            }
+
+            return scorched;
         }
 
         public void StompAt(Vector3 world, float damage = -1f)

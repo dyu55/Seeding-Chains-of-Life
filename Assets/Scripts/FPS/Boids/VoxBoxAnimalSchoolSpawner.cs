@@ -41,7 +41,7 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
     [Min(0.1f)] public float eatCheckIntervalSeconds = 0.4f;
     [Min(0f)] public float eatCooldownSeconds = 2.2f;
     [Min(0.05f)] public float eatHeadTouchDistance = 0.25f;
-    [Min(0.1f)] public float eatHoldSeconds = 2f;
+    [Min(0.1f)] public float eatHoldSeconds = 3f;
     public FPSBoidAgent.PlantEatAction eatAction = FPSBoidAgent.PlantEatAction.ResetToSprout;
 
     [Header("Debug")]

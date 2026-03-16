@@ -1,6 +1,7 @@
 using UnityEngine;
 using System.Collections.Generic;
 using SCoL.Voxels;
+using SCoL;
 
 /// <summary>
 /// T11: Craig Reynolds boids core agent.
@@ -95,10 +96,12 @@ public class FPSBoidAgent : MonoBehaviour
     [Min(0.1f)] public float eatCheckIntervalSeconds = 0.4f;
     [Min(0f)] public float eatCooldownSeconds = 2.2f;
     [Min(0.05f)] public float eatHeadTouchDistance = 0.25f;
-    [Min(0.1f)] public float eatHoldSeconds = 2f;
+    [Min(0.1f)] public float eatHoldSeconds = 3f;
     public Vector3 eatHeadLocalOffset = new Vector3(0f, 0.22f, 0.28f);
     [Min(0f)] public float eatApproachWeight = 3.2f;
     public PlantEatAction eatAction = PlantEatAction.ResetToSprout;
+    [Tooltip("If true, animals can target CA-rendered mature flowers (no collider required).")]
+    public bool canEatCARuntimePlants = true;
 
     [HideInInspector] public Vector3 velocity;
 
@@ -118,7 +121,11 @@ public class FPSBoidAgent : MonoBehaviour
     float _nextEatCheckAt;
     float _nextEatAllowedAt;
     FPSSeedGrowth _eatTarget;
+    bool _eatTargetIsCA;
+    int _eatTargetCellX;
+    int _eatTargetCellY;
     float _eatHoldTimer;
+    SCoLRuntime _runtime;
 
     void OnEnable()
     {
@@ -144,6 +151,8 @@ public class FPSBoidAgent : MonoBehaviour
         _playerCam = Camera.main;
         if (voxelWorld == null)
             voxelWorld = FindFirstObjectByType<VoxelWorld>();
+        if (_runtime == null)
+            _runtime = FindFirstObjectByType<SCoLRuntime>();
 
         // predators are a bit faster by default
         if (role == BoidRole.Predator)
@@ -295,7 +304,7 @@ public class FPSBoidAgent : MonoBehaviour
         }
         else if (canEatMaturePlants && TryEnsureEatTarget())
         {
-            var targetPos = GetEatTargetPoint(_eatTarget);
+            var targetPos = GetCurrentEatTargetPoint();
             var headPos = GetHeadWorldPosition();
             var toTarget = targetPos - headPos;
             toTarget.y = 0f;
@@ -611,10 +620,14 @@ public class FPSBoidAgent : MonoBehaviour
 
     bool TryEnsureEatTarget()
     {
-        if (_eatTarget != null && IsValidEatTarget(_eatTarget))
+        if (_eatTargetIsCA && IsValidCAEatTarget(_eatTargetCellX, _eatTargetCellY))
+            return true;
+        if (!_eatTargetIsCA && _eatTarget != null && IsValidEatTarget(_eatTarget))
             return true;
 
         _eatTarget = null;
+        _eatTargetIsCA = false;
+        _eatTargetCellX = _eatTargetCellY = -1;
         _eatHoldTimer = 0f;
 
         if (Time.time < _nextEatCheckAt)
@@ -652,10 +665,28 @@ public class FPSBoidAgent : MonoBehaviour
             }
         }
 
-        if (best == null)
+        bool hasLegacy = best != null;
+        int caX = -1;
+        int caY = -1;
+        float caD = float.PositiveInfinity;
+        bool hasCA = canEatCARuntimePlants && TryFindBestCAEatTarget(range, out caX, out caY, out caD);
+
+        if (!hasLegacy && !hasCA)
             return false;
 
-        _eatTarget = best;
+        if (hasLegacy && (!hasCA || bestD <= caD))
+        {
+            _eatTarget = best;
+            _eatTargetIsCA = false;
+            _eatTargetCellX = _eatTargetCellY = -1;
+            _eatHoldTimer = 0f;
+            return true;
+        }
+
+        _eatTarget = null;
+        _eatTargetIsCA = true;
+        _eatTargetCellX = caX;
+        _eatTargetCellY = caY;
         _eatHoldTimer = 0f;
         return true;
     }
@@ -665,7 +696,17 @@ public class FPSBoidAgent : MonoBehaviour
         if (!TryEnsureEatTarget())
             return;
 
-        if (_eatTarget == null || !IsValidEatTarget(_eatTarget))
+        if (_eatTargetIsCA)
+        {
+            if (!IsValidCAEatTarget(_eatTargetCellX, _eatTargetCellY))
+            {
+                _eatTargetIsCA = false;
+                _eatTargetCellX = _eatTargetCellY = -1;
+                _eatHoldTimer = 0f;
+                return;
+            }
+        }
+        else if (_eatTarget == null || !IsValidEatTarget(_eatTarget))
         {
             _eatTarget = null;
             _eatHoldTimer = 0f;
@@ -673,9 +714,24 @@ public class FPSBoidAgent : MonoBehaviour
         }
 
         Vector3 headPos = GetHeadWorldPosition();
-        Vector3 targetPos = GetEatTargetPoint(_eatTarget);
-        float touchDist = Vector3.Distance(headPos, targetPos);
-        if (touchDist <= Mathf.Max(0.05f, eatHeadTouchDistance))
+        Vector3 targetPos = GetCurrentEatTargetPoint();
+        Vector2 headXZ = new Vector2(headPos.x, headPos.z);
+        Vector2 targetXZ = new Vector2(targetPos.x, targetPos.z);
+        float touchDist = Vector2.Distance(headXZ, targetXZ);
+        float touchThreshold = Mathf.Max(0.05f, eatHeadTouchDistance);
+        float settleThreshold = touchThreshold * 1.6f;
+
+        if (touchDist <= settleThreshold)
+        {
+            // Arrival behavior: settle in place near flower head-point to avoid orbit/spin.
+            velocity = Vector3.Lerp(velocity, Vector3.zero, 14f * Time.deltaTime);
+            Vector3 look = targetPos - transform.position;
+            look.y = 0f;
+            if (look.sqrMagnitude > 0.0001f)
+                transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(look.normalized, Vector3.up), 12f * Time.deltaTime);
+        }
+
+        if (touchDist <= touchThreshold)
         {
             // Hold "eating" position for a short duration before applying result.
             _eatHoldTimer += Time.deltaTime;
@@ -683,13 +739,30 @@ public class FPSBoidAgent : MonoBehaviour
 
             if (_eatHoldTimer >= Mathf.Max(0.1f, eatHoldSeconds) && Time.time >= _nextEatAllowedAt)
             {
-                if (eatAction == PlantEatAction.RemovePlant)
-                    Destroy(_eatTarget.gameObject);
+                if (_eatTargetIsCA)
+                {
+                    if (_runtime == null)
+                        _runtime = FindFirstObjectByType<SCoLRuntime>();
+                    if (_runtime != null)
+                    {
+                        if (eatAction == PlantEatAction.RemovePlant)
+                            _runtime.TryDestroyPlantAtCell(_eatTargetCellX, _eatTargetCellY);
+                        else
+                            _runtime.TryResetPlantToSproutAtCell(_eatTargetCellX, _eatTargetCellY);
+                    }
+                }
                 else
-                    _eatTarget.ResetToSprout(clearBurn: true);
+                {
+                    if (eatAction == PlantEatAction.RemovePlant)
+                        Destroy(_eatTarget.gameObject);
+                    else
+                        _eatTarget.ResetToSprout(clearBurn: true);
+                }
 
                 _nextEatAllowedAt = Time.time + Mathf.Max(0f, eatCooldownSeconds);
                 _eatTarget = null;
+                _eatTargetIsCA = false;
+                _eatTargetCellX = _eatTargetCellY = -1;
                 _eatHoldTimer = 0f;
             }
         }
@@ -754,6 +827,80 @@ public class FPSBoidAgent : MonoBehaviour
             if (has) return best;
         }
         return g.transform.position;
+    }
+
+    Vector3 GetCurrentEatTargetPoint()
+    {
+        if (_eatTargetIsCA)
+            return GetCAEatTargetPoint(_eatTargetCellX, _eatTargetCellY);
+        return GetEatTargetPoint(_eatTarget);
+    }
+
+    bool TryFindBestCAEatTarget(float range, out int bestX, out int bestY, out float bestDistSqr)
+    {
+        bestX = bestY = -1;
+        bestDistSqr = float.PositiveInfinity;
+
+        if (_runtime == null)
+            _runtime = FindFirstObjectByType<SCoLRuntime>();
+        if (_runtime == null || _runtime.Grid == null)
+            return false;
+
+        if (!_runtime.TryWorldToCell(transform.position, out int cx, out int cy))
+            return false;
+
+        float cellSize = Mathf.Max(0.01f, _runtime.Grid.CellSize);
+        int cellR = Mathf.Max(1, Mathf.CeilToInt(Mathf.Max(0.1f, range) / cellSize));
+        float rangeSqr = Mathf.Max(0.1f, range) * Mathf.Max(0.1f, range);
+
+        Vector3 head = GetHeadWorldPosition();
+        for (int y = cy - cellR; y <= cy + cellR; y++)
+        for (int x = cx - cellR; x <= cx + cellR; x++)
+        {
+            if (!_runtime.Grid.InBounds(x, y))
+                continue;
+
+            var c = _runtime.Grid.Get(x, y);
+            if (c == null || !c.HasPlant || c.PlantStage == PlantStage.Burnt || c.PlantStage < PlantStage.MediumTree)
+                continue;
+
+            Vector3 p = GetCAEatTargetPoint(x, y);
+            float d = (p - head).sqrMagnitude;
+            if (d > rangeSqr || d >= bestDistSqr)
+                continue;
+
+            bestDistSqr = d;
+            bestX = x;
+            bestY = y;
+        }
+
+        return bestX >= 0 && bestY >= 0;
+    }
+
+    bool IsValidCAEatTarget(int x, int y)
+    {
+        if (_runtime == null)
+            _runtime = FindFirstObjectByType<SCoLRuntime>();
+        if (_runtime == null || _runtime.Grid == null || !_runtime.Grid.InBounds(x, y))
+            return false;
+
+        var c = _runtime.Grid.Get(x, y);
+        if (c == null || !c.HasPlant || c.PlantStage == PlantStage.Burnt)
+            return false;
+        return c.PlantStage >= PlantStage.MediumTree;
+    }
+
+    Vector3 GetCAEatTargetPoint(int x, int y)
+    {
+        if (_runtime == null || _runtime.Grid == null || !_runtime.Grid.InBounds(x, y))
+            return transform.position;
+
+        Vector3 p = _runtime.Grid.CellCenterWorld(x, y);
+        float yWorld = p.y + 0.45f;
+        if (voxelWorld != null && voxelWorld.TryGetTerrainSurfaceYAtWorld(p, out float surfaceY, includeWaterSurface: false))
+            yWorld = surfaceY + 0.55f;
+        p.y = yWorld;
+        return p;
     }
 
     bool IsWaterColumnAtWorld(Vector3 worldPos)
