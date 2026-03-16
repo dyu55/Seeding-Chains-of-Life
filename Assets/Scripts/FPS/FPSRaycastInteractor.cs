@@ -13,7 +13,7 @@ using UnityEditor;
 /// <summary>
 /// FPS mouse interaction: on LMB, raycast from screen center and detect objects tagged "Harvestable"
 /// within a max distance.
-/// 
+///
 /// No XR dependencies.
 /// </summary>
 public class FPSRaycastInteractor : MonoBehaviour
@@ -644,33 +644,7 @@ public class FPSRaycastInteractor : MonoBehaviour
 
     void TryIgniteTargetedPlantDuringThunder()
     {
-        if (!thunderCanIgniteTargetedPlant)
-            return;
-        if (Time.time < _nextThunderTargetCheckAt)
-            return;
-        _nextThunderTargetCheckAt = Time.time + Mathf.Max(0.05f, thunderTargetCheckIntervalSeconds);
-
-        if (_weatherSystem == null || !_weatherSystem.isActiveAndEnabled)
-            _weatherSystem = FindFirstObjectByType<WeatherSystem>();
-        if (_weatherSystem == null || _weatherSystem.CurrentPhase != WeatherPhase.Thunderstorm)
-            return;
-
-        if (!SCoL.Interaction.SCoLInteractionInput.TryGetAimRay(cameraSource, out var ray))
-            return;
-        if (!Physics.Raycast(ray, out var hit, 50f, hitMask, QueryTriggerInteraction.Ignore))
-            return;
-
-        if (Random.value > Mathf.Clamp01(thunderTargetIgniteChance))
-            return;
-
-        if (_runtime == null || !_runtime.isActiveAndEnabled)
-            _runtime = FindFirstObjectByType<SCoLRuntime>();
-        if (_runtime == null)
-            return;
-
-        int scorched = _runtime.ScorchPatchWorld(hit.point, halfExtent: 2);
-        if (logHits && scorched > 0)
-            Debug.Log($"[FPSRaycastInteractor] Thunder scorched patch: {scorched} cells");
+        return;
     }
 
     bool TryHandlePlantDestroyClick(RaycastHit hit)

@@ -43,8 +43,8 @@ public class SimpleFirstPersonController : MonoBehaviour
     [Header("Underwater View")]
     public bool enableUnderwaterView = true;
     [Min(0f)] public float waterlinePadding = 0.05f;
-    [Min(0f)] public float underwaterFogDensity = 0.055f;
-    [Min(5f)] public float underwaterFarClip = 28f;
+    [Min(0f)] public float underwaterFogDensity = 0.095f;
+    [Min(5f)] public float underwaterFarClip = 14f;
     public Color underwaterFogColor = new Color(0.18f, 0.46f, 0.62f, 1f);
 
     [Header("Fail-Safe Spawn Rescue")]

@@ -17,13 +17,13 @@ RenderSettings:
   m_Fog: 1
   m_FogColor: {r: 0.75000304, g: 0.84999084, b: 0.9499847, a: 1}
   m_FogMode: 3
-  m_FogDensity: 0.00328
+  m_FogDensity: 0.004
   m_LinearFogStart: 0
   m_LinearFogEnd: 300
   m_AmbientSkyColor: {r: 0.212, g: 0.227, b: 0.259, a: 1}
   m_AmbientEquatorColor: {r: 0.114, g: 0.125, b: 0.133, a: 1}
   m_AmbientGroundColor: {r: 0.047, g: 0.043, b: 0.035, a: 1}
-  m_AmbientIntensity: 1.2
+  m_AmbientIntensity: 1
   m_AmbientMode: 0
   m_SubtractiveShadowColor: {r: 0.42, g: 0.478, b: 0.627, a: 1}
   m_SkyboxMaterial: {fileID: 2100000, guid: 3734c3c0f29ee478dbf76c2cce3a692a, type: 2}
@@ -35,7 +35,7 @@ RenderSettings:
   m_DefaultReflectionMode: 0
   m_DefaultReflectionResolution: 128
   m_ReflectionBounces: 1
-  m_ReflectionIntensity: 1.13
+  m_ReflectionIntensity: 1
   m_CustomReflection: {fileID: 0}
   m_Sun: {fileID: 0}
   m_UseRadianceAmbientProbe: 0
@@ -262,8 +262,6 @@ MonoBehaviour:
   fireCount: 70
   seedPickupPrefab: {fileID: 0}
   firePickupPrefab: {fileID: 0}
-  seedPickupPrefabs: []
-  firePickupPrefabs: []
   seedVariantTextures: []
   useSeedShapeVariants: 1
   scatterAcrossGrid: 1
@@ -271,13 +269,8 @@ MonoBehaviour:
   radius: 0.8
   yOffset: 0.25
   pickupGlobalScaleMultiplier: 1.35
-  groundSnapProbeHeight: 20
-  groundSnapProbeDistance: 80
-  groundClearance: 0.01
-  seedPickupScaleMultiplier: 0.68
   randomScaleRange: {x: 0.75, y: 1.25}
   maxSpawnAttemptsPerItem: 18
-  modelsOnly: 1
 --- !u!4 &149690701
 Transform:
   m_ObjectHideFlags: 0
@@ -456,15 +449,12 @@ MonoBehaviour:
   voxelWorld: {fileID: 0}
   animalPrefabs:
   - {fileID: 3632003745339279683, guid: ce8121766023134429b1dbdcd2cba052, type: 3}
-  - {fileID: 7005526952333805016, guid: 7e9232d1122d64b4e873b1598e17f5a6, type: 3}
   animalCount: 18
-  enforceMinimumAnimalCount: 1
-  minimumAnimalCount: 24
   spawnOnStart: 1
   maxSpawnAttemptsPerAnimal: 8
   groundOffset: 0.02
   raycastHeight: 120
-  randomScaleRange: {x: 0.21, y: 0.35}
+  randomScaleRange: {x: 0.3, y: 0.5}
   groundMask:
     serializedVersion: 2
     m_Bits: 4294967295
@@ -10608,18 +10598,9 @@ MonoBehaviour:
   m_Name:
   m_EditorClassIdentifier:
   seeds: 30
-  seedV1: 0
-  seedV2: 0
-  seedV3: 0
-  seedType1: 0
   water: 30
   fire: 30
   plants: 30
-  applyMinimumStarterInventoryOnAwake: 1
-  starterSeeds: 10
-  starterWater: 10
-  starterFire: 10
-  starterPlants: 10
   discoveredSeed: 1
   discoveredWater: 1
   discoveredFire: 1
@@ -10642,7 +10623,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!4 &980379204
 Transform:
   m_ObjectHideFlags: 0
@@ -10794,7 +10775,7 @@ Light:
   serializedVersion: 12
   m_Type: 1
   m_Color: {r: 1, g: 0.97996294, b: 0.91994447, a: 1}
-  m_Intensity: 1.1517199
+  m_Intensity: 0.95976657
   m_Range: 10
   m_SpotAngle: 30
   m_InnerSpotAngle: 21.80208
@@ -11035,8 +11016,6 @@ MonoBehaviour:
   cycleDurationSeconds: 20
   setTimeOnStart: 0
   startTime01: 0.5
-  dayHours: 18
-  nightHours: 6
   directionalLight: {fileID: 1058677109}
   sunPitchRange: {x: -90, y: 270}
   sunYaw: 0
@@ -11345,10 +11324,6 @@ MonoBehaviour:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
-  globalBrightnessBoost: 1.2
-  daytimeAmbientFloor: 0.42
-  daytimeSunFloor: 0.95
-  fogDensityGlobalScale: 0.82
   updateEnvironmentGI: 1
   giUpdateIntervalSeconds: 2
 --- !u!4 &1270282487
@@ -11591,7 +11566,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &1420247458
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -16914,7 +16889,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &1981361364
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -16995,7 +16970,7 @@ MonoBehaviour:
     m_ObjectReferenceObject: {fileID: 0}
     m_ManualValue: {x: 0, y: 0}
   m_RightHandMoveInput:
-    m_InputSourceMode: 0
+    m_InputSourceMode: 2
     m_InputAction:
       m_Name: Right Hand Move
       m_Type: 0
@@ -17127,7 +17102,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!4 &9000000002
 Transform:
   m_ObjectHideFlags: 0
@@ -17197,10 +17172,13 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 4294967295
   lockCursor: 1
+  autoTuneCharacterControllerForTerrain: 1
+  terrainSlopeLimit: 68
+  terrainStepOffset: 0.42
   enableUnderwaterView: 1
   waterlinePadding: 0.05
-  underwaterFogDensity: 0.095
-  underwaterFarClip: 14
+  underwaterFogDensity: 0.055
+  underwaterFarClip: 28
   underwaterFogColor: {r: 0.18, g: 0.46, b: 0.62, a: 1}
   rescueBelowWorldOffset: 4
   rescueHeightOffset: 1.25
@@ -17265,22 +17243,6 @@ MonoBehaviour:
   surfaceOffset: 0.01
   waterSpreadColor: {r: 0.18, g: 0.45, b: 0.95, a: 0.95}
   fireSpreadColor: {r: 0.95, g: 0.18, b: 0.14, a: 0.95}
-  useCircularSpreadPattern: 1
-  waterSpreadJitter: 0.16
-  useSoftDecalSpreadVisuals: 1
-  suppressTempSpreadVisualsOnLowPoly: 0
-  spreadVisualInnerRadius: 0.2
-  spreadVisualEdgeSoftness: 0.3
-  waterSpreadVisualScale: 1.15
-  fireSpreadVisualScale: 1
-  spreadVisualLift: 0.02
-  firePlacePrefabs: []
-  firePlacePrefabScale: 0.9
-  firePlacePrefabSizeMultiplier: 10
-  autoPlayFireModelAnimation: 1
-  firePlaceAnimationClips: []
-  firePlaceV1AnimationClips: []
-  firePlaceV2AnimationClips: []
   useImportedPlantStageModels: 1
   sproutStagePrefab: {fileID: 0}
   smallStagePrefab: {fileID: 0}
@@ -17292,7 +17254,6 @@ MonoBehaviour:
   fireCanDestroyPlants: 0
   fireDestroyChance: 0.5
   fireDestroyDelaySeconds: 0.25
-  fireBurnToBlackDelaySeconds: 2.5
   fireBurnRadiusScale: 0.25
   fireExtinguishRadius: 2
   animalsFollowWhenPlantToolSelected: 1
@@ -17338,8 +17299,6 @@ MonoBehaviour:
   retrySeconds: 4
   forceEnableRenderRadiusChunks: 1
   forceEnableColliderRadiusChunks: 2
-  settleChecks: 8
-  settleCheckDelay: 0.08
 --- !u!82 &9000000008
 AudioSource:
   m_ObjectHideFlags: 0
