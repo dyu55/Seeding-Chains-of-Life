@@ -278,20 +278,9 @@ namespace SCoL.Visualization
 
         private bool IsXRActive()
         {
-            // Multiple fallback checks because Quest Link / OpenXR can be quirky:
-            // 1. Classic check
-            if (XRSettings.isDeviceActive) return true;
-            // 2. Controller check
-            if (IsXRControllerValid()) return true;
-            // 3. Check if an XR display subsystem is actually running
-            var displays = new System.Collections.Generic.List<UnityEngine.XR.XRDisplaySubsystem>();
-            SubsystemManager.GetSubsystems(displays);
-            foreach (var d in displays)
-                if (d.running) return true;
-            // 4. Check if there is an active XROrigin in scene (means VR rig is set up)
-            var xrOrigin = FindFirstObjectByType<Unity.XR.CoreUtils.XROrigin>();
-            if (xrOrigin != null && xrOrigin.Camera != null) return true;
-            return false;
+            // XRSettings.isDeviceActive is the simplest cross-pipeline signal that the HMD is driving rendering.
+            // Controller validity can lag at startup, so either signal is fine.
+            return XRSettings.isDeviceActive || IsXRControllerValid();
         }
 
         private bool TryGetCurrentToolItemType(out SCoL.Inventory.SCoLItemType type)

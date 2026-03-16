@@ -1,8 +1,6 @@
 using System.Text;
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
-using UnityEngine.XR;
 using SCoL.Inventory;
 #if UNITY_EDITOR
 using UnityEditor;
@@ -24,16 +22,6 @@ namespace SCoL.Visualization
         public bool visible = true;
         [Min(0.02f)] public float updateInterval = 0.10f;
 
-        [Header("VR / World-Space HUD")]
-        [Tooltip("When XR is active, switch the canvas to World Space so it renders inside the headset.")]
-        public bool useWorldSpaceInXR = true;
-        [Tooltip("Distance in front of the camera for the world-space HUD panel (metres).")]
-        [Range(0.3f, 3f)] public float vrHudDistance = 1.0f;
-        [Tooltip("Scale of the world-space canvas (metres per canvas unit). Smaller = larger on screen.")]
-        [Range(0.0002f, 0.003f)] public float vrHudScale = 0.00065f;
-        [Tooltip("Offset from camera centre: +x right, +y up (metres).")]
-        public Vector2 vrHudOffset = new Vector2(0f, -0.05f);
-
         [Header("SimpleUIKit")]
         public bool useSimpleUIKitPanelPrefabs = true;
         public GameObject simpleUIKitPanelPrefab;
@@ -43,8 +31,8 @@ namespace SCoL.Visualization
         [Min(1f)] public float defaultMaxHealth = 100f;
         public bool autoCreatePlayerHealth = true;
         public bool showHealthText = true;
-        [Min(4f)] public float healthBarWidth = 320f;
-        [Min(4f)] public float healthBarHeight = 22f;
+        [Min(4f)] public float healthBarWidth = 440f;
+        [Min(4f)] public float healthBarHeight = 30f;
         [Min(0f)] public float healthLagCatchupSpeed = 52f;
 
         private Canvas _canvas;
@@ -113,7 +101,6 @@ namespace SCoL.Visualization
             DisableLegacyHudObjects();
 
             EnsureUI();
-            EnsureCanvasMode();
         }
 
         private void Update()
@@ -122,9 +109,6 @@ namespace SCoL.Visualization
                 EnsureUI();
             if (_canvas == null)
                 return;
-
-            // Keep canvas mode in sync (XR may come online after Awake)
-            EnsureCanvasMode();
 
             _canvas.enabled = visible;
             if (!visible)
@@ -150,98 +134,6 @@ namespace SCoL.Visualization
             UpdateHealth();
         }
 
-        // ──────────────────────────────────────────────────────────────────────
-        // VR Canvas Mode Management
-        // ──────────────────────────────────────────────────────────────────────
-
-        private bool IsXRActive()
-        {
-            if (XRSettings.isDeviceActive) return true;
-
-            // Controller check
-            var l = InputDevices.GetDeviceAtXRNode(XRNode.LeftHand);
-            var r = InputDevices.GetDeviceAtXRNode(XRNode.RightHand);
-            if (l.isValid || r.isValid) return true;
-
-            // XR display subsystem check
-            var displays = new List<XRDisplaySubsystem>();
-            SubsystemManager.GetSubsystems(displays);
-            foreach (var d in displays)
-                if (d.running) return true;
-
-            // XROrigin present check
-            var xrOrigin = FindFirstObjectByType<Unity.XR.CoreUtils.XROrigin>();
-            if (xrOrigin != null && xrOrigin.Camera != null) return true;
-
-            return false;
-        }
-
-        private bool _wasXRActive;
-
-        private void EnsureCanvasMode()
-        {
-            if (_canvas == null) return;
-            if (cameraSource == null) cameraSource = Camera.main;
-
-            bool xrActive = useWorldSpaceInXR && IsXRActive();
-
-            if (xrActive)
-            {
-                if (_canvas.renderMode != RenderMode.WorldSpace)
-                {
-                    _canvas.renderMode = RenderMode.WorldSpace;
-                    _canvas.worldCamera = cameraSource;
-                    // Give the canvas a size that makes sense in world-space
-                    if (_root != null)
-                        _root.sizeDelta = new Vector2(1400f, 800f);
-                    Debug.Log("[SCoLUIToolkitHUD] Switched to WorldSpace canvas for VR.");
-                }
-
-                // Each frame: billboard & position in front of camera
-                PositionVRCanvas();
-            }
-            else
-            {
-                if (_canvas.renderMode != RenderMode.ScreenSpaceOverlay)
-                {
-                    _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-                    _canvas.sortingOrder = short.MaxValue - 2;
-                    if (_root != null)
-                    {
-                        _root.anchorMin = Vector2.zero;
-                        _root.anchorMax = Vector2.one;
-                        _root.offsetMin = Vector2.zero;
-                        _root.offsetMax = Vector2.zero;
-                    }
-                }
-            }
-
-            _wasXRActive = xrActive;
-        }
-
-        private void PositionVRCanvas()
-        {
-            if (cameraSource == null) return;
-            if (_canvas == null) return;
-
-            var camT = cameraSource.transform;
-
-            // Scale so the canvas is readable at the chosen distance
-            _canvas.transform.localScale = Vector3.one * vrHudScale;
-
-            // Position: directly in front of camera with optional offset
-            Vector3 pos = camT.position
-                + camT.forward * vrHudDistance
-                + camT.right   * vrHudOffset.x
-                + camT.up      * vrHudOffset.y;
-            _canvas.transform.position = pos;
-
-            // Billboard: face the camera
-            _canvas.transform.rotation = Quaternion.LookRotation(
-                pos - camT.position,
-                camT.up);
-        }
-
         private void EnsureUI()
         {
             if (_canvas != null && _root != null)
@@ -253,7 +145,6 @@ namespace SCoL.Visualization
             canvasGO.transform.SetParent(transform, worldPositionStays: false);
 
             _canvas = canvasGO.GetComponent<Canvas>();
-            // Start as overlay; EnsureCanvasMode will switch to WorldSpace when XR is active
             _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
             _canvas.sortingOrder = short.MaxValue - 2;
             _canvas.pixelPerfect = false;
@@ -284,8 +175,8 @@ namespace SCoL.Visualization
                 anchorMin: new Vector2(0f, 1f),
                 anchorMax: new Vector2(0f, 1f),
                 pivot: new Vector2(0f, 1f),
-                anchoredPos: new Vector2(16f, -16f),
-                size: new Vector2(340f, 160f),
+                anchoredPos: new Vector2(26f, -26f),
+                size: new Vector2(480f, 212f),
                 title: "WORLD STATE",
                 accent: HudAccentWarm);
 
@@ -295,9 +186,9 @@ namespace SCoL.Visualization
                 anchorMin: new Vector2(0f, 0f),
                 anchorMax: new Vector2(1f, 1f),
                 pivot: new Vector2(0.5f, 0.5f),
-                anchoredPos: new Vector2(0f, -14f),
-                size: new Vector2(-28f, -52f),
-                fontSize: 15,
+                anchoredPos: new Vector2(0f, -20f),
+                size: new Vector2(-42f, -72f),
+                fontSize: 20,
                 color: HudTextSecondary,
                 alignment: TextAnchor.UpperLeft);
 
@@ -307,8 +198,8 @@ namespace SCoL.Visualization
                 anchorMin: new Vector2(1f, 0.5f),
                 anchorMax: new Vector2(1f, 0.5f),
                 pivot: new Vector2(1f, 0.5f),
-                anchoredPos: new Vector2(-18f, 90f),
-                size: new Vector2(280f, 100f),
+                anchoredPos: new Vector2(-28f, 118f),
+                size: new Vector2(380f, 132f),
                 title: "FOCUS",
                 accent: HudAccentCool);
             _aimPanel.gameObject.SetActive(false);
@@ -319,9 +210,9 @@ namespace SCoL.Visualization
                 anchorMin: new Vector2(0f, 0.50f),
                 anchorMax: new Vector2(1f, 1f),
                 pivot: new Vector2(0.5f, 0.5f),
-                anchoredPos: new Vector2(0f, -8f),
-                size: new Vector2(-24f, -28f),
-                fontSize: 18,
+                anchoredPos: new Vector2(0f, -12f),
+                size: new Vector2(-34f, -40f),
+                fontSize: 25,
                 color: HudTextPrimary,
                 alignment: TextAnchor.MiddleLeft,
                 addOutline: true);
@@ -332,9 +223,9 @@ namespace SCoL.Visualization
                 anchorMin: new Vector2(0f, 0f),
                 anchorMax: new Vector2(1f, 0.54f),
                 pivot: new Vector2(0.5f, 0.5f),
-                anchoredPos: new Vector2(0f, -2f),
-                size: new Vector2(-24f, -16f),
-                fontSize: 13,
+                anchoredPos: new Vector2(0f, -4f),
+                size: new Vector2(-34f, -24f),
+                fontSize: 18,
                 color: HudTextSecondary,
                 alignment: TextAnchor.UpperLeft,
                 addOutline: true);
@@ -345,8 +236,8 @@ namespace SCoL.Visualization
                 anchorMin: new Vector2(1f, 0f),
                 anchorMax: new Vector2(1f, 0f),
                 pivot: new Vector2(1f, 0f),
-                anchoredPos: new Vector2(-16f, 16f),
-                size: new Vector2(290f, 170f),
+                anchoredPos: new Vector2(-26f, 26f),
+                size: new Vector2(390f, 222f),
                 title: "RESERVES",
                 accent: HudAccentGreen);
 
@@ -356,9 +247,9 @@ namespace SCoL.Visualization
                 anchorMin: new Vector2(0f, 0f),
                 anchorMax: new Vector2(1f, 1f),
                 pivot: new Vector2(0.5f, 0.5f),
-                anchoredPos: new Vector2(0f, -8f),
-                size: new Vector2(-24f, -48f),
-                fontSize: 15,
+                anchoredPos: new Vector2(0f, -12f),
+                size: new Vector2(-34f, -62f),
+                fontSize: 20,
                 color: HudTextSecondary,
                 alignment: TextAnchor.UpperLeft);
         }
@@ -382,8 +273,8 @@ namespace SCoL.Visualization
                 anchorMin: new Vector2(0.5f, 0f),
                 anchorMax: new Vector2(0.5f, 0f),
                 pivot: new Vector2(0.5f, 0f),
-                anchoredPos: new Vector2(0f, -20f),
-                size: new Vector2(520f, 110f),
+                anchoredPos: new Vector2(0f, 36f),
+                size: new Vector2(690f, 146f),
                 color: new Color(0.02f, 0.02f, 0.03f, 0.28f)).rectTransform;
 
             var panelShadow = panel.gameObject.AddComponent<Shadow>();
@@ -396,8 +287,8 @@ namespace SCoL.Visualization
                 anchorMin: new Vector2(0.5f, 0.5f),
                 anchorMax: new Vector2(0.5f, 0.5f),
                 pivot: new Vector2(0.5f, 0.5f),
-                anchoredPos: new Vector2(28f, 0f),
-                size: new Vector2(400f, 64f),
+                anchoredPos: new Vector2(36f, 0f),
+                size: new Vector2(540f, 86f),
                 color: HealthFrameBase);
 
             CreateImage(
@@ -407,7 +298,7 @@ namespace SCoL.Visualization
                 anchorMax: new Vector2(0.5f, 0.5f),
                 pivot: new Vector2(0.5f, 0.5f),
                 anchoredPos: Vector2.zero,
-                size: new Vector2(386f, 50f),
+                size: new Vector2(522f, 68f),
                 color: new Color(0.12f, 0.09f, 0.08f, 0.86f));
 
             _healthPulse = CreateImage(
@@ -417,7 +308,7 @@ namespace SCoL.Visualization
                 anchorMax: new Vector2(0.5f, 0.5f),
                 pivot: new Vector2(0.5f, 0.5f),
                 anchoredPos: Vector2.zero,
-                size: new Vector2(410f, 72f),
+                size: new Vector2(550f, 96f),
                 color: new Color(0.95f, 0.18f, 0.14f, 0f));
 
             var badge = CreateImage(
@@ -426,8 +317,8 @@ namespace SCoL.Visualization
                 anchorMin: new Vector2(0f, 0.5f),
                 anchorMax: new Vector2(0f, 0.5f),
                 pivot: new Vector2(0.5f, 0.5f),
-                anchoredPos: new Vector2(60f, 0f),
-                size: new Vector2(70f, 70f),
+                anchoredPos: new Vector2(82f, 0f),
+                size: new Vector2(94f, 94f),
                 color: new Color(0.53f, 0.38f, 0.17f, 0.98f));
             badge.rectTransform.localRotation = Quaternion.Euler(0f, 0f, 45f);
 
@@ -438,7 +329,7 @@ namespace SCoL.Visualization
                 anchorMax: new Vector2(0.5f, 0.5f),
                 pivot: new Vector2(0.5f, 0.5f),
                 anchoredPos: Vector2.zero,
-                size: new Vector2(50f, 50f),
+                size: new Vector2(68f, 68f),
                 color: new Color(0.16f, 0.09f, 0.08f, 0.92f));
 
             _healthBadgeLabel = CreateText(
@@ -462,9 +353,9 @@ namespace SCoL.Visualization
                 anchorMin: new Vector2(0f, 1f),
                 anchorMax: new Vector2(0f, 1f),
                 pivot: new Vector2(0f, 1f),
-                anchoredPos: new Vector2(130f, -14f),
-                size: new Vector2(200f, 22f),
-                fontSize: 13,
+                anchoredPos: new Vector2(176f, -20f),
+                size: new Vector2(260f, 30f),
+                fontSize: 18,
                 color: new Color(0.94f, 0.82f, 0.62f, 0.92f),
                 alignment: TextAnchor.MiddleLeft);
             _healthCaptionLabel.text = "VITALITY";
@@ -475,7 +366,7 @@ namespace SCoL.Visualization
                 anchorMin: new Vector2(0f, 0.5f),
                 anchorMax: new Vector2(0f, 0.5f),
                 pivot: new Vector2(0f, 0.5f),
-                anchoredPos: new Vector2(130f, 6f),
+                anchoredPos: new Vector2(176f, 10f),
                 size: new Vector2(healthBarWidth, healthBarHeight));
 
             CreateImage(
