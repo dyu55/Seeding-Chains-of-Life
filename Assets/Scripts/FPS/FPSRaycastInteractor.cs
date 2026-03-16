@@ -93,7 +93,7 @@ public class FPSRaycastInteractor : MonoBehaviour
     public bool useCARuntimeSeeding = true;
 
     [Header("Water/Fire vs Planted Models")]
-    [Min(0f)] public float waterBoostSecondsPerTile = 3f;
+    [Min(0f)] public float waterBoostSecondsPerTile = 5f;
     public bool fireCanDestroyPlants = false;
     [Range(0f, 1f)] public float fireDestroyChance = 0.5f;
     [Min(0f)] public float fireDestroyDelaySeconds = 0.25f;
@@ -147,6 +147,8 @@ public class FPSRaycastInteractor : MonoBehaviour
     Vector3 _activeFireCenter;
     bool _hasActiveFire;
     WeatherSystem _weatherSystem;
+    SeasonSkyboxController _seasonSkybox;
+    float _nextSeasonLookupAt;
     float _nextThunderTargetCheckAt;
     VoxelWorld _voxelWorld;
     struct PlantDestroyClickState
@@ -400,6 +402,11 @@ public class FPSRaycastInteractor : MonoBehaviour
             {
                 case ApplyTool.Seed:
                 {
+                    if (IsWinterSeasonActive())
+                    {
+                        if (logHits) Debug.Log("[FPSRaycastInteractor] Planting disabled during Winter.");
+                        return;
+                    }
                     Vector3 plantWorldPoint = hit.point;
                     bool hasProjectedPlacement = TryResolveSeedPlacementPoint(hit, out plantWorldPoint);
                     if (!hasProjectedPlacement && hit.normal.y < 0.35f)
@@ -644,7 +651,52 @@ public class FPSRaycastInteractor : MonoBehaviour
 
     void TryIgniteTargetedPlantDuringThunder()
     {
-        return;
+        if (!thunderCanIgniteTargetedPlant)
+            return;
+        if (Time.time < _nextThunderTargetCheckAt)
+            return;
+        _nextThunderTargetCheckAt = Time.time + Mathf.Max(0.05f, thunderTargetCheckIntervalSeconds);
+
+        if (_weatherSystem == null || !_weatherSystem.isActiveAndEnabled)
+            _weatherSystem = FindFirstObjectByType<WeatherSystem>();
+        if (_weatherSystem == null || _weatherSystem.CurrentPhase != WeatherPhase.Thunderstorm)
+            return;
+
+        if (Random.value > Mathf.Clamp01(thunderTargetIgniteChance))
+            return;
+
+        if (_runtime == null || !_runtime.isActiveAndEnabled)
+            _runtime = FindFirstObjectByType<SCoLRuntime>();
+        if (_runtime == null)
+            return;
+
+        int scorched = _runtime.ScorchRandomPlants(minCount: 1, maxCount: 5, autoClearSeconds: 5f);
+        if (logHits && scorched > 0)
+            Debug.Log($"[FPSRaycastInteractor] Thunder scorched random flowers: {scorched}");
+    }
+
+    bool IsWinterSeasonActive()
+    {
+        if (Time.time >= _nextSeasonLookupAt)
+        {
+            if (_weatherSystem == null || !_weatherSystem.isActiveAndEnabled)
+                _weatherSystem = FindFirstObjectByType<WeatherSystem>();
+
+            if (_weatherSystem != null && _weatherSystem.seasonSource != null)
+                _seasonSkybox = _weatherSystem.seasonSource;
+            else if (_seasonSkybox == null || !_seasonSkybox.isActiveAndEnabled)
+                _seasonSkybox = FindFirstObjectByType<SeasonSkyboxController>();
+
+            if (_runtime == null || !_runtime.isActiveAndEnabled)
+                _runtime = FindFirstObjectByType<SCoLRuntime>();
+
+            _nextSeasonLookupAt = Time.time + 1f;
+        }
+
+        if (_seasonSkybox != null)
+            return _seasonSkybox.GetCurrentSeason() == SeasonSkyboxController.Season.Winter;
+
+        return _runtime != null && _runtime.CurrentSeason == Season.Winter;
     }
 
     bool TryHandlePlantDestroyClick(RaycastHit hit)
@@ -966,7 +1018,7 @@ public class FPSRaycastInteractor : MonoBehaviour
             return TryCycleSeedFlowerVariant();
 
         int current = GetSelectedSeedVariantIndex();
-        int variantCount = 3;
+        int variantCount = 4;
         for (int step = 1; step <= variantCount; step++)
         {
             int candidate = (current + step) % variantCount;

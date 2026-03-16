@@ -13,15 +13,20 @@ namespace SCoL.Inventory
     public class SpawnPickups : MonoBehaviour
     {
         public int seedCount = 20;
-        public int fireCount = 20;
+        public int waterCount = 50;
+        public int fireCount = 40;
 
         [Header("Prefabs (optional)")]
         [Tooltip("Legacy single seed pickup prefab.")]
         public GameObject seedPickupPrefab;
         [Tooltip("Legacy single torch/branch pickup prefab.")]
         public GameObject firePickupPrefab;
+        [Tooltip("Legacy single water pickup prefab.")]
+        public GameObject waterPickupPrefab;
         [Tooltip("Seed pickup prefab variants (preferred). Drag seed model prefabs here.")]
         public GameObject[] seedPickupPrefabs;
+        [Tooltip("Water pickup prefab variants (preferred). Drag watercan model prefabs here.")]
+        public GameObject[] waterPickupPrefabs;
         [Tooltip("Fire pickup prefab variants (preferred). Drag branch/torch model prefabs here.")]
         public GameObject[] firePickupPrefabs;
         [Header("Seed Variants")]
@@ -82,15 +87,17 @@ namespace SCoL.Inventory
             EnsureSeedVariantTexturesLoaded();
 
             int spawnedSeeds = Spawn(SCoLItemType.Seed, seedCount, 0f);
+            int spawnedWater = Spawn(SCoLItemType.Water, waterCount, 1.5f);
             int spawnedFire = Spawn(SCoLItemType.Fire, fireCount, 3.0f);
-            if (!modelsOnly && spawnedSeeds + spawnedFire == 0)
+            if (!modelsOnly && spawnedSeeds + spawnedWater + spawnedFire == 0)
             {
                 // Hard fallback for debugging/first-use: always spawn a visible cluster near player.
                 SpawnFallbackClusterNearPlayer();
                 spawnedSeeds = Mathf.Max(spawnedSeeds, 3);
+                spawnedWater = Mathf.Max(spawnedWater, 3);
                 spawnedFire = Mathf.Max(spawnedFire, 3);
             }
-            Debug.Log($"[SpawnPickups] Spawned Seed={spawnedSeeds}/{seedCount}, Fire={spawnedFire}/{fireCount}");
+            Debug.Log($"[SpawnPickups] Spawned Seed={spawnedSeeds}/{seedCount}, Water={spawnedWater}/{waterCount}, Fire={spawnedFire}/{fireCount}");
         }
 
         private int Spawn(SCoLItemType type, int count, float angleOffset)
@@ -188,6 +195,13 @@ namespace SCoL.Inventory
                 return firePickupPrefab;
             }
 
+            if (type == SCoLItemType.Water)
+            {
+                var v = PickVariantPrefab(waterPickupPrefabs, variantIndex);
+                if (v != null) return v;
+                return waterPickupPrefab;
+            }
+
             return null;
         }
 
@@ -269,6 +283,7 @@ namespace SCoL.Inventory
             for (int i = 0; i < 3; i++)
             {
                 SpawnOneAt(SCoLItemType.Seed, basePos + new Vector3(i * 0.35f, 0f, 0f), $"Pickup_Seed_Fallback_{i}");
+                SpawnOneAt(SCoLItemType.Water, basePos + new Vector3(i * 0.35f, 0f, 0.225f), $"Pickup_Water_Fallback_{i}");
                 SpawnOneAt(SCoLItemType.Fire, basePos + new Vector3(i * 0.35f, 0f, 0.45f), $"Pickup_Fire_Fallback_{i}");
             }
         }
@@ -425,9 +440,22 @@ namespace SCoL.Inventory
                 );
             }
 
-            // Intentionally do not auto-assign branch/torch pickups for strict "models only" list.
             if (firePickupPrefabs == null || firePickupPrefabs.Length == 0)
-                firePickupPrefabs = null;
+            {
+                firePickupPrefabs = LoadPrefabArray(
+                    "Assets/Models/Modeling/_Incoming/stick1/stick1.obj",
+                    "Assets/Models/Modeling/_Incoming/stick2/stick2.obj",
+                    "Assets/Models/Modeling/_Incoming/Branches/branch1.fbx",
+                    "Assets/Models/Modeling/_Incoming/Branches/branch2.fbx",
+                    "Assets/Models/Modeling/_Incoming/Props/Squash seed/Torch.glb"
+                );
+            }
+            if (waterPickupPrefabs == null || waterPickupPrefabs.Length == 0)
+            {
+                waterPickupPrefabs = LoadPrefabArray(
+                    "Assets/Models/Modeling/_Incoming/watercan/watercan.obj"
+                );
+            }
             firePickupPrefab = null;
 #endif
         }
@@ -439,16 +467,18 @@ namespace SCoL.Inventory
                 : string.Empty;
 
             // Requested mappings:
-            // SeedV1 -> 0, SeedV2 -> 1, SeedV3 -> 2, seed1 -> 3.
+            // bean -> 0, brownSeed -> 1, lightBrownSeed -> 2, longSeed -> 3.
+            // Keep older SeedV* names mapped for compatibility.
             if (n.Contains("seedv1")) return 0;
             if (n.Contains("seedv2")) return 1;
             if (n.Contains("seedv3")) return 2;
             if (n.Contains("seed1")) return 3;
 
-            // Fallback for older seed names from Seeds folder.
-            if (n.Contains("bean")) return 2;
-            if (n.Contains("longseed") || n.Contains("long_seed")) return 1;
-            if (n.Contains("brownseed") || n.Contains("lightbrownseed")) return 0;
+            // Explicit mappings for imported Seeds folder names.
+            if (n.Contains("bean")) return 0;
+            if (n.Contains("brownseed") && !n.Contains("lightbrownseed")) return 1;
+            if (n.Contains("lightbrownseed") || n.Contains("light_brownseed") || n.Contains("lightbrown_seed")) return 2;
+            if (n.Contains("longseed") || n.Contains("long_seed")) return 3;
 
             return Mathf.Abs(fallbackSeed) % 4;
         }

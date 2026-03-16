@@ -59,7 +59,7 @@ namespace SCoL.Inventory
         {
             return variantIndex switch
             {
-                0 => seedV1 + seedType1,
+                0 => seedV1,
                 1 => seedV2,
                 2 => seedV3,
                 3 => seedType1,
@@ -94,14 +94,8 @@ namespace SCoL.Inventory
             {
                 case 0:
                 {
-                    int available = seedV1 + seedType1;
-                    if (available < amount) return false;
-
-                    int consumeFromV1 = Mathf.Min(seedV1, amount);
-                    seedV1 -= consumeFromV1;
-                    int remaining = amount - consumeFromV1;
-                    if (remaining > 0)
-                        seedType1 -= remaining;
+                    if (seedV1 < amount) return false;
+                    seedV1 -= amount;
                     break;
                 }
                 case 1:
@@ -128,17 +122,17 @@ namespace SCoL.Inventory
         {
             return variantIndex switch
             {
-                0 => "Roseglow",
-                1 => "Amberbloom",
-                2 => "Moonpetal",
-                3 => "Roseglow",
+                0 => "Bean",
+                1 => "BrownSeed",
+                2 => "LightBrownSeed",
+                3 => "LongSeed",
                 _ => "Seed"
             };
         }
 
         public string GetSeedTypeSummary()
         {
-            return $"Roseglow:{GetSeedTypeCount(0)} Amberbloom:{GetSeedTypeCount(1)} Moonpetal:{GetSeedTypeCount(2)}";
+            return $"Bean:{GetSeedTypeCount(0)} BrownSeed:{GetSeedTypeCount(1)} LightBrownSeed:{GetSeedTypeCount(2)} LongSeed:{GetSeedTypeCount(3)}";
         }
 
         public void Add(SCoLItemType type, int amount = 1)

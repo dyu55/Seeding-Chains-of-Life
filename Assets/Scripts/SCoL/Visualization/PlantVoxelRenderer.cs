@@ -15,8 +15,27 @@ namespace SCoL.Visualization
     [DisallowMultipleComponent]
     public class PlantVoxelRenderer : MonoBehaviour
     {
+        [System.Serializable]
+        public class SeedGrowthProfile
+        {
+            public string seedName = "Seed";
+            [Min(0)] public int variantIndex = 0;
+            [Tooltip("Stage 1 visual (sprout/flower stage 1).")]
+            public GameObject stage1Prefab;
+            [Tooltip("Stage 2 visual (sprout/flower stage 2).")]
+            public GameObject stage2Prefab;
+            [Tooltip("Final flower result for this seed.")]
+            public GameObject finalFlowerPrefab;
+        }
+
         public SCoLRuntime runtime;
         public SCoL.Voxels.VoxelWorld voxelWorld;
+
+        [Header("Seed Growth Profiles (Inspector Mapping)")]
+        [Tooltip("If enabled, per-seed mappings below override stage prefab assignment for small/smallTree/medium stages.")]
+        public bool useInspectorSeedGrowthProfiles = true;
+        [Tooltip("Configure each seed variant -> Stage1, Stage2, Final flower.")]
+        public SeedGrowthProfile[] seedGrowthProfiles;
 
         [Header("VoxBox Prefabs (optional overrides)")]
         public GameObject[] smallPlantPrefabs;
@@ -95,11 +114,88 @@ namespace SCoL.Visualization
             if (runtime == null) runtime = FindFirstObjectByType<SCoLRuntime>();
             if (voxelWorld == null) voxelWorld = FindFirstObjectByType<SCoL.Voxels.VoxelWorld>();
 
+            EnsureDefaultSeedProfiles();
             AutoAssignVoxBoxDefaults();
-            TryInjectMinecraftSunflowerVariant();
+            ApplySeedGrowthProfilesIfEnabled();
+            if (!useInspectorSeedGrowthProfiles)
+                TryInjectMinecraftSunflowerVariant();
             if (defaultToFirstCuratedFlower && GetFlowerVariantCount() > 0)
                 selectedFlowerVariantIndex = 0;
             EnsureFallbackMaterials();
+        }
+
+        private void OnValidate()
+        {
+            EnsureDefaultSeedProfiles();
+            ApplySeedGrowthProfilesIfEnabled();
+        }
+
+        private void EnsureDefaultSeedProfiles()
+        {
+            if (seedGrowthProfiles != null && seedGrowthProfiles.Length > 0)
+                return;
+
+            seedGrowthProfiles = new[]
+            {
+                new SeedGrowthProfile { seedName = "Bean", variantIndex = 0 },
+                new SeedGrowthProfile { seedName = "BrownSeed", variantIndex = 1 },
+                new SeedGrowthProfile { seedName = "LightBrownSeed", variantIndex = 2 },
+                new SeedGrowthProfile { seedName = "LongSeed", variantIndex = 3 },
+            };
+        }
+
+        private void ApplySeedGrowthProfilesIfEnabled()
+        {
+            if (!useInspectorSeedGrowthProfiles || seedGrowthProfiles == null || seedGrowthProfiles.Length == 0)
+                return;
+
+            int maxVariant = -1;
+            bool hasAnyPrefab = false;
+            for (int i = 0; i < seedGrowthProfiles.Length; i++)
+            {
+                var p = seedGrowthProfiles[i];
+                if (p == null || p.variantIndex < 0)
+                    continue;
+
+                maxVariant = Mathf.Max(maxVariant, p.variantIndex);
+                if (p.stage1Prefab != null || p.stage2Prefab != null || p.finalFlowerPrefab != null)
+                    hasAnyPrefab = true;
+            }
+
+            if (maxVariant < 0 || !hasAnyPrefab)
+                return;
+
+            int len = maxVariant + 1;
+            var stage1 = CloneAndResize(smallPlantPrefabs, len);
+            var stage2 = CloneAndResize(smallTreePrefabs, len);
+            var stage3 = CloneAndResize(mediumTreePrefabs, len);
+
+            for (int i = 0; i < seedGrowthProfiles.Length; i++)
+            {
+                var p = seedGrowthProfiles[i];
+                if (p == null || p.variantIndex < 0 || p.variantIndex >= len)
+                    continue;
+
+                if (p.stage1Prefab != null) stage1[p.variantIndex] = p.stage1Prefab;
+                if (p.stage2Prefab != null) stage2[p.variantIndex] = p.stage2Prefab;
+                if (p.finalFlowerPrefab != null) stage3[p.variantIndex] = p.finalFlowerPrefab;
+            }
+
+            smallPlantPrefabs = stage1;
+            smallTreePrefabs = stage2;
+            mediumTreePrefabs = stage3;
+        }
+
+        private static GameObject[] CloneAndResize(GameObject[] source, int length)
+        {
+            var output = new GameObject[Mathf.Max(0, length)];
+            if (source == null || source.Length == 0 || output.Length == 0)
+                return output;
+
+            int copy = Mathf.Min(source.Length, output.Length);
+            for (int i = 0; i < copy; i++)
+                output[i] = source[i];
+            return output;
         }
 
         private void OnDestroy()
@@ -115,43 +211,47 @@ namespace SCoL.Visualization
         private void AutoAssignVoxBoxDefaults()
         {
 #if UNITY_EDITOR
-            var curatedStage1 = LoadPrefabs(
-                "Assets/Models/Modeling/_Incoming/3stageFlowers/Sprout/SproutV1.obj",
-                "Assets/Models/Modeling/_Incoming/3stageFlowers/Sprout/SproutV2.obj",
-                "Assets/Models/Modeling/_Incoming/3stageFlowers/Sprout/SproutV3.obj");
-            if (curatedStage1 != null && curatedStage1.Length > 0)
+            // Seed mapping requested:
+            // bean -> stage1 -> stage2 -> Flower 1
+            // brownSeed -> stage1 -> stage2 -> Flower 2
+            // lightBrownSeed -> stage1 -> stage2 -> Flower 3
+            // longSeed -> stage1 -> stage2 -> Flower 4
+            var stage1 = LoadPrefabs("Assets/Models/Modeling/_Incoming/Flowers/FlowerV2/Flower_Stage1.obj");
+            if (smallPlantPrefabs == null || smallPlantPrefabs.Length < 4)
             {
-                smallPlantPrefabs = curatedStage1;
-            }
-            else if (smallPlantPrefabs == null || smallPlantPrefabs.Length == 0)
-            {
-                smallPlantPrefabs = LoadPrefabs("Assets/Models/Modeling/_Incoming/Flowers/FlowerV2/Flower_Stage1.obj");
-            }
-
-            var curatedStage2 = LoadPrefabs(
-                "Assets/Models/Modeling/_Incoming/3stageFlowers/Sprout/SeedV1Sprout.obj",
-                "Assets/Models/Modeling/_Incoming/3stageFlowers/Sprout/SeedV2Sprout.obj",
-                "Assets/Models/Modeling/_Incoming/3stageFlowers/Sprout/SeedV3Sprout.obj");
-            if (curatedStage2 != null && curatedStage2.Length > 0)
-            {
-                smallTreePrefabs = curatedStage2;
-            }
-            else if (smallTreePrefabs == null || smallTreePrefabs.Length == 0)
-            {
-                smallTreePrefabs = LoadPrefabs("Assets/Models/Modeling/_Incoming/Flowers/FlowerV2/Flower_Stage2.obj");
+                if (stage1 != null && stage1.Length > 0 && stage1[0] != null)
+                    smallPlantPrefabs = new[] { stage1[0], stage1[0], stage1[0], stage1[0] };
+                else
+                    smallPlantPrefabs = LoadPrefabs(
+                        "Assets/Models/Modeling/_Incoming/3stageFlowers/Sprout/SproutV1.obj",
+                        "Assets/Models/Modeling/_Incoming/3stageFlowers/Sprout/SproutV2.obj",
+                        "Assets/Models/Modeling/_Incoming/3stageFlowers/Sprout/SproutV3.obj",
+                        "Assets/Models/Modeling/_Incoming/3stageFlowers/Sprout/SproutV1.obj");
             }
 
-            var curatedStage3 = LoadPrefabs(
-                "Assets/Models/Modeling/_Incoming/3stageFlowers/Flowers/FlowerV1.obj",
-                "Assets/Models/Modeling/_Incoming/3stageFlowers/Flowers/FlowerV2.obj",
-                "Assets/Models/Modeling/_Incoming/3stageFlowers/Flowers/FlowerV3.obj");
-            if (curatedStage3 != null && curatedStage3.Length > 0)
+            var stage2 = LoadPrefabs("Assets/Models/Modeling/_Incoming/Flowers/FlowerV2/Flower_Stage2.obj");
+            if (smallTreePrefabs == null || smallTreePrefabs.Length < 4)
             {
-                mediumTreePrefabs = curatedStage3;
+                if (stage2 != null && stage2.Length > 0 && stage2[0] != null)
+                    smallTreePrefabs = new[] { stage2[0], stage2[0], stage2[0], stage2[0] };
+                else
+                    smallTreePrefabs = LoadPrefabs(
+                        "Assets/Models/Modeling/_Incoming/3stageFlowers/Sprout/SeedV1Sprout.obj",
+                        "Assets/Models/Modeling/_Incoming/3stageFlowers/Sprout/SeedV2Sprout.obj",
+                        "Assets/Models/Modeling/_Incoming/3stageFlowers/Sprout/SeedV3Sprout.obj",
+                        "Assets/Models/Modeling/_Incoming/3stageFlowers/Sprout/SeedV1Sprout.obj");
             }
-            else if (mediumTreePrefabs == null || mediumTreePrefabs.Length == 0)
+
+            if (mediumTreePrefabs == null || mediumTreePrefabs.Length < 4)
             {
-                mediumTreePrefabs = LoadPrefabs("Assets/Models/Modeling/_Incoming/Flowers/FlowerV2/Flower_FinalStage.obj");
+                mediumTreePrefabs = LoadPrefabs(
+                    "Assets/Models/Modeling/_Incoming/3stageFlowers/Flowers/FlowerV1.obj",
+                    "Assets/Models/Modeling/_Incoming/3stageFlowers/Flowers/FlowerV2.obj",
+                    "Assets/Models/Modeling/_Incoming/3stageFlowers/Flowers/FlowerV3.obj",
+                    "Assets/Models/Modeling/_Incoming/3stageFlowers/Flowers/FlowerV2.1.obj");
+
+                if (mediumTreePrefabs == null || mediumTreePrefabs.Length == 0)
+                    mediumTreePrefabs = LoadPrefabs("Assets/Models/Modeling/_Incoming/Flowers/FlowerV2/Flower_FinalStage.obj");
             }
 
             if (largeTreePrefabs == null || largeTreePrefabs.Length == 0)
@@ -481,6 +581,9 @@ namespace SCoL.Visualization
 
         public int GetFlowerVariantCount()
         {
+            int profileCount = GetConfiguredProfileVariantCount();
+            if (profileCount > 0) return profileCount;
+
             int small = CountValidPrefabs(smallPlantPrefabs);
             if (small > 0) return small;
 
@@ -546,6 +649,9 @@ namespace SCoL.Visualization
 
         private string GetFlowerVariantName(int globalIndex)
         {
+            if (TryGetProfileSeedName(globalIndex, out var profileName))
+                return profileName;
+
             string name = TryGetFlowerNameFromStage(PlantStage.SmallPlant, globalIndex);
             if (!string.IsNullOrEmpty(name)) return name;
 
@@ -576,12 +682,12 @@ namespace SCoL.Visualization
                 return "Flower";
 
             string lower = raw.ToLowerInvariant();
-            if (lower.Contains("sproutv1") || lower.Contains("seedv1sprout") || lower.Contains("flowerv1"))
-                return "Roseglow";
-            if (lower.Contains("sproutv2") || lower.Contains("seedv2sprout") || lower.Contains("flowerv2"))
-                return "Amberbloom";
-            if (lower.Contains("sproutv3") || lower.Contains("seedv3sprout") || lower.Contains("flowerv3"))
-                return "Moonpetal";
+            if (lower.Contains("flowerv1")) return "Flower 1";
+            if (lower.Contains("flowerv2.1")) return "Flower 4";
+            if (lower.Contains("flowerv2")) return "Flower 2";
+            if (lower.Contains("flowerv3")) return "Flower 3";
+            if (lower.Contains("flower_stage1") || lower.Contains("flower stage1")) return "Flower Stage 1";
+            if (lower.Contains("flower_stage2") || lower.Contains("flower stage2")) return "Flower Stage 2";
 
             string s = raw.Replace('_', ' ').Replace('-', ' ').Trim();
             s = s.Replace("Flower Stage1", "Flower");
@@ -648,6 +754,23 @@ namespace SCoL.Visualization
 
             if (IsFlowerVisualStage(stage))
             {
+                if (useInspectorSeedGrowthProfiles)
+                {
+                    if (cell != null && cell.FlowerVariantIndex >= 0)
+                    {
+                        int direct = ResolveDirectVariantIndex(stage, cell.FlowerVariantIndex);
+                        if (direct >= 0)
+                            return direct;
+                    }
+
+                    if (enableManualFlowerVariantSelection)
+                    {
+                        int direct = ResolveDirectVariantIndex(stage, selectedFlowerVariantIndex);
+                        if (direct >= 0)
+                            return direct;
+                    }
+                }
+
                 if (cell != null && cell.FlowerVariantIndex >= 0)
                 {
                     int locked = ResolveManualVariantIndex(stage, cell.FlowerVariantIndex);
@@ -679,6 +802,52 @@ namespace SCoL.Visualization
                 seen++;
             }
             return -1;
+        }
+
+        private int ResolveDirectVariantIndex(PlantStage stage, int variantIndex)
+        {
+            var prefabs = PrefabsFor(stage);
+            if (prefabs == null || prefabs.Length == 0)
+                return -1;
+            if (variantIndex < 0 || variantIndex >= prefabs.Length)
+                return -1;
+            return prefabs[variantIndex] != null ? variantIndex : -1;
+        }
+
+        private int GetConfiguredProfileVariantCount()
+        {
+            if (!useInspectorSeedGrowthProfiles || seedGrowthProfiles == null || seedGrowthProfiles.Length == 0)
+                return 0;
+
+            int max = -1;
+            for (int i = 0; i < seedGrowthProfiles.Length; i++)
+            {
+                var p = seedGrowthProfiles[i];
+                if (p == null || p.variantIndex < 0)
+                    continue;
+                max = Mathf.Max(max, p.variantIndex);
+            }
+            return max + 1;
+        }
+
+        private bool TryGetProfileSeedName(int variantIndex, out string seedName)
+        {
+            seedName = null;
+            if (!useInspectorSeedGrowthProfiles || seedGrowthProfiles == null)
+                return false;
+
+            for (int i = 0; i < seedGrowthProfiles.Length; i++)
+            {
+                var p = seedGrowthProfiles[i];
+                if (p == null || p.variantIndex != variantIndex)
+                    continue;
+                if (string.IsNullOrWhiteSpace(p.seedName))
+                    return false;
+                seedName = p.seedName.Trim();
+                return true;
+            }
+
+            return false;
         }
 
         private static int PositiveHash(int value)

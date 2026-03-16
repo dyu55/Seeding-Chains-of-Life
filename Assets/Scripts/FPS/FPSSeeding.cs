@@ -2,6 +2,7 @@ using UnityEngine;
 using System.Collections.Generic;
 using SCoL.Weather;
 using SCoL.Visualization;
+using SCoL;
 
 /// <summary>
 /// T07: Seeding loop for FPS.
@@ -223,13 +224,13 @@ public sealed class FPSSeedGrowth : MonoBehaviour
     [HideInInspector] public GameObject maturePrefab;
 
     [Header("Growth Timing")]
-    [Min(0.1f)] public float sproutToSmallSeconds = 3f;
-    [Min(0.1f)] public float smallToMediumSeconds = 3f;
-    [Min(0.1f)] public float mediumToMatureSeconds = 3f;
+    [Min(0.1f)] public float sproutToSmallSeconds = 7f;
+    [Min(0.1f)] public float smallToMediumSeconds = 7f;
+    [Min(0.1f)] public float mediumToMatureSeconds = 7f;
     [Min(0f)] public float maxStoredWaterBoostSeconds = 12f;
 
     [Header("Weather Response")]
-    [Min(0f)] public float rainGrowthMultiplier = 2f;
+    [Min(0f)] public float rainGrowthMultiplier = 3.5f;
     public bool pauseGrowthDuringSnow = true;
 
     [Header("Stomp Interaction")]
@@ -249,7 +250,11 @@ public sealed class FPSSeedGrowth : MonoBehaviour
 
     static readonly List<FPSSeedGrowth> _allPlants = new List<FPSSeedGrowth>(256);
     static WeatherSystem _weatherSystem;
+    static SeasonSkyboxController _seasonSkybox;
+    static SCoLRuntime _runtime;
     static float _nextWeatherLookupAt;
+    static float _nextSeasonLookupAt;
+    static float _nextRuntimeLookupAt;
     static SimpleFirstPersonController _playerController;
     static CharacterController _playerCharacterController;
     static float _nextPlayerLookupAt;
@@ -347,6 +352,7 @@ public sealed class FPSSeedGrowth : MonoBehaviour
         var phase = ResolveWeatherPhase();
 
         if (_stage >= 3) return;
+        if (IsWinterSeasonActive()) return;
         if (pauseGrowthDuringSnow && phase == WeatherPhase.Snow) return;
 
         float delta = Time.deltaTime;
@@ -381,6 +387,33 @@ public sealed class FPSSeedGrowth : MonoBehaviour
         }
 
         return _weatherSystem != null ? _weatherSystem.CurrentPhase : WeatherPhase.Clear;
+    }
+
+    bool IsWinterSeasonActive()
+    {
+        if (Time.time >= _nextWeatherLookupAt && (_weatherSystem == null || !_weatherSystem.isActiveAndEnabled))
+            _weatherSystem = FindFirstObjectByType<WeatherSystem>();
+
+        if (Time.time >= _nextSeasonLookupAt)
+        {
+            if (_weatherSystem != null && _weatherSystem.seasonSource != null)
+                _seasonSkybox = _weatherSystem.seasonSource;
+            else if (_seasonSkybox == null || !_seasonSkybox.isActiveAndEnabled)
+                _seasonSkybox = FindFirstObjectByType<SeasonSkyboxController>();
+
+            _nextSeasonLookupAt = Time.time + 1f;
+        }
+
+        if (Time.time >= _nextRuntimeLookupAt && (_runtime == null || !_runtime.isActiveAndEnabled))
+        {
+            _runtime = FindFirstObjectByType<SCoLRuntime>();
+            _nextRuntimeLookupAt = Time.time + 1f;
+        }
+
+        if (_seasonSkybox != null)
+            return _seasonSkybox.GetCurrentSeason() == SeasonSkyboxController.Season.Winter;
+
+        return _runtime != null && _runtime.CurrentSeason == Season.Winter;
     }
 
     void TryHandlePlayerStomp()
