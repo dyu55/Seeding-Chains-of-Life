@@ -743,7 +743,7 @@ namespace SCoL
                         if (smallPlants >= 3) n.PlantStage = PlantStage.MediumTree;
                         break;
                     case PlantStage.MediumTree:
-                        if (anyPlants >= 3) n.PlantStage = PlantStage.LargeTree;
+                        if (!ShouldClampFlowerAtFinalStage(cur) && anyPlants >= 3) n.PlantStage = PlantStage.LargeTree;
                         break;
                 }
             }
@@ -1157,15 +1157,29 @@ namespace SCoL
             if (!c.HasPlant || c.PlantStage == PlantStage.Burnt)
                 return;
 
+            if (ShouldClampFlowerAtFinalStage(c))
+            {
+                if (c.PlantStage > PlantStage.MediumTree)
+                    c.PlantStage = PlantStage.MediumTree;
+            }
+
             float step = Mathf.Max(0.5f, secondsPerTreeStage);
             float age = Mathf.Max(0f, c.PlantAgeSeconds);
 
             if (age >= step * 3f)
-                c.PlantStage = PlantStage.LargeTree;
+            {
+                if (!ShouldClampFlowerAtFinalStage(c))
+                    c.PlantStage = PlantStage.LargeTree;
+            }
             else if (age >= step * 2f && c.PlantStage < PlantStage.MediumTree)
                 c.PlantStage = PlantStage.MediumTree;
             else if (age >= step && c.PlantStage < PlantStage.SmallTree)
                 c.PlantStage = PlantStage.SmallTree;
+        }
+
+        private static bool ShouldClampFlowerAtFinalStage(CellState c)
+        {
+            return c.FlowerVariantIndex >= 0;
         }
 
         private void ScorchCell(int x, int y)
