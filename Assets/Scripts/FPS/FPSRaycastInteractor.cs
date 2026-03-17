@@ -3,6 +3,7 @@ using SCoL;
 using SCoL.Visualization;
 using SCoL.Weather;
 using SCoL.Inventory;
+using SCoL.Combat;
 using SCoL.Voxels;
 using UnityEngine.Animations;
 using UnityEngine.Playables;
@@ -25,7 +26,8 @@ public class FPSRaycastInteractor : MonoBehaviour
         Seed,
         Water,
         Fire,
-        Plant
+        Plant,
+        Stone
     }
 
     public Camera cameraSource;
@@ -105,10 +107,22 @@ public class FPSRaycastInteractor : MonoBehaviour
     public bool animalsFollowWhenPlantToolSelected = true;
     [Min(0.1f)] public float plantFollowRadius = 8f;
     [Min(0f)] public float plantFollowWeight = 3f;
+    [Min(0f)] public float plantFollowFrontOffset = 1.4f;
+    [Min(0.1f)] public float plantFollowStopDistance = 1.1f;
     public bool plantFeedConsumesInventory = true;
     [Min(0.05f)] public float feedJumpHeight = 0.35f;
     [Min(0.2f)] public float feedReactionDuration = 1.2f;
     [Min(1)] public int feedJumpCount = 3;
+
+    [Header("Stone Throw (RMB)")]
+    [Min(0.1f)] public float stoneThrowSpeed = 24f;
+    [Min(0f)] public float stoneThrowUpwardBias = 0.08f;
+    [Min(0.05f)] public float stoneSpawnForwardOffset = 0.55f;
+    [Min(0f)] public float stoneSpawnVerticalOffset = 0.1f;
+    [Min(0.05f)] public float stoneProjectileScale = 0.32f;
+    [Min(0.1f)] public float stoneProjectileLifetime = 6f;
+    [Min(0f)] public float stoneDamage = 10f;
+    public GameObject[] stoneProjectilePrefabs;
 
     [Header("Plant Destroy (RMB clicks)")]
     [Min(1)] public int plantDestroyClicksRequired = 4;
@@ -139,6 +153,7 @@ public class FPSRaycastInteractor : MonoBehaviour
     PlantVoxelRenderer _plantRenderer;
     Material _waterSpreadMat;
     Material _fireSpreadMat;
+    Material _stoneTrailMat;
     Texture2D _waterSpreadStampTex;
     Texture2D _fireSpreadStampTex;
     FPSSeeding.GrowthSetup _growthSetup;
@@ -151,6 +166,7 @@ public class FPSRaycastInteractor : MonoBehaviour
     float _nextSeasonLookupAt;
     float _nextThunderTargetCheckAt;
     VoxelWorld _voxelWorld;
+    SCoLCombatHealth _playerCombatHealth;
     struct PlantDestroyClickState
     {
         public int count;
@@ -178,6 +194,8 @@ public class FPSRaycastInteractor : MonoBehaviour
         }
         _runtime = FindFirstObjectByType<SCoLRuntime>();
         _plantRenderer = FindFirstObjectByType<PlantVoxelRenderer>();
+        EnsurePlayerCombatHealth();
+        EnsureStoneProjectilePrefabs();
 
         _growthSetup = new FPSSeeding.GrowthSetup();
         RefreshGrowthSetup();
@@ -302,7 +320,7 @@ public class FPSRaycastInteractor : MonoBehaviour
         UpdatePlantAttractor();
         TryIgniteTargetedPlantDuringThunder();
 
-        // Primary: collect/pickup/harvest
+        // Primary: non-destructive interaction only
         if (SCoL.Interaction.SCoLInteractionInput.PrimaryPressed())
         {
             if (!SCoL.Interaction.SCoLInteractionInput.TryGetAimRay(cameraSource, out var ray))
@@ -322,52 +340,6 @@ public class FPSRaycastInteractor : MonoBehaviour
                     // LMB priority #2: collect water from region, but not when frozen.
                     if (collectWaterFromRegionOnRightClick && TryCollectWaterFromRegionAtHit(hit))
                         return;
-
-                    // LMB priority #3: uproot plant into inventory.
-                    if (pickPlantsOnPrimaryClick && TryPickupPlantAtHit(hit))
-                        return;
-                }
-
-                var go = hit.collider != null ? hit.collider.gameObject : null;
-
-                // Walk up parents to find a Harvestable root (colliders are often on child meshes).
-                GameObject harvestable = null;
-                for (var t = hit.collider != null ? hit.collider.transform : null; t != null; t = t.parent)
-                {
-                    if (t.gameObject.CompareTag("Harvestable")) { harvestable = t.gameObject; break; }
-                }
-
-                if (harvestable != null)
-                {
-                    if (logHits)
-                        Debug.Log($"[FPSRaycastInteractor] Harvestable hit: {harvestable.name} (dist={hit.distance:0.00})", harvestable);
-
-                    // T04: voxelize/assimilate effect
-                    VoxelAssimilator.Assimilate(harvestable);
-
-                    // T06: game feel (burst + shake)
-                    FPSGameFeel.VoxelBurst(hit.point);
-                    FPSGameFeel.Shake();
-
-                    // T05: harvest -> add Voxel Seed to inventory and remove object
-                    if (harvestable.GetComponent<FPSHarvestedMarker>() == null)
-                    {
-                        harvestable.AddComponent<FPSHarvestedMarker>();
-                        _inventory.Add(SCoL.Inventory.SCoLItemType.Seed, 1);
-
-                        if (destroyOnHarvest)
-                        {
-                            // Hide immediately, destroy shortly after.
-                            SetRenderersEnabled(harvestable, false);
-                            SetCollidersEnabled(harvestable, false);
-                            StartCoroutine(DestroyLater(harvestable, destroyDelaySeconds));
-                        }
-                    }
-                }
-                else
-                {
-                    if (logHits)
-                        Debug.Log($"[FPSRaycastInteractor] Hit non-harvestable: {(go != null ? go.name : "<null>")} (dist={hit.distance:0.00})");
                 }
             }
             else
@@ -383,19 +355,29 @@ public class FPSRaycastInteractor : MonoBehaviour
             if (!SCoL.Interaction.SCoLInteractionInput.TryGetAimRay(cameraSource, out var ray))
                 return;
 
-            if (!Physics.Raycast(ray, out var hit, 50f, hitMask, QueryTriggerInteraction.Ignore))
-                return;
-
             if (_inventory == null)
                 _inventory = FindFirstObjectByType<SCoL.Inventory.SCoLInventory>();
             if (_inventory == null)
+                return;
+
+            if (currentTool == ApplyTool.Stone)
+            {
+                ThrowStone(ray);
+                return;
+            }
+
+            if (!Physics.Raycast(ray, out var hit, 50f, hitMask, QueryTriggerInteraction.Ignore))
                 return;
 
             // Allow collecting pickups with RMB too (useful for laptop/trackpad workflows).
             if (collectPickupsOnRightClick && TryCollectPickupAtHit(hit))
                 return;
 
-            if (TryHandlePlantDestroyClick(hit))
+            // Water and fire tools should apply to hovered plants directly instead of being hijacked
+            // by the generic repeated-RMB plant destroy flow.
+            if (currentTool != ApplyTool.Water &&
+                currentTool != ApplyTool.Fire &&
+                TryHandlePlantDestroyClick(hit))
                 return;
 
             switch (currentTool)
@@ -459,8 +441,10 @@ public class FPSRaycastInteractor : MonoBehaviour
 
                 case ApplyTool.Water:
                 {
-                    // treat upward-facing surfaces as ground
-                    if (hit.normal.y < 0.35f)
+                    bool targetingPlant = TryResolveWaterApplicationTarget(hit, out Vector3 waterPoint, out Vector3 waterNormal);
+
+                    // Non-plant targets still require an upward-facing ground surface.
+                    if (!targetingPlant && hit.normal.y < 0.35f)
                         return;
 
                     if (!_inventory.TryConsume(SCoL.Inventory.SCoLItemType.Water, 1))
@@ -469,18 +453,18 @@ public class FPSRaycastInteractor : MonoBehaviour
                         return;
                     }
 
-                    if (TryExtinguishActiveFire(hit.point))
+                    if (TryExtinguishActiveFire(waterPoint))
                     {
                         DayNightLightingController.PlayInteractionSfx(DayNightLightingController.InteractionSfx.ExtinguishFire);
                         break;
                     }
 
-                    StartCoroutine(SpawnTransientSpread(hit.point, hit.normal, GetWaterSpreadMat(), false, true));
+                    StartCoroutine(SpawnTransientSpread(waterPoint, waterNormal, GetWaterSpreadMat(), false, true));
                     if (_runtime == null || !_runtime.isActiveAndEnabled)
                         _runtime = FindFirstObjectByType<SCoLRuntime>();
                     if (_runtime != null)
                     {
-                        int n = _runtime.AddWaterAroundWorld(hit.point, radius: 1.6f, amount: 1.0f);
+                        int n = _runtime.AddWaterAroundWorld(waterPoint, radius: 1.6f, amount: 1.0f);
                         if (logHits) Debug.Log($"[FPSRaycastInteractor] Runtime water affected cells: {n}");
                     }
                     break;
@@ -523,6 +507,9 @@ public class FPSRaycastInteractor : MonoBehaviour
                 case ApplyTool.Plant:
                 {
                     var animal = hit.collider != null ? hit.collider.GetComponentInParent<FPSBoidAgent>() : null;
+                    Vector3 feedPoint = hit.point;
+                    if (animal == null)
+                        FPSAimTargeting.TryResolveAnimalNearAim(cameraSource, maxDistance, hitMask, out animal, out feedPoint);
                     if (animal == null)
                     {
                         if (logHits) Debug.Log("[FPSRaycastInteractor] Plant feed requires targeting an animal (FPSBoidAgent).");
@@ -536,11 +523,14 @@ public class FPSRaycastInteractor : MonoBehaviour
                     }
 
                     animal.FeedWithPlant(feedJumpHeight, feedReactionDuration, feedJumpCount);
-                    FPSGameFeel.VoxelBurst(hit.point, count: 10, spread: 0.8f, life: 0.6f, cubeSize: 0.045f);
+                    FPSGameFeel.VoxelBurst(feedPoint, count: 10, spread: 0.8f, life: 0.6f, cubeSize: 0.045f);
                     FPSGameFeel.Shake(0.04f, 0.08f);
                     if (logHits) Debug.Log($"[FPSRaycastInteractor] Fed animal: {animal.name}", animal);
                     break;
                 }
+
+                case ApplyTool.Stone:
+                    break;
             }
         }
     }
@@ -825,6 +815,46 @@ public class FPSRaycastInteractor : MonoBehaviour
         return hit.normal.y >= 0.35f;
     }
 
+    bool TryResolveWaterApplicationTarget(RaycastHit hit, out Vector3 waterPoint, out Vector3 waterNormal)
+    {
+        waterPoint = hit.point;
+        waterNormal = hit.normal.sqrMagnitude > 0.0001f ? hit.normal.normalized : Vector3.up;
+
+        if (hit.collider == null)
+            return false;
+
+        var legacyPlant = hit.collider.GetComponentInParent<FPSSeedGrowth>();
+        if (legacyPlant != null)
+        {
+            waterPoint = ProjectToSurface(legacyPlant.transform.position, out waterNormal);
+            waterNormal = Vector3.up;
+            return true;
+        }
+
+        if (TryResolveCAPlantCellFromWorld(hit.point, out int cx, out int cy))
+        {
+            if (_runtime == null)
+                _runtime = FindFirstObjectByType<SCoLRuntime>();
+
+            if (_runtime != null && _runtime.Grid != null)
+            {
+                var cellCenter = _runtime.Grid.CellCenterWorld(cx, cy);
+                waterPoint = ProjectToSurface(cellCenter, out waterNormal);
+            }
+            else
+            {
+                waterPoint = ProjectToSurface(hit.point, out waterNormal);
+            }
+
+            waterNormal = Vector3.up;
+            return true;
+        }
+
+        waterPoint = hit.point;
+        waterNormal = hit.normal.sqrMagnitude > 0.0001f ? hit.normal.normalized : Vector3.up;
+        return false;
+    }
+
     bool TryResolveCAPlantCellFromWorld(Vector3 worldPoint, out int x, out int y)
     {
         x = y = -1;
@@ -948,7 +978,9 @@ public class FPSRaycastInteractor : MonoBehaviour
             enabled ? cameraSource.transform : null,
             enabled,
             plantFollowRadius,
-            plantFollowWeight
+            plantFollowWeight,
+            plantFollowStopDistance,
+            plantFollowFrontOffset
         );
     }
 
@@ -983,6 +1015,7 @@ public class FPSRaycastInteractor : MonoBehaviour
         if (SCoL.Interaction.SCoLInteractionInput.ToolSlotPressed(2)) currentTool = ApplyTool.Water;
         if (SCoL.Interaction.SCoLInteractionInput.ToolSlotPressed(3)) currentTool = ApplyTool.Fire;
         if (SCoL.Interaction.SCoLInteractionInput.ToolSlotPressed(4)) currentTool = ApplyTool.Plant;
+        if (SCoL.Interaction.SCoLInteractionInput.ToolSlotPressed(5)) currentTool = ApplyTool.Stone;
 
         if (SCoL.Interaction.SCoLInteractionInput.ToolNextPressed())
             CycleTool(+1);
@@ -1062,6 +1095,198 @@ public class FPSRaycastInteractor : MonoBehaviour
         idx = (idx + delta) % count;
         if (idx < 0) idx += count;
         currentTool = (ApplyTool)idx;
+    }
+
+    void EnsurePlayerCombatHealth()
+    {
+        if (_playerCombatHealth != null)
+            return;
+
+        GameObject target = null;
+        var controller = FindFirstObjectByType<SimpleFirstPersonController>();
+        if (controller != null)
+            target = controller.gameObject;
+        else if (cameraSource != null)
+            target = cameraSource.transform.root.gameObject;
+
+        if (target == null)
+            return;
+
+        var playerHealth = target.GetComponent<SCoLPlayerHealth>();
+        if (playerHealth == null)
+            playerHealth = target.AddComponent<SCoLPlayerHealth>();
+        playerHealth.SetMaxHealth(100f, fillToMax: true);
+
+        _playerCombatHealth = target.GetComponent<SCoLCombatHealth>();
+        if (_playerCombatHealth == null)
+            _playerCombatHealth = target.AddComponent<SCoLCombatHealth>();
+        _playerCombatHealth.Configure(SCoLCombatFaction.Player, 100f, fillToMax: true, showBar: false, destroyWhenDead: false);
+        _playerCombatHealth.DamageInvulnerabilitySeconds = 0.85f;
+    }
+
+    void EnsureStoneProjectilePrefabs()
+    {
+        if (stoneProjectilePrefabs != null)
+        {
+            for (int i = 0; i < stoneProjectilePrefabs.Length; i++)
+            {
+                if (stoneProjectilePrefabs[i] != null)
+                    return;
+            }
+        }
+
+        stoneProjectilePrefabs = new[]
+        {
+            Resources.Load<GameObject>("StylizedNature/FBX/Pebble_Round_1"),
+            Resources.Load<GameObject>("StylizedNature/FBX/Pebble_Round_2"),
+            Resources.Load<GameObject>("StylizedNature/FBX/Pebble_Round_3")
+        };
+    }
+
+    void ThrowStone(Ray aimRay)
+    {
+        if (_inventory == null && (_inventory = FindFirstObjectByType<SCoL.Inventory.SCoLInventory>()) == null)
+            return;
+
+        if (!_inventory.TryConsume(SCoLItemType.Stone, 1))
+        {
+            if (logHits) Debug.Log("[FPSRaycastInteractor] No stones to throw.");
+            return;
+        }
+
+        EnsureStoneProjectilePrefabs();
+        GameObject prefab = null;
+        if (stoneProjectilePrefabs != null && stoneProjectilePrefabs.Length > 0)
+            prefab = stoneProjectilePrefabs[Random.Range(0, stoneProjectilePrefabs.Length)];
+
+        Vector3 forward = aimRay.direction.sqrMagnitude > 0.0001f ? aimRay.direction.normalized : cameraSource.transform.forward;
+        forward = (forward + Vector3.up * Mathf.Max(0f, stoneThrowUpwardBias)).normalized;
+        Vector3 spawnPos = aimRay.origin + cameraSource.transform.forward * Mathf.Max(0.05f, stoneSpawnForwardOffset) + Vector3.up * stoneSpawnVerticalOffset;
+
+        GameObject go = prefab != null
+            ? Instantiate(prefab, spawnPos, Quaternion.LookRotation(forward, Vector3.up))
+            : GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        go.name = "StoneProjectile";
+        go.transform.localScale = Vector3.one * Mathf.Max(0.05f, stoneProjectileScale);
+
+        SetLayerRecursive(go, 0);
+        EnsureStoneCollider(go);
+
+        var rb = go.GetComponent<Rigidbody>();
+        if (rb == null)
+            rb = go.AddComponent<Rigidbody>();
+        rb.useGravity = true;
+        rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
+        rb.interpolation = RigidbodyInterpolation.Interpolate;
+        rb.mass = 0.18f;
+        rb.linearVelocity = forward * Mathf.Max(0.1f, stoneThrowSpeed);
+
+        var trail = go.GetComponent<TrailRenderer>();
+        if (trail == null)
+            trail = go.AddComponent<TrailRenderer>();
+        trail.time = 0.22f;
+        trail.startWidth = 0.08f;
+        trail.endWidth = 0.02f;
+        trail.minVertexDistance = 0.03f;
+        trail.material = GetStoneTrailMaterial();
+        trail.startColor = new Color(0.92f, 0.92f, 0.98f, 0.90f);
+        trail.endColor = new Color(0.92f, 0.92f, 0.98f, 0.02f);
+
+        var projectile = go.GetComponent<FPSStoneProjectile>();
+        if (projectile == null)
+            projectile = go.AddComponent<FPSStoneProjectile>();
+        projectile.lifetimeSeconds = stoneProjectileLifetime;
+        projectile.damage = stoneDamage;
+
+        IgnorePlayerCollisions(go);
+
+        FPSGameFeel.Shake(0.02f, 0.04f);
+    }
+
+    void EnsureStoneCollider(GameObject go)
+    {
+        if (go == null)
+            return;
+
+        var colliders = go.GetComponentsInChildren<Collider>(includeInactive: true);
+        if (colliders == null || colliders.Length == 0)
+        {
+            var sphere = go.AddComponent<SphereCollider>();
+            sphere.radius = 0.5f;
+            return;
+        }
+
+        for (int i = 0; i < colliders.Length; i++)
+        {
+            if (colliders[i] == null)
+                continue;
+            colliders[i].enabled = true;
+            colliders[i].isTrigger = false;
+        }
+    }
+
+    static void SetLayerRecursive(GameObject go, int layer)
+    {
+        if (go == null)
+            return;
+
+        go.layer = layer;
+        var transforms = go.GetComponentsInChildren<Transform>(includeInactive: true);
+        for (int i = 0; i < transforms.Length; i++)
+        {
+            var t = transforms[i];
+            if (t != null)
+                t.gameObject.layer = layer;
+        }
+    }
+
+    void IgnorePlayerCollisions(GameObject projectile)
+    {
+        if (projectile == null || cameraSource == null)
+            return;
+
+        var projectileColliders = projectile.GetComponentsInChildren<Collider>(includeInactive: true);
+        if (projectileColliders == null || projectileColliders.Length == 0)
+            return;
+
+        var playerRoot = cameraSource.transform.root;
+        var playerColliders = playerRoot != null ? playerRoot.GetComponentsInChildren<Collider>(includeInactive: true) : null;
+        if (playerColliders == null || playerColliders.Length == 0)
+            return;
+
+        for (int i = 0; i < projectileColliders.Length; i++)
+        {
+            var projectileCollider = projectileColliders[i];
+            if (projectileCollider == null)
+                continue;
+
+            for (int j = 0; j < playerColliders.Length; j++)
+            {
+                var playerCollider = playerColliders[j];
+                if (playerCollider == null)
+                    continue;
+                Physics.IgnoreCollision(projectileCollider, playerCollider, true);
+            }
+        }
+    }
+
+    Material GetStoneTrailMaterial()
+    {
+        if (_stoneTrailMat != null)
+            return _stoneTrailMat;
+
+        Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
+        if (shader == null)
+            shader = Shader.Find("Sprites/Default");
+        if (shader == null)
+            shader = Shader.Find("Standard");
+
+        _stoneTrailMat = new Material(shader) { name = "StoneTrailMat" };
+        if (_stoneTrailMat.HasProperty("_BaseColor"))
+            _stoneTrailMat.SetColor("_BaseColor", new Color(0.92f, 0.92f, 0.98f, 0.85f));
+        if (_stoneTrailMat.HasProperty("_Color"))
+            _stoneTrailMat.SetColor("_Color", new Color(0.92f, 0.92f, 0.98f, 0.85f));
+        return _stoneTrailMat;
     }
 
     System.Collections.IEnumerator SpawnTransientSpread(

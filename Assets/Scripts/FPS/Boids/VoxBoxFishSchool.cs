@@ -348,6 +348,12 @@ public class VoxBoxFishSchool : MonoBehaviour
     private void TryAutoAssignFishPrefab()
     {
         if (!preferGoldfishModel && fishPrefab != null) return;
+        if (fishPrefab == null)
+        {
+            fishPrefab = Resources.Load<GameObject>("VoxBoxPrefabs/SeaCreatures/Fish");
+            if (fishPrefab != null && !preferGoldfishModel)
+                return;
+        }
 #if UNITY_EDITOR
         bool shouldAssignGoldfish = fishPrefab == null;
         if (!shouldAssignGoldfish && preferGoldfishModel)

@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
 using SCoL;
+using SCoL.Combat;
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
@@ -210,48 +211,61 @@ namespace SCoL.Visualization
 
         private void AutoAssignVoxBoxDefaults()
         {
+            var runtimeStage1 = LoadPrefabsFromResources(
+                "3stageFlowers/Sprout/SproutV1",
+                "3stageFlowers/Sprout/SproutV2",
+                "3stageFlowers/Sprout/SproutV3");
+            if (runtimeStage1 != null && runtimeStage1.Length > 0)
+                smallPlantPrefabs = runtimeStage1;
+
+            var runtimeStage2 = LoadPrefabsFromResources(
+                "3stageFlowers/Sprout/SeedV1Sprout",
+                "3stageFlowers/Sprout/SeedV2Sprout",
+                "3stageFlowers/Sprout/SeedV3Sprout");
+            if (runtimeStage2 != null && runtimeStage2.Length > 0)
+                smallTreePrefabs = runtimeStage2;
+
+            var runtimeStage3 = LoadPrefabsFromResources(
+                "3stageFlowers/Flowers/FlowerV1",
+                "3stageFlowers/Flowers/FlowerV2",
+                "3stageFlowers/Flowers/FlowerV3");
+            if (runtimeStage3 != null && runtimeStage3.Length > 0)
+                mediumTreePrefabs = runtimeStage3;
+
+            var runtimeLarge = LoadPrefabsFromResources(
+                "VoxBoxPrefabs/Trees/Tree 4",
+                "VoxBoxPrefabs/Trees/Tree 5");
+            if (runtimeLarge != null && runtimeLarge.Length > 0)
+                largeTreePrefabs = runtimeLarge;
+
 #if UNITY_EDITOR
-            // Seed mapping requested:
-            // bean -> stage1 -> stage2 -> Flower 1
-            // brownSeed -> stage1 -> stage2 -> Flower 2
-            // lightBrownSeed -> stage1 -> stage2 -> Flower 3
-            // longSeed -> stage1 -> stage2 -> Flower 4
-            var stage1 = LoadPrefabs("Assets/Models/Modeling/_Incoming/Flowers/FlowerV2/Flower_Stage1.obj");
-            if (smallPlantPrefabs == null || smallPlantPrefabs.Length < 4)
+            if (TryAssignLatestImportedFlowerModels())
             {
-                if (stage1 != null && stage1.Length > 0 && stage1[0] != null)
-                    smallPlantPrefabs = new[] { stage1[0], stage1[0], stage1[0], stage1[0] };
-                else
-                    smallPlantPrefabs = LoadPrefabs(
-                        "Assets/Models/Modeling/_Incoming/3stageFlowers/Sprout/SproutV1.obj",
-                        "Assets/Models/Modeling/_Incoming/3stageFlowers/Sprout/SproutV2.obj",
-                        "Assets/Models/Modeling/_Incoming/3stageFlowers/Sprout/SproutV3.obj",
-                        "Assets/Models/Modeling/_Incoming/3stageFlowers/Sprout/SproutV1.obj");
+                if (largeTreePrefabs == null || largeTreePrefabs.Length == 0)
+                {
+                    largeTreePrefabs = LoadPrefabs(
+                        "Assets/VoxBox/Prefabs/Trees/Tree 4.prefab",
+                        "Assets/VoxBox/Prefabs/Trees/Tree 5.prefab");
+                }
+                return;
             }
 
-            var stage2 = LoadPrefabs("Assets/Models/Modeling/_Incoming/Flowers/FlowerV2/Flower_Stage2.obj");
-            if (smallTreePrefabs == null || smallTreePrefabs.Length < 4)
+            var curatedStage2 = LoadPrefabs(
+                "Assets/Models/Modeling/_Incoming/3stageFlowers/Sprout/SeedV1Sprout.obj",
+                "Assets/Models/Modeling/_Incoming/3stageFlowers/Sprout/SeedV2Sprout.obj",
+                "Assets/Models/Modeling/_Incoming/3stageFlowers/Sprout/SeedV3Sprout.obj");
+            if ((smallTreePrefabs == null || smallTreePrefabs.Length == 0) && curatedStage2 != null && curatedStage2.Length > 0)
             {
-                if (stage2 != null && stage2.Length > 0 && stage2[0] != null)
-                    smallTreePrefabs = new[] { stage2[0], stage2[0], stage2[0], stage2[0] };
-                else
-                    smallTreePrefabs = LoadPrefabs(
-                        "Assets/Models/Modeling/_Incoming/3stageFlowers/Sprout/SeedV1Sprout.obj",
-                        "Assets/Models/Modeling/_Incoming/3stageFlowers/Sprout/SeedV2Sprout.obj",
-                        "Assets/Models/Modeling/_Incoming/3stageFlowers/Sprout/SeedV3Sprout.obj",
-                        "Assets/Models/Modeling/_Incoming/3stageFlowers/Sprout/SeedV1Sprout.obj");
+                smallTreePrefabs = curatedStage2;
             }
 
-            if (mediumTreePrefabs == null || mediumTreePrefabs.Length < 4)
+            var curatedStage3 = LoadPrefabs(
+                "Assets/Models/Modeling/_Incoming/3stageFlowers/Flowers/FlowerV1.obj",
+                "Assets/Models/Modeling/_Incoming/3stageFlowers/Flowers/FlowerV2.obj",
+                "Assets/Models/Modeling/_Incoming/3stageFlowers/Flowers/FlowerV3.obj");
+            if ((mediumTreePrefabs == null || mediumTreePrefabs.Length == 0) && curatedStage3 != null && curatedStage3.Length > 0)
             {
-                mediumTreePrefabs = LoadPrefabs(
-                    "Assets/Models/Modeling/_Incoming/3stageFlowers/Flowers/FlowerV1.obj",
-                    "Assets/Models/Modeling/_Incoming/3stageFlowers/Flowers/FlowerV2.obj",
-                    "Assets/Models/Modeling/_Incoming/3stageFlowers/Flowers/FlowerV3.obj",
-                    "Assets/Models/Modeling/_Incoming/3stageFlowers/Flowers/FlowerV2.1.obj");
-
-                if (mediumTreePrefabs == null || mediumTreePrefabs.Length == 0)
-                    mediumTreePrefabs = LoadPrefabs("Assets/Models/Modeling/_Incoming/Flowers/FlowerV2/Flower_FinalStage.obj");
+                mediumTreePrefabs = curatedStage3;
             }
 
             if (largeTreePrefabs == null || largeTreePrefabs.Length == 0)
@@ -261,6 +275,75 @@ namespace SCoL.Visualization
                     "Assets/VoxBox/Prefabs/Trees/Tree 5.prefab");
             }
 #endif
+        }
+
+#if UNITY_EDITOR
+        private bool TryAssignLatestImportedFlowerModels()
+        {
+            var stage1 = AssetDatabase.LoadAssetAtPath<GameObject>(
+                "Assets/Models/Modeling/_Incoming/flower stage 1.obj/flower stage 1.obj");
+            var stage2 = AssetDatabase.LoadAssetAtPath<GameObject>(
+                "Assets/Models/Modeling/_Incoming/flower stage 2.obj/flower stage 2.obj");
+            var finalFlowers = LoadPrefabs(
+                "Assets/Models/Modeling/_Incoming/blue rose/blue rose.obj",
+                "Assets/Models/Modeling/_Incoming/blue tulip/blue tulip.obj",
+                "Assets/Models/Modeling/_Incoming/blue yellow flower/blue yellow flower.obj",
+                "Assets/Models/Modeling/_Incoming/blue_flower/blue_flower.obj",
+                "Assets/Models/Modeling/_Incoming/multi flowers/multi flowers.obj",
+                "Assets/Models/Modeling/_Incoming/pink rose/pink rose.obj",
+                "Assets/Models/Modeling/_Incoming/pink tulip/pink tulip.obj",
+                "Assets/Models/Modeling/_Incoming/purple tulip open/purple tulip open.obj",
+                "Assets/Models/Modeling/_Incoming/red rose/red rose.obj",
+                "Assets/Models/Modeling/_Incoming/red tulip open/red tulip open.obj",
+                "Assets/Models/Modeling/_Incoming/white daisy/white daisy.obj",
+                "Assets/Models/Modeling/_Incoming/white tulip closed/white tulip closed.obj");
+
+            if (stage1 == null || stage2 == null || finalFlowers == null || finalFlowers.Length == 0)
+                return false;
+
+            smallPlantPrefabs = BuildRepeatedPrefabArray(stage1, finalFlowers.Length);
+            smallTreePrefabs = BuildRepeatedPrefabArray(stage2, finalFlowers.Length);
+            mediumTreePrefabs = finalFlowers;
+            useInspectorSeedGrowthProfiles = true;
+
+            seedGrowthProfiles = new SeedGrowthProfile[finalFlowers.Length];
+            for (int i = 0; i < finalFlowers.Length; i++)
+            {
+                var finalFlower = finalFlowers[i];
+                seedGrowthProfiles[i] = new SeedGrowthProfile
+                {
+                    seedName = finalFlower != null ? ToDisplayName(finalFlower.name) : $"Flower {i + 1}",
+                    variantIndex = i,
+                    stage1Prefab = stage1,
+                    stage2Prefab = stage2,
+                    finalFlowerPrefab = finalFlower
+                };
+            }
+
+            return true;
+        }
+
+        private static GameObject[] BuildRepeatedPrefabArray(GameObject prefab, int count)
+        {
+            var output = new GameObject[Mathf.Max(0, count)];
+            for (int i = 0; i < output.Length; i++)
+                output[i] = prefab;
+            return output;
+        }
+#endif
+
+        private static GameObject[] LoadPrefabsFromResources(params string[] resourcePaths)
+        {
+            var result = new List<GameObject>(resourcePaths.Length);
+            for (int i = 0; i < resourcePaths.Length; i++)
+            {
+                if (string.IsNullOrWhiteSpace(resourcePaths[i]))
+                    continue;
+                var prefab = Resources.Load<GameObject>(resourcePaths[i]);
+                if (prefab != null)
+                    result.Add(prefab);
+            }
+            return result.ToArray();
         }
 
         private static GameObject[] LoadPrefabs(params string[] assetPaths)
@@ -1145,11 +1228,14 @@ namespace SCoL.Visualization
                 {
                     var pos = voxelWorld.ColumnTopWorld(x, y);
                     targetY = pos.y + YOffsetFor(stage);
-                    targetPos = new Vector3(pos.x, targetY, pos.z);
+                    targetPos = new Vector3(pos.x + cell.PlantOffsetX, targetY, pos.z + cell.PlantOffsetZ);
                 }
                 else
                 {
-                    var pos = runtime.Grid.CellCenterWorld(x, y) + Vector3.up * YOffsetFor(stage);
+                    var pos = runtime.Grid.CellCenterWorld(x, y);
+                    pos.x += cell.PlantOffsetX;
+                    pos.z += cell.PlantOffsetZ;
+                    pos += Vector3.up * YOffsetFor(stage);
                     targetY = pos.y;
                     targetPos = pos;
                 }
@@ -1158,6 +1244,12 @@ namespace SCoL.Visualization
                 plantGO.transform.localScale = Vector3.one * scale;
                 TryNormalizeFlowerStageHeight(plantGO, stage);
                 SnapBottomToY(plantGO, targetY);
+
+                var healthBar = plantGO.GetComponent<SCoLWorldHealthBar>();
+                if (healthBar == null)
+                    healthBar = plantGO.AddComponent<SCoLWorldHealthBar>();
+                healthBar.SetVisible(cell.PlantHealth > 0.01f);
+                healthBar.SetHealth(cell.PlantHealth, 50f);
             }
 
             foreach (var idx in stale)

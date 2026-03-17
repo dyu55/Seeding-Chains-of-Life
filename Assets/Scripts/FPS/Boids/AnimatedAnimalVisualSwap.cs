@@ -22,8 +22,12 @@ public class AnimatedAnimalVisualSwap : MonoBehaviour
     private AnimationClip _moveClip;
     private AnimationClip _fallbackClip;
     private AnimationClip _currentClip;
+    private AnimationClip _attackClip;
+    private AnimationClip _hitClip;
     private bool _initialized;
     private bool _usingMoveClip;
+    private bool _oneShotActive;
+    private float _oneShotEndsAt;
     private Vector3 _lastWorldPosition;
     private float _smoothedPlanarSpeed;
 
@@ -88,6 +92,16 @@ public class AnimatedAnimalVisualSwap : MonoBehaviour
                 _currentPlayable.SetTime(time % _currentClip.length);
         }
 
+        if (_oneShotActive)
+        {
+            if (Time.time >= _oneShotEndsAt)
+            {
+                _oneShotActive = false;
+                PlayClip(_smoothedPlanarSpeed > Mathf.Max(0.06f, _boid.maxSpeed * 0.10f) ? _moveClip : _idleClip);
+            }
+            return;
+        }
+
         float enterMoveThreshold = Mathf.Max(0.06f, _boid.maxSpeed * 0.10f);
         float exitMoveThreshold = Mathf.Max(0.03f, _boid.maxSpeed * 0.05f);
         bool shouldMove = _usingMoveClip
@@ -140,6 +154,8 @@ public class AnimatedAnimalVisualSwap : MonoBehaviour
             _idleClip = _fallbackClip;
         if (_moveClip == null)
             _moveClip = _idleClip;
+        _attackClip = FindBestClip(clips, "attack", "bite", "snap", "pounce");
+        _hitClip = FindBestClip(clips, "hit", "hurt", "damage", "impact");
 
         _animator = _visualRoot != null
             ? _visualRoot.GetComponentInChildren<Animator>(true)
@@ -179,6 +195,26 @@ public class AnimatedAnimalVisualSwap : MonoBehaviour
         var output = (AnimationPlayableOutput)_graph.GetOutput(0);
         output.SetSourcePlayable(_currentPlayable);
         _currentClip = clip;
+    }
+
+    public void TriggerAttack()
+    {
+        PlayOneShot(_attackClip);
+    }
+
+    public void TriggerHit()
+    {
+        PlayOneShot(_hitClip);
+    }
+
+    private void PlayOneShot(AnimationClip clip)
+    {
+        if (clip == null)
+            return;
+
+        PlayClip(clip);
+        _oneShotActive = true;
+        _oneShotEndsAt = Time.time + Mathf.Max(0.1f, clip.length);
     }
 
     private static AnimationClip FindBestClip(IEnumerable<AnimationClip> clips, params string[] keywords)

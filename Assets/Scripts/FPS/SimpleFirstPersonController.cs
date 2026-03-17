@@ -195,7 +195,7 @@ public class SimpleFirstPersonController : MonoBehaviour
         if (runtime != null)
         {
             Vector3 stompPoint = transform.position + Vector3.down * 0.25f;
-            int removed = runtime.TryDestroyPlantAroundWorld(stompPoint, radius: 1.0f, maxPlants: 2);
+            int removed = runtime.TryStompPlantAroundWorld(stompPoint, radius: 1.0f, maxPlants: 2, hitsRequired: 3);
             if (removed > 0)
             {
                 SCoL.Visualization.DayNightLightingController.PlayInteractionSfx(SCoL.Visualization.DayNightLightingController.InteractionSfx.DestroySeed);

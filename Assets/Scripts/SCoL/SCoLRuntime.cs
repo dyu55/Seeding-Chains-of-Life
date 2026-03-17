@@ -4,6 +4,7 @@ using UnityEngine;
 using SCoL.Voxels;
 using SCoL.Visualization;
 using SCoL.Weather;
+using SCoL.Inventory;
 using Unity.XR.CoreUtils;
 
 namespace SCoL
@@ -87,6 +88,16 @@ namespace SCoL
         [Tooltip("If true, cellular spread and plant growth are paused during Winter.")]
         public bool pausePlantGrowthInWinter = true;
 
+        [Header("Player Flower Seed Drops")]
+        public bool dropSeedPickupsNearDensePlayerFlowers = true;
+        [Min(2)] public int densePlayerFlowerThreshold = 6;
+        [Min(1f)] public float densePlayerFlowerRadius = 4.5f;
+        [Min(0.5f)] public float denseFlowerDropCheckSeconds = 6f;
+        [Range(0f, 1f)] public float denseFlowerDropChance = 0.45f;
+        [Min(1)] public int denseFlowerMaxActiveSeedDrops = 12;
+        [Min(0.25f)] public float denseFlowerSeedDropSpacing = 1.6f;
+        [Min(0f)] public float denseFlowerSeedDropHeight = 0.24f;
+
         public GridViewMode ViewMode
         {
             get => _renderer != null ? _renderer.ViewMode : GridViewMode.Stage;
@@ -128,6 +139,7 @@ namespace SCoL
             new Vector2Int(0, -1),  // S
             new Vector2Int(1, -1),  // SE
         };
+        float _nextDenseFlowerDropAt;
 
         private void EnsureHUD()
         {
@@ -152,10 +164,6 @@ namespace SCoL
             if (fpsCrosshair != null)
                 fpsCrosshair.enabled = false;
 
-            // Kill XR Simulation environment objects (grey cubes from XR Device Simulator)
-            // that appear when SimulationLoader is still in the XR loader list.
-            if (GetComponent<SCoL.XR.SCoLXRSimulationDisabler>() == null)
-                gameObject.AddComponent<SCoL.XR.SCoLXRSimulationDisabler>();
         }
 
 
@@ -290,6 +298,12 @@ namespace SCoL
                 if (enablePlantVoxelRenderer)
                     _plantRenderer?.RenderNow();
             }
+
+            if (dropSeedPickupsNearDensePlayerFlowers && Time.time >= _nextDenseFlowerDropAt)
+            {
+                _nextDenseFlowerDropAt = Time.time + Mathf.Max(0.5f, denseFlowerDropCheckSeconds);
+                TrySpawnDenseFlowerSeedPickup();
+            }
         }
 
         private void AdvanceSeason()
@@ -321,7 +335,11 @@ namespace SCoL
 
         private void Tick()
         {
+            WeatherType previousWeather = CurrentWeather;
             ChooseWeather();
+
+            if (CurrentWeather == WeatherType.Rain && previousWeather != WeatherType.Rain)
+                PromoteFlowersForRain();
 
             // Clone snapshot for CA-like updates
             var next = new CellState[Grid.Width * Grid.Height];
@@ -515,6 +533,9 @@ namespace SCoL
                     n.PlantStage = PlantStage.Burnt;
                     n.Durability = 0.0f;
                     n.BurntAutoClearSeconds = 0f;
+                    n.PlantHealth = 0f;
+                    n.StompHits = 0;
+                    n.ClearPlantPlacementOffset();
                 }
                 return;
             }
@@ -545,10 +566,14 @@ namespace SCoL
         private void StepGrowth(int x, int y, CellState cur, CellState n)
         {
             bool pauseForWinter = pausePlantGrowthInWinter && IsWinterSeasonActive();
+            bool isFlowerLineage = ShouldClampFlowerAtFinalStage(cur);
 
             // if burnt, slowly recover success
             if (cur.PlantStage == PlantStage.Burnt)
             {
+                n.PlantHealth = 0f;
+                n.StompHits = 0;
+                n.ClearPlantPlacementOffset();
                 if (cur.BurntAutoClearSeconds > 0f)
                 {
                     float remain = Mathf.Max(0f, cur.BurntAutoClearSeconds - Mathf.Max(0.01f, Config.tickSeconds));
@@ -564,10 +589,13 @@ namespace SCoL
                         n.FireFuel = 0f;
                         n.IsPlayerSeedLineage = false;
                         n.FlowerVariantIndex = -1;
+                        n.PlantHealth = 0f;
+                        n.StompHits = 0;
+                        n.ClearPlantPlacementOffset();
+                        n.BurntAutoClearSeconds = 0f;
                     }
                     return;
                 }
-
                 if (pauseForWinter)
                 {
                     n.PlantAgeSeconds = cur.PlantAgeSeconds;
@@ -596,6 +624,9 @@ namespace SCoL
                 n.IsPlayerSeedLineage = false;
                 n.FlowerVariantIndex = -1;
                 n.BurntAutoClearSeconds = 0f;
+                n.PlantHealth = 0f;
+                n.StompHits = 0;
+                n.ClearPlantPlacementOffset();
                 n.Success = Mathf.Clamp01(cur.Success - 0.05f);
                 return;
             }
@@ -608,12 +639,18 @@ namespace SCoL
                     n.IsPlayerSeedLineage = false;
                     n.FlowerVariantIndex = -1;
                     n.BurntAutoClearSeconds = 0f;
+                    n.PlantHealth = 0f;
+                    n.StompHits = 0;
+                    n.ClearPlantPlacementOffset();
                 }
                 else
                 {
                     n.PlantAgeSeconds = cur.PlantAgeSeconds;
                     n.IsPlayerSeedLineage = cur.IsPlayerSeedLineage;
                     n.FlowerVariantIndex = cur.FlowerVariantIndex;
+                    n.BurntAutoClearSeconds = cur.BurntAutoClearSeconds;
+                    n.PlantHealth = cur.PlantHealth;
+                    n.StompHits = cur.StompHits;
                     n.BurntAutoClearSeconds = cur.BurntAutoClearSeconds;
                 }
                 return;
@@ -632,6 +669,9 @@ namespace SCoL
             if (cur.PlantStage == PlantStage.Empty)
             {
                 n.FlowerVariantIndex = -1;
+                n.PlantHealth = 0f;
+                n.StompHits = 0;
+                n.ClearPlantPlacementOffset();
 
                 if (!IsPlantableColumn(x, y))
                     return;
@@ -709,6 +749,9 @@ namespace SCoL
                             n.Durability = 1.0f;
                             n.IsPlayerSeedLineage = onlyPlayerSeededLineageCA || lineagePlants > 0;
                             n.FlowerVariantIndex = ResolveSpreadFlowerVariantIndex(x, y);
+                            n.PlantHealth = 50f;
+                            n.StompHits = 0;
+                            n.ClearPlantPlacementOffset();
                         }
                     }
 
@@ -730,6 +773,9 @@ namespace SCoL
                     n.Durability = 1.0f;
                     n.IsPlayerSeedLineage = onlyPlayerSeededLineageCA || lineagePlants > 0;
                     n.FlowerVariantIndex = ResolveSpreadFlowerVariantIndex(x, y);
+                    n.PlantHealth = 50f;
+                    n.StompHits = 0;
+                    n.ClearPlantPlacementOffset();
                 }
                 return;
             }
@@ -740,11 +786,16 @@ namespace SCoL
                 n.IsPlayerSeedLineage = false;
                 n.FlowerVariantIndex = -1;
                 n.BurntAutoClearSeconds = 0f;
+                n.PlantHealth = 0f;
+                n.StompHits = 0;
+                n.ClearPlantPlacementOffset();
                 return;
             }
 
             // Keep the planted flower variant stable after placement.
             n.FlowerVariantIndex = cur.FlowerVariantIndex;
+            n.PlantHealth = cur.PlantHealth;
+            n.StompHits = cur.StompHits;
 
             // Lifecycle: plant disappears after a fixed lifetime (in seconds)
             if (Config.enablePlantLifecycle)
@@ -759,6 +810,9 @@ namespace SCoL
                     n.IsPlayerSeedLineage = false;
                     n.FlowerVariantIndex = -1;
                     n.BurntAutoClearSeconds = 0f;
+                    n.PlantHealth = 0f;
+                    n.StompHits = 0;
+                    n.ClearPlantPlacementOffset();
                     return;
                 }
 
@@ -783,6 +837,13 @@ namespace SCoL
             }
 
             // Growth progression: if neighborhood supports it and success is high
+            // Success slowly increases when a plant survives ticks
+            n.Success = Mathf.Clamp01(cur.Success + 0.01f);
+
+            // Flower variants advance only through explicit watering interactions.
+            if (isFlowerLineage)
+                return;
+
             float growChance = Mathf.Lerp(0.02f, 0.15f, cur.Success);
             growChance *= treePromotionMultiplier;
 
@@ -806,10 +867,7 @@ namespace SCoL
                 }
             }
 
-            // Success slowly increases when a plant survives ticks
-            n.Success = Mathf.Clamp01(cur.Success + 0.01f);
-
-            // Deterministic promotion by age so player-seeded flowers reliably become trees.
+            // Deterministic promotion by age applies only to non-flower vegetation.
             PromotePlantByAge(ref n);
         }
 
@@ -819,6 +877,17 @@ namespace SCoL
         {
             x = y = 0;
             return Grid != null && Grid.TryWorldToCell(world, out x, out y);
+        }
+
+        private void StorePlantPlacementOffset(CellState cell, int x, int y, Vector3 world)
+        {
+            if (cell == null || Grid == null)
+                return;
+
+            Vector3 center = Grid.CellCenterWorld(x, y);
+            float maxOffset = Mathf.Max(0f, Grid.CellSize * 0.5f - 0.05f);
+            cell.PlantOffsetX = Mathf.Clamp(world.x - center.x, -maxOffset, maxOffset);
+            cell.PlantOffsetZ = Mathf.Clamp(world.z - center.z, -maxOffset, maxOffset);
         }
 
         public void PlaceSeedAt(Vector3 world, int flowerVariantIndex)
@@ -845,6 +914,9 @@ namespace SCoL
             c.IsPlayerSeedLineage = true;
             c.FlowerVariantIndex = flowerVariantIndex >= 0 ? flowerVariantIndex : -1;
             c.BurntAutoClearSeconds = 0f;
+            c.PlantHealth = 50f;
+            c.StompHits = 0;
+            StorePlantPlacementOffset(c, x, y, world);
 
             // Give nearby dry cells a small hydration nudge so lineage expansion is visible after seeding.
             for (int dy = -1; dy <= 1; dy++)
@@ -894,6 +966,9 @@ namespace SCoL
             c.IsPlayerSeedLineage = false;
             c.FlowerVariantIndex = -1;
             c.BurntAutoClearSeconds = 0f;
+            c.PlantHealth = 0f;
+            c.StompHits = 0;
+            c.ClearPlantPlacementOffset();
             c.Success = Mathf.Clamp01(c.Success - 0.02f);
 
             _renderer?.Render(Grid);
@@ -971,6 +1046,60 @@ namespace SCoL
                 if (TryDestroyPlantAtCell(c.x, c.y))
                     removed++;
             }
+
+            return removed;
+        }
+
+        public int TryStompPlantAroundWorld(Vector3 world, float radius = 1.25f, int maxPlants = 3, int hitsRequired = 3)
+        {
+            if (Grid == null)
+                return 0;
+            if (!TryWorldToCell(world, out int cx, out int cy))
+                return 0;
+
+            float r = Mathf.Max(0.1f, radius);
+            float cell = Mathf.Max(0.0001f, Grid.CellSize);
+            int cellR = Mathf.Max(1, Mathf.CeilToInt(r / cell));
+            int removed = 0;
+
+            var candidates = new List<(int x, int y, float dSqr)>(32);
+            for (int y = cy - cellR; y <= cy + cellR; y++)
+            for (int x = cx - cellR; x <= cx + cellR; x++)
+            {
+                if (!Grid.InBounds(x, y))
+                    continue;
+
+                var c = Grid.Get(x, y);
+                if (!c.HasPlant)
+                    continue;
+
+                Vector3 center = Grid.CellCenterWorld(x, y);
+                Vector2 d = new Vector2(center.x - world.x, center.z - world.z);
+                float dSqr = d.sqrMagnitude;
+                if (dSqr <= r * r)
+                    candidates.Add((x, y, dSqr));
+            }
+
+            if (candidates.Count == 0)
+                return 0;
+
+            candidates.Sort((a, b) => a.dSqr.CompareTo(b.dSqr));
+            int limit = Mathf.Max(1, maxPlants);
+            int threshold = Mathf.Max(1, hitsRequired);
+            for (int i = 0; i < candidates.Count && removed < limit; i++)
+            {
+                var c = candidates[i];
+                var cellState = Grid.Get(c.x, c.y);
+                cellState.StompHits = Mathf.Min(threshold, cellState.StompHits + 1);
+                if (cellState.StompHits < threshold)
+                    continue;
+
+                if (TryDestroyPlantAtCell(c.x, c.y))
+                    removed++;
+            }
+
+            if (removed == 0)
+                _plantRenderer?.RenderNow();
 
             return removed;
         }
@@ -1198,16 +1327,21 @@ namespace SCoL
             if (!c.HasPlant || c.PlantStage == PlantStage.Burnt)
                 return;
 
+            if (ShouldClampFlowerAtFinalStage(c))
+                return;
+
             c.Success = Mathf.Clamp01(c.Success + Mathf.Max(0f, waterGrowthSuccessBoost));
             c.PlantAgeSeconds += Mathf.Max(0f, waterGrowthAgeBoostSeconds);
             PromotePlantByAge(ref c);
         }
 
-        private void TryPromotePlantStageByWater(ref CellState c)
+        private void TryPromotePlantStageByWater(ref CellState c, bool isRainWeather = false)
         {
             if (!waterPromotesFlowerStages)
                 return;
             if (!c.HasPlant || c.PlantStage == PlantStage.Burnt)
+                return;
+            if (!isRainWeather && CurrentSeason == Season.Winter)
                 return;
             if (waterPromotionOnlyForPlayerLineage && !c.IsPlayerSeedLineage)
                 return;
@@ -1233,6 +1367,17 @@ namespace SCoL
                     }
                     break;
             }
+        }
+
+        private void PromoteFlowersForRain()
+        {
+            if (Grid == null)
+                return;
+
+            Grid.ForEach((x, y, c) =>
+            {
+                TryPromotePlantStageByWater(ref c, isRainWeather: true);
+            });
         }
 
         private void PromotePlantByAge(ref CellState c)
@@ -1283,6 +1428,9 @@ namespace SCoL
             c.FlowerVariantIndex = -1;
             c.BurntAutoClearSeconds = Mathf.Max(0f, autoClearSeconds);
             c.PlantAgeSeconds = 0f;
+            c.PlantHealth = 0f;
+            c.StompHits = 0;
+            c.ClearPlantPlacementOffset();
             return true;
         }
 
@@ -1337,6 +1485,141 @@ namespace SCoL
             var c = Grid.Get(x, y);
             c.Durability = Mathf.Clamp01(c.Durability - damage);
             _plantRenderer?.RenderNow();
+        }
+
+        void TrySpawnDenseFlowerSeedPickup()
+        {
+            if (Grid == null || _voxelWorld == null || _voxelWorld.Config == null)
+                return;
+            if (denseFlowerMaxActiveSeedDrops > 0 && CountActiveDenseFlowerSeedDrops() >= denseFlowerMaxActiveSeedDrops)
+                return;
+
+            int attempts = 24;
+            float radius = Mathf.Max(1f, densePlayerFlowerRadius);
+            int cellRadius = Mathf.Max(1, Mathf.CeilToInt(radius / Mathf.Max(0.0001f, Grid.CellSize)));
+            for (int i = 0; i < attempts; i++)
+            {
+                int x = UnityEngine.Random.Range(0, Grid.Width);
+                int y = UnityEngine.Random.Range(0, Grid.Height);
+                var cell = Grid.Get(x, y);
+                if (!cell.HasPlant || !cell.IsPlayerSeedLineage || cell.FlowerVariantIndex < 0)
+                    continue;
+
+                int nearbyFlowers = CountDensePlayerFlowersAround(x, y, cellRadius, radius);
+                if (nearbyFlowers < Mathf.Max(2, densePlayerFlowerThreshold))
+                    continue;
+                if (UnityEngine.Random.value > Mathf.Clamp01(denseFlowerDropChance))
+                    return;
+
+                if (TryFindDenseFlowerDropPoint(x, y, cellRadius, out var dropWorld))
+                {
+                    SpawnDenseFlowerSeedPickup(dropWorld, cell.FlowerVariantIndex);
+                    return;
+                }
+            }
+        }
+
+        int CountDensePlayerFlowersAround(int cx, int cy, int cellRadius, float worldRadius)
+        {
+            int count = 0;
+            float rSqr = worldRadius * worldRadius;
+            Vector3 center = Grid.CellCenterWorld(cx, cy);
+            for (int y = cy - cellRadius; y <= cy + cellRadius; y++)
+            for (int x = cx - cellRadius; x <= cx + cellRadius; x++)
+            {
+                if (!Grid.InBounds(x, y))
+                    continue;
+
+                var cell = Grid.Get(x, y);
+                if (!cell.HasPlant || !cell.IsPlayerSeedLineage || cell.FlowerVariantIndex < 0)
+                    continue;
+
+                Vector3 candidate = Grid.CellCenterWorld(x, y);
+                Vector2 d = new Vector2(candidate.x - center.x, candidate.z - center.z);
+                if (d.sqrMagnitude <= rSqr)
+                    count++;
+            }
+
+            return count;
+        }
+
+        bool TryFindDenseFlowerDropPoint(int centerX, int centerY, int cellRadius, out Vector3 dropWorld)
+        {
+            dropWorld = Grid.CellCenterWorld(centerX, centerY) + Vector3.up * denseFlowerSeedDropHeight;
+            int attempts = Mathf.Max(8, cellRadius * 6);
+            for (int i = 0; i < attempts; i++)
+            {
+                int x = Mathf.Clamp(centerX + UnityEngine.Random.Range(-cellRadius, cellRadius + 1), 0, Grid.Width - 1);
+                int y = Mathf.Clamp(centerY + UnityEngine.Random.Range(-cellRadius, cellRadius + 1), 0, Grid.Height - 1);
+                if (!IsPlantableColumn(x, y))
+                    continue;
+
+                Vector3 candidate = _voxelWorld.ColumnTopWorld(x, y) + Vector3.up * Mathf.Max(0f, denseFlowerSeedDropHeight);
+                if (HasNearbyDenseFlowerSeedPickup(candidate, denseFlowerSeedDropSpacing))
+                    continue;
+
+                dropWorld = candidate;
+                return true;
+            }
+
+            return false;
+        }
+
+        void SpawnDenseFlowerSeedPickup(Vector3 worldPos, int flowerVariantIndex)
+        {
+            var go = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+            go.name = $"PlayerFlowerSeedDrop_{flowerVariantIndex}_{Time.frameCount}";
+            go.transform.position = worldPos;
+            go.transform.localScale = new Vector3(0.26f, 0.18f, 0.26f);
+            go.transform.rotation = Quaternion.Euler(0f, UnityEngine.Random.Range(0f, 360f), 90f);
+
+            var rb = go.AddComponent<Rigidbody>();
+            rb.useGravity = false;
+            rb.isKinematic = true;
+
+            var pickup = go.AddComponent<SCoLPickup>();
+            pickup.type = SCoLItemType.Seed;
+            pickup.amount = 1;
+            pickup.seedVariantIndex = flowerVariantIndex;
+            pickup.preserveExistingMaterials = false;
+            pickup.ApplyVisual();
+        }
+
+        bool HasNearbyDenseFlowerSeedPickup(Vector3 worldPos, float radius)
+        {
+            float rSqr = Mathf.Max(0.1f, radius) * Mathf.Max(0.1f, radius);
+            var pickups = FindObjectsByType<SCoLPickup>(FindObjectsSortMode.None);
+            for (int i = 0; i < pickups.Length; i++)
+            {
+                var pickup = pickups[i];
+                if (pickup == null || pickup.type != SCoLItemType.Seed)
+                    continue;
+                if (pickup.name == null || !pickup.name.StartsWith("PlayerFlowerSeedDrop_"))
+                    continue;
+
+                Vector3 d = pickup.transform.position - worldPos;
+                d.y = 0f;
+                if (d.sqrMagnitude <= rSqr)
+                    return true;
+            }
+
+            return false;
+        }
+
+        int CountActiveDenseFlowerSeedDrops()
+        {
+            int count = 0;
+            var pickups = FindObjectsByType<SCoLPickup>(FindObjectsSortMode.None);
+            for (int i = 0; i < pickups.Length; i++)
+            {
+                var pickup = pickups[i];
+                if (pickup == null || pickup.type != SCoLItemType.Seed)
+                    continue;
+                if (pickup.name != null && pickup.name.StartsWith("PlayerFlowerSeedDrop_"))
+                    count++;
+            }
+
+            return count;
         }
 
         private System.Collections.IEnumerator SnapRigToGroundNextFrame()
@@ -1573,6 +1856,8 @@ namespace SCoL
                     c.Water = Mathf.Clamp01(c.Water + 0.10f);
                     c.IsPlayerSeedLineage = false;
                     c.FlowerVariantIndex = -1;
+                    c.PlantHealth = 50f;
+                    c.ClearPlantPlacementOffset();
                     seededAny = true;
                 }
             }
@@ -1603,6 +1888,8 @@ namespace SCoL
                         c.Water = Mathf.Clamp01(c.Water + 0.15f);
                         c.IsPlayerSeedLineage = false;
                         c.FlowerVariantIndex = -1;
+                        c.PlantHealth = 50f;
+                        c.ClearPlantPlacementOffset();
                         return;
                     }
                 }

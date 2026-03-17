@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using SCoL.Weather;
 using SCoL.Visualization;
 using SCoL;
+using SCoL.Combat;
 
 /// <summary>
 /// T07: Seeding loop for FPS.
@@ -235,6 +236,7 @@ public sealed class FPSSeedGrowth : MonoBehaviour
 
     [Header("Stomp Interaction")]
     public bool destroyWhenPlayerStepsOnTop = true;
+    [Min(1)] public int stompHitsToDestroy = 3;
     [Min(0.02f)] public float stompCheckIntervalSeconds = 0.1f;
     [Min(0f)] public float stompTopTolerance = 0.15f;
     [Min(0f)] public float stompFootAllowanceAboveTop = 0.45f;
@@ -259,6 +261,7 @@ public sealed class FPSSeedGrowth : MonoBehaviour
     static CharacterController _playerCharacterController;
     static float _nextPlayerLookupAt;
     float _nextStompCheckAt;
+    int _stompHitCount;
 
     void OnEnable()
     {
@@ -275,6 +278,11 @@ public sealed class FPSSeedGrowth : MonoBehaviour
     {
         if (growthMaterial == null)
             growthMaterial = FPSSeeding.GetVoxelMat();
+
+        var combatHealth = GetComponent<SCoLCombatHealth>();
+        if (combatHealth == null)
+            combatHealth = gameObject.AddComponent<SCoLCombatHealth>();
+        combatHealth.Configure(SCoLCombatFaction.Plant, 50f, fillToMax: true, showBar: true, destroyWhenDead: true);
 
         if (transform.childCount == 0)
             RebuildNow();
@@ -338,6 +346,7 @@ public sealed class FPSSeedGrowth : MonoBehaviour
         _stage = 0;
         _stageTimer = 0f;
         _waterBoostSeconds = 0f;
+        _stompHitCount = 0;
         if (clearBurn)
             _burned = false;
         BuildStage(_stage);
@@ -439,6 +448,10 @@ public sealed class FPSSeedGrowth : MonoBehaviour
         if (playerFootY < topY - Mathf.Max(0f, stompTopTolerance))
             return;
         if (playerFootY > topY + Mathf.Max(0f, stompFootAllowanceAboveTop))
+            return;
+
+        _stompHitCount = Mathf.Min(Mathf.Max(1, stompHitsToDestroy), _stompHitCount + 1);
+        if (_stompHitCount < Mathf.Max(1, stompHitsToDestroy))
             return;
 
         DayNightLightingController.PlayInteractionSfx(DayNightLightingController.InteractionSfx.DestroySeed);

@@ -1,6 +1,7 @@
 using System.Collections;
 using UnityEngine;
 using SCoL.Voxels;
+using SCoL.Combat;
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
@@ -17,6 +18,7 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
     [Tooltip("Guarantee a denser ecosystem even if old scene serialization still stores a lower animalCount.")]
     public bool enforceMinimumAnimalCount = true;
     [Min(1)] public int minimumAnimalCount = 24;
+    [Min(0)] public int wolfCount = 4;
     public bool spawnOnStart = true;
     [Min(1)] public int maxSpawnAttemptsPerAnimal = 8;
     [Min(0f)] public float groundOffset = 0.02f;
@@ -47,7 +49,20 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
     [Header("Debug")]
     public bool logSpawnInfo = false;
 
+    [Header("Respawn")]
+    public bool maintainPopulationByRespawning = true;
+    [Min(0f)] public float respawnDelaySeconds = 4.5f;
+
+    [Header("Death Feedback")]
+    public bool enableDeathFeedback = true;
+    public bool enableDeathDrops = true;
+    [Min(1)] public int wolfStoneDropAmount = 2;
+    [Min(1)] public int herbivorePlantDropAmount = 1;
+    [Range(0f, 1f)] public float herbivoreSeedDropChance = 0.4f;
+
     private readonly System.Collections.Generic.List<GameObject> _spawned = new System.Collections.Generic.List<GameObject>(128);
+    int _spawnSerial;
+    GameObject[] _stoneDropPrefabs;
 
     IEnumerator Start()
     {
@@ -78,22 +93,26 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
         TryAutoAssignAnimalPrefabs();
         EnsureFoxAndDeerPrefabs();
         ClearSpawned();
+        _spawnSerial = 0;
 
         int spawnedCount = 0;
-        int target = Mathf.Max(1, animalCount);
+        int herbivoreTarget = Mathf.Max(1, animalCount);
         if (enforceMinimumAnimalCount)
-            target = Mathf.Max(target, Mathf.Max(1, minimumAnimalCount));
-        for (int i = 0; i < target; i++)
+            herbivoreTarget = Mathf.Max(herbivoreTarget, Mathf.Max(1, minimumAnimalCount));
+        int hostileWolves = Mathf.Max(0, wolfCount);
+        int totalTarget = herbivoreTarget + hostileWolves;
+        for (int i = 0; i < totalTarget; i++)
         {
+            bool spawnWolf = i < hostileWolves;
             bool spawned = false;
             for (int tries = 0; tries < Mathf.Max(1, maxSpawnAttemptsPerAnimal); tries++)
             {
-                if (!TryPickSpawnPoint(i, target, out var pos))
+                if (!TryPickSpawnPoint(i, totalTarget, out var pos))
                     continue;
 
-                var prefab = PickPrefab(i, target);
+                var prefab = PickPrefab(i, herbivoreTarget, hostileWolves, spawnWolf);
                 var rot = Quaternion.Euler(0f, Random.Range(0f, 360f), 0f);
-                var go = SpawnAnimal(prefab, pos, rot, i);
+                var go = SpawnAnimal(prefab, pos, rot, _spawnSerial++, spawnWolf);
                 if (go == null) continue;
 
                 spawnedCount++;
@@ -106,10 +125,10 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
         }
 
         if (logSpawnInfo)
-            Debug.Log($"[VoxBoxAnimalSchoolSpawner] Spawned {spawnedCount}/{target} animals.", this);
+            Debug.Log($"[VoxBoxAnimalSchoolSpawner] Spawned {spawnedCount}/{totalTarget} animals (wolves={hostileWolves}).", this);
     }
 
-    GameObject SpawnAnimal(GameObject prefab, Vector3 position, Quaternion rotation, int index)
+    GameObject SpawnAnimal(GameObject prefab, Vector3 position, Quaternion rotation, int index, bool spawnWolf)
     {
         GameObject go = null;
         if (prefab != null)
@@ -119,7 +138,7 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
 
         if (go == null) return null;
 
-        go.name = $"RoamingAnimal_{index:00}_{go.name}";
+        go.name = $"{(spawnWolf ? "Wolf" : "RoamingAnimal")}_{index:00}_{go.name}";
 
         float s = Random.Range(randomScaleRange.x, randomScaleRange.y);
         go.transform.localScale *= s;
@@ -130,7 +149,7 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
         var boid = go.GetComponent<FPSBoidAgent>();
         if (boid == null)
             boid = go.AddComponent<FPSBoidAgent>();
-        boid.role = FPSBoidAgent.BoidRole.Prey;
+        boid.role = spawnWolf ? FPSBoidAgent.BoidRole.Predator : FPSBoidAgent.BoidRole.Prey;
         boid.maxSpeed = boidBaseSpeed;
         boid.neighborRadius = boidNeighborRadius;
         boid.separationWeight = 0.12f;
@@ -200,13 +219,204 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
         boid.eatHeadTouchDistance = eatHeadTouchDistance;
         boid.eatHoldSeconds = eatHoldSeconds;
         boid.eatAction = eatAction;
+        boid.canAttackOtherAnimals = spawnWolf;
+        boid.canAttackPlayer = spawnWolf;
+        boid.attackDamage = 10f;
+        boid.attackCooldownSeconds = 1.1f;
+        boid.attackRange = spawnWolf ? 1.45f : 1.1f;
+        boid.attackApproachWeight = spawnWolf ? 5.2f : 0f;
 
         if (configureBoidBoundsFromWorld)
             ApplyWorldBounds(boid);
 
         EnsureAnyCollider(go);
+        var health = go.GetComponent<SCoLCombatHealth>();
+        if (health == null)
+            health = go.AddComponent<SCoLCombatHealth>();
+        health.Configure(
+            spawnWolf ? SCoLCombatFaction.Wolf : SCoLCombatFaction.Animal,
+            50f,
+            fillToMax: true,
+            showBar: true,
+            destroyWhenDead: true);
+
+        if (spawnWolf)
+        {
+            var wolfSwap = go.GetComponent<AnimatedAnimalVisualSwap>();
+            if (wolfSwap == null)
+                wolfSwap = go.AddComponent<AnimatedAnimalVisualSwap>();
+            wolfSwap.resourceModelPath = "Animals/WolfAnimated/Wolf";
+            wolfSwap.desiredLocalHeight = 1.95f;
+            wolfSwap.yawOffsetDegrees = 0f;
+            wolfSwap.destroyExistingVisualChildren = true;
+            wolfSwap.logWarnings = logSpawnInfo;
+            wolfSwap.ApplyNow();
+        }
+
+        var respawnRelay = go.GetComponent<SCoLAnimalRespawnRelay>();
+        if (respawnRelay == null)
+            respawnRelay = go.AddComponent<SCoLAnimalRespawnRelay>();
+        respawnRelay.Initialize(this, spawnWolf);
+
         _spawned.Add(go);
         return go;
+    }
+
+    public void NotifyAnimalDeath(GameObject animalRoot, bool spawnWolf)
+    {
+        if (animalRoot != null)
+        {
+            if (enableDeathFeedback)
+                PlayDeathFeedback(animalRoot.transform.position, spawnWolf);
+            if (enableDeathDrops)
+                SpawnDeathDrops(animalRoot.transform.position, spawnWolf);
+        }
+
+        if (animalRoot != null)
+            _spawned.Remove(animalRoot);
+
+        if (!maintainPopulationByRespawning || !isActiveAndEnabled || !Application.isPlaying)
+            return;
+
+        StartCoroutine(RespawnAnimalAfterDelay(spawnWolf));
+    }
+
+    IEnumerator RespawnAnimalAfterDelay(bool spawnWolf)
+    {
+        if (respawnDelaySeconds > 0f)
+            yield return new WaitForSeconds(respawnDelaySeconds);
+
+        if (voxelWorld == null)
+            voxelWorld = FindFirstObjectByType<VoxelWorld>();
+
+        TryAutoAssignAnimalPrefabs();
+        EnsureFoxAndDeerPrefabs();
+
+        GameObject spawned = null;
+        int tries = Mathf.Max(4, maxSpawnAttemptsPerAnimal * 2);
+        int herbivoreTarget = GetHerbivoreTargetCount();
+        for (int i = 0; i < tries; i++)
+        {
+            Vector3 pos;
+            if (!TryPickSpawnPoint(Random.Range(0, Mathf.Max(1, herbivoreTarget + Mathf.Max(0, wolfCount))), Mathf.Max(1, herbivoreTarget + Mathf.Max(0, wolfCount)), out pos))
+                continue;
+
+            var prefab = PickRespawnPrefab(spawnWolf, herbivoreTarget);
+            var rot = Quaternion.Euler(0f, Random.Range(0f, 360f), 0f);
+            spawned = SpawnAnimal(prefab, pos, rot, _spawnSerial++, spawnWolf);
+            if (spawned != null)
+                yield break;
+        }
+
+        if (logSpawnInfo)
+            Debug.LogWarning($"[VoxBoxAnimalSchoolSpawner] Failed to respawn {(spawnWolf ? "wolf" : "animal")} after death.", this);
+    }
+
+    int GetHerbivoreTargetCount()
+    {
+        int herbivoreTarget = Mathf.Max(1, animalCount);
+        if (enforceMinimumAnimalCount)
+            herbivoreTarget = Mathf.Max(herbivoreTarget, Mathf.Max(1, minimumAnimalCount));
+        return herbivoreTarget;
+    }
+
+    GameObject PickRespawnPrefab(bool spawnWolf, int herbivoreTarget)
+    {
+        int hostileWolves = Mathf.Max(0, wolfCount);
+        if (spawnWolf)
+            return PickPrefab(0, herbivoreTarget, hostileWolves, true);
+
+        int herbivoreIndex = Random.Range(0, Mathf.Max(1, herbivoreTarget));
+        return PickPrefab(herbivoreIndex, herbivoreTarget, 0, false);
+    }
+
+    void PlayDeathFeedback(Vector3 worldPos, bool spawnWolf)
+    {
+        Vector3 burstPos = worldPos + Vector3.up * (spawnWolf ? 0.45f : 0.3f);
+        FPSGameFeel.VoxelBurst(
+            burstPos,
+            count: spawnWolf ? 18 : 12,
+            spread: spawnWolf ? 1.15f : 0.85f,
+            life: 0.65f,
+            cubeSize: spawnWolf ? 0.06f : 0.05f);
+
+        if (Camera.main != null)
+        {
+            Vector3 d = Camera.main.transform.position - worldPos;
+            d.y = 0f;
+            if (d.sqrMagnitude <= 18f * 18f)
+                FPSGameFeel.Shake(spawnWolf ? 0.06f : 0.04f, spawnWolf ? 0.12f : 0.08f);
+        }
+    }
+
+    void SpawnDeathDrops(Vector3 worldPos, bool spawnWolf)
+    {
+        if (spawnWolf)
+        {
+            SpawnPickupDrop(SCoL.Inventory.SCoLItemType.Stone, Mathf.Max(1, wolfStoneDropAmount), worldPos, -1, PickStoneDropPrefab());
+            return;
+        }
+
+        SpawnPickupDrop(SCoL.Inventory.SCoLItemType.Plant, Mathf.Max(1, herbivorePlantDropAmount), worldPos);
+        if (Random.value <= herbivoreSeedDropChance)
+            SpawnPickupDrop(SCoL.Inventory.SCoLItemType.Seed, 1, worldPos + new Vector3(0.35f, 0f, -0.18f));
+    }
+
+    void SpawnPickupDrop(SCoL.Inventory.SCoLItemType type, int amount, Vector3 worldPos, int seedVariantIndex = -1, GameObject prefab = null)
+    {
+        GameObject go = prefab != null
+            ? Instantiate(prefab, worldPos + Vector3.up * 0.16f, Quaternion.Euler(0f, Random.Range(0f, 360f), 0f))
+            : GameObject.CreatePrimitive(type == SCoL.Inventory.SCoLItemType.Seed ? PrimitiveType.Sphere : PrimitiveType.Capsule);
+
+        go.name = $"{type}_DeathDrop";
+        if (prefab == null)
+        {
+            go.transform.position = worldPos + Vector3.up * 0.16f;
+            go.transform.localScale = type == SCoL.Inventory.SCoLItemType.Seed
+                ? new Vector3(0.22f, 0.22f, 0.22f)
+                : new Vector3(0.24f, 0.18f, 0.24f);
+        }
+
+        var rb = go.GetComponent<Rigidbody>();
+        if (rb == null)
+            rb = go.AddComponent<Rigidbody>();
+        rb.useGravity = false;
+        rb.isKinematic = true;
+
+        EnsureAnyCollider(go);
+        var pickup = go.GetComponent<SCoL.Inventory.SCoLPickup>();
+        if (pickup == null)
+            pickup = go.AddComponent<SCoL.Inventory.SCoLPickup>();
+        pickup.type = type;
+        pickup.amount = Mathf.Max(1, amount);
+        pickup.seedVariantIndex = seedVariantIndex;
+        pickup.preserveExistingMaterials = prefab != null;
+        pickup.ApplyVisual();
+    }
+
+    GameObject PickStoneDropPrefab()
+    {
+        if (_stoneDropPrefabs == null || _stoneDropPrefabs.Length == 0)
+        {
+            _stoneDropPrefabs = new[]
+            {
+                Resources.Load<GameObject>("StylizedNature/FBX/Pebble_Round_1"),
+                Resources.Load<GameObject>("StylizedNature/FBX/Pebble_Round_2"),
+                Resources.Load<GameObject>("StylizedNature/FBX/Pebble_Round_3")
+            };
+        }
+
+        if (_stoneDropPrefabs == null || _stoneDropPrefabs.Length == 0)
+            return null;
+
+        for (int i = 0; i < 6; i++)
+        {
+            var pick = _stoneDropPrefabs[Random.Range(0, _stoneDropPrefabs.Length)];
+            if (pick != null)
+                return pick;
+        }
+
+        return null;
     }
 
     bool TryPickSpawnPoint(int spawnIndex, int targetCount, out Vector3 pos)
@@ -339,12 +549,16 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
         return true;
     }
 
-    GameObject PickPrefab(int spawnIndex, int targetCount)
+    GameObject PickPrefab(int spawnIndex, int herbivoreTarget, int hostileWolves, bool spawnWolf)
     {
         if (animalPrefabs == null || animalPrefabs.Length == 0)
             return null;
 
-        if (TryPickBalancedFoxDeerPrefab(spawnIndex, targetCount, out var balanced))
+        if (spawnWolf && TryFindNamedPrefab("wolf", out var wolfPrefab))
+            return wolfPrefab;
+
+        int herbivoreIndex = Mathf.Max(0, spawnIndex - hostileWolves);
+        if (TryPickBalancedFoxDeerPrefab(herbivoreIndex, herbivoreTarget, out var balanced))
             return balanced;
 
         for (int i = 0; i < 8; i++)
@@ -538,18 +752,36 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
 
     void EnsureFoxAndDeerPrefabs()
     {
-#if UNITY_EDITOR
         var fox = FindAnimalPrefabByName("fox");
         var deer = FindAnimalPrefabByName("deer");
+        var wolf = FindAnimalPrefabByName("wolf");
 
+#if UNITY_EDITOR
         if (fox == null)
             fox = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/VoxBox/Prefabs/Animals/Fox.prefab");
         if (deer == null)
             deer = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/VoxBox/Prefabs/Animals/Deer.prefab");
-
-        if (fox != null && deer != null)
-            animalPrefabs = new[] { fox, deer };
 #endif
+
+        if (fox == null)
+            fox = Resources.Load<GameObject>("Animals/FoxAnimated/Fox");
+        if (deer == null)
+            deer = Resources.Load<GameObject>("Animals/DeerAnimated/Deer");
+        if (wolf == null)
+            wolf = Resources.Load<GameObject>("Animals/WolfAnimated/Wolf");
+
+        var list = new System.Collections.Generic.List<GameObject>(3);
+        if (fox != null) list.Add(fox);
+        if (deer != null) list.Add(deer);
+        if (wolf != null) list.Add(wolf);
+        if (list.Count > 0)
+            animalPrefabs = list.ToArray();
+    }
+
+    bool TryFindNamedPrefab(string contains, out GameObject prefab)
+    {
+        prefab = FindAnimalPrefabByName(contains);
+        return prefab != null;
     }
 
     GameObject FindAnimalPrefabByName(string contains)

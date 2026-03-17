@@ -139,6 +139,44 @@ public class FPSSpawnOnVoxel : MonoBehaviour
         return true;
     }
 
+    public bool TryFindRandomDryLandSpawnPoint(Vector3 avoidWorldPos, float minDistanceFromAvoid, int attempts, out Vector3 point)
+    {
+        point = transform.position;
+
+        var voxelWorld = _voxelWorld != null ? _voxelWorld : FindFirstObjectByType<VoxelWorld>();
+        _voxelWorld = voxelWorld;
+        if (voxelWorld == null || voxelWorld.Config == null)
+            return false;
+
+        var cfg = voxelWorld.Config;
+        int width = cfg.worldWidth;
+        int depth = cfg.worldDepth;
+        if (width <= 0 || depth <= 0)
+            return false;
+
+        int totalAttempts = Mathf.Max(4, attempts);
+        float minDistanceSqr = Mathf.Max(0f, minDistanceFromAvoid) * Mathf.Max(0f, minDistanceFromAvoid);
+        for (int i = 0; i < totalAttempts; i++)
+        {
+            int x = Random.Range(0, width);
+            int z = Random.Range(0, depth);
+            if (!IsDryLandColumn(voxelWorld, x, z))
+                continue;
+
+            int y = voxelWorld.GetSurfaceY(x, z);
+            Vector3 candidate = voxelWorld.OriginWorld + new Vector3(x + 0.5f, y + 1f, z + 0.5f);
+            Vector3 planarDelta = candidate - avoidWorldPos;
+            planarDelta.y = 0f;
+            if (planarDelta.sqrMagnitude < minDistanceSqr)
+                continue;
+
+            point = candidate;
+            return true;
+        }
+
+        return TryFindVoxelSpawnPoint(out point) && (new Vector2(point.x - avoidWorldPos.x, point.z - avoidWorldPos.z).sqrMagnitude >= minDistanceSqr || minDistanceSqr <= 0f);
+    }
+
     bool TryFindDryLandSpawnPoint(VoxelWorld voxelWorld, out Vector3 point)
     {
         point = default;
@@ -235,6 +273,31 @@ public class FPSSpawnOnVoxel : MonoBehaviour
         }
 
         transform.position = worldPos;
+    }
+
+    public void TeleportToSpawnPoint(Vector3 worldPos, bool stabilize = true)
+    {
+        if (_voxelWorld == null)
+            _voxelWorld = FindFirstObjectByType<VoxelWorld>();
+
+        Vector3 point = worldPos;
+        if (_voxelWorld != null)
+        {
+            _voxelWorld.ForceEnableChunksAtWorld(
+                point,
+                renderRadiusChunks: Mathf.Max(0, forceEnableRenderRadiusChunks),
+                colliderRadiusChunks: Mathf.Max(0, forceEnableColliderRadiusChunks));
+        }
+
+        if (TryProjectToColliderSurface(point, out var groundedPoint))
+            point = groundedPoint;
+
+        Vector3 snapped = point + Vector3.up * spawnOffsetY;
+        Teleport(snapped);
+        ForceEnableNearbyVoxelChunks(snapped);
+
+        if (stabilize && isActiveAndEnabled)
+            StartCoroutine(StabilizeSpawn(snapped));
     }
 
     void ForceEnableNearbyVoxelChunks(Vector3 worldPos)

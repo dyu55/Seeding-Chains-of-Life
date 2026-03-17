@@ -5,6 +5,7 @@ namespace SCoL.Inventory
         Seed = 0,
         Water = 1,
         Fire = 2,
-        Plant = 3
+        Plant = 3,
+        Stone = 4
     }
 }

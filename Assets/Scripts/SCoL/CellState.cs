@@ -31,7 +31,20 @@ namespace SCoL
         // Locked flower variant index chosen at seeding time.
         // -1 means "no locked variant" (renderer may pick by default/random policy).
         public int FlowerVariantIndex = -1;
+        public float PlantHealth = 0f;
+        public int StompHits = 0;
+
+        // Fine placement offset inside the owning cell so manual planting can follow the cursor,
+        // while the simulation itself still stays cell-based.
+        public float PlantOffsetX = 0f;
+        public float PlantOffsetZ = 0f;
 
         public bool HasPlant => PlantStage != PlantStage.Empty && PlantStage != PlantStage.Burnt;
+
+        public void ClearPlantPlacementOffset()
+        {
+            PlantOffsetX = 0f;
+            PlantOffsetZ = 0f;
+        }
     }
 }

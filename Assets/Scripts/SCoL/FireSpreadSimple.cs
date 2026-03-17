@@ -69,6 +69,8 @@ namespace SCoL
                         c.PlantStage = PlantStage.Burnt; // scorched earth / remains
                         c.PlantAgeSeconds = 0f;
                         c.WaterVisual = 0f;
+                        c.PlantHealth = 0f;
+                        c.ClearPlantPlacementOffset();
                     }
                 }
             }

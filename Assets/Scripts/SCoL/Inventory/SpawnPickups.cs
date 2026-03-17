@@ -15,6 +15,7 @@ namespace SCoL.Inventory
         public int seedCount = 20;
         public int waterCount = 50;
         public int fireCount = 40;
+        public int stoneCount = 24;
 
         [Header("Prefabs (optional)")]
         [Tooltip("Legacy single seed pickup prefab.")]
@@ -29,6 +30,8 @@ namespace SCoL.Inventory
         public GameObject[] waterPickupPrefabs;
         [Tooltip("Fire pickup prefab variants (preferred). Drag branch/torch model prefabs here.")]
         public GameObject[] firePickupPrefabs;
+        [Tooltip("Stone pickup prefab variants (preferred). Drag pebble/rock model prefabs here.")]
+        public GameObject[] stonePickupPrefabs;
         [Header("Seed Variants")]
         [Tooltip("Optional seed textures for primitive fallback only.")]
         public Texture2D[] seedVariantTextures;
@@ -89,15 +92,17 @@ namespace SCoL.Inventory
             int spawnedSeeds = Spawn(SCoLItemType.Seed, seedCount, 0f);
             int spawnedWater = Spawn(SCoLItemType.Water, waterCount, 1.5f);
             int spawnedFire = Spawn(SCoLItemType.Fire, fireCount, 3.0f);
-            if (!modelsOnly && spawnedSeeds + spawnedWater + spawnedFire == 0)
+            int spawnedStones = Spawn(SCoLItemType.Stone, stoneCount, 5.5f);
+            if (!modelsOnly && spawnedSeeds + spawnedWater + spawnedFire + spawnedStones == 0)
             {
                 // Hard fallback for debugging/first-use: always spawn a visible cluster near player.
                 SpawnFallbackClusterNearPlayer();
                 spawnedSeeds = Mathf.Max(spawnedSeeds, 3);
                 spawnedWater = Mathf.Max(spawnedWater, 3);
                 spawnedFire = Mathf.Max(spawnedFire, 3);
+                spawnedStones = Mathf.Max(spawnedStones, 3);
             }
-            Debug.Log($"[SpawnPickups] Spawned Seed={spawnedSeeds}/{seedCount}, Water={spawnedWater}/{waterCount}, Fire={spawnedFire}/{fireCount}");
+            Debug.Log($"[SpawnPickups] Spawned Seed={spawnedSeeds}/{seedCount}, Water={spawnedWater}/{waterCount}, Fire={spawnedFire}/{fireCount}, Stone={spawnedStones}/{stoneCount}");
         }
 
         private int Spawn(SCoLItemType type, int count, float angleOffset)
@@ -202,6 +207,12 @@ namespace SCoL.Inventory
                 return waterPickupPrefab;
             }
 
+            if (type == SCoLItemType.Stone)
+            {
+                var v = PickVariantPrefab(stonePickupPrefabs, variantIndex);
+                if (v != null) return v;
+            }
+
             return null;
         }
 
@@ -285,6 +296,7 @@ namespace SCoL.Inventory
                 SpawnOneAt(SCoLItemType.Seed, basePos + new Vector3(i * 0.35f, 0f, 0f), $"Pickup_Seed_Fallback_{i}");
                 SpawnOneAt(SCoLItemType.Water, basePos + new Vector3(i * 0.35f, 0f, 0.225f), $"Pickup_Water_Fallback_{i}");
                 SpawnOneAt(SCoLItemType.Fire, basePos + new Vector3(i * 0.35f, 0f, 0.45f), $"Pickup_Fire_Fallback_{i}");
+                SpawnOneAt(SCoLItemType.Stone, basePos + new Vector3(i * 0.35f, 0f, 0.9f), $"Pickup_Stone_Fallback_{i}");
             }
         }
 
@@ -458,6 +470,33 @@ namespace SCoL.Inventory
             }
             firePickupPrefab = null;
 #endif
+
+            if (stonePickupPrefabs == null || stonePickupPrefabs.Length == 0)
+            {
+                stonePickupPrefabs = LoadRuntimePrefabArray(
+                    "StylizedNature/FBX/Pebble_Round_1",
+                    "StylizedNature/FBX/Pebble_Round_2",
+                    "StylizedNature/FBX/Pebble_Round_3");
+            }
+        }
+
+        private static GameObject[] LoadRuntimePrefabArray(params string[] resourcePaths)
+        {
+            if (resourcePaths == null || resourcePaths.Length == 0)
+                return null;
+
+            var list = new System.Collections.Generic.List<GameObject>(resourcePaths.Length);
+            for (int i = 0; i < resourcePaths.Length; i++)
+            {
+                if (string.IsNullOrWhiteSpace(resourcePaths[i]))
+                    continue;
+
+                var prefab = Resources.Load<GameObject>(resourcePaths[i]);
+                if (prefab != null)
+                    list.Add(prefab);
+            }
+
+            return list.Count > 0 ? list.ToArray() : null;
         }
 
         private static int ResolveSeedVariantIndexForPrefab(GameObject prefab, int fallbackSeed)

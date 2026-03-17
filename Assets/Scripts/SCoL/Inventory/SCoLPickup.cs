@@ -17,11 +17,13 @@ namespace SCoL.Inventory
         public Color colorWater = new Color(0.2f, 0.55f, 1f);
         public Color colorFire = new Color(0.95f, 0.15f, 0.1f);
         public Color colorPlant = new Color(0.45f, 1f, 0.35f);
+        public Color colorStone = new Color(0.72f, 0.72f, 0.78f);
         [Header("Optional Textures")]
         public Texture2D seedTexture;
         public Texture2D waterTexture;
         public Texture2D fireTexture;
         public Texture2D plantTexture;
+        public Texture2D stoneTexture;
         [Tooltip("When true and no explicit texture is assigned for this type, keeps prefab-authored materials unchanged.")]
         public bool preserveExistingMaterials = true;
 
@@ -43,6 +45,7 @@ namespace SCoL.Inventory
                 SCoLItemType.Water => colorWater,
                 SCoLItemType.Fire => colorFire,
                 SCoLItemType.Plant => colorPlant,
+                SCoLItemType.Stone => colorStone,
                 _ => Color.white
             };
 
@@ -52,6 +55,7 @@ namespace SCoL.Inventory
                 SCoLItemType.Water => waterTexture,
                 SCoLItemType.Fire => fireTexture,
                 SCoLItemType.Plant => plantTexture,
+                SCoLItemType.Stone => stoneTexture,
                 _ => null
             };
 

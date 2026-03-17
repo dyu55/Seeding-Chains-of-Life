@@ -88,7 +88,11 @@ namespace SCoL
                 BurntAutoClearSeconds = c.BurntAutoClearSeconds,
                 WaterVisual = c.WaterVisual,
                 IsPlayerSeedLineage = c.IsPlayerSeedLineage,
-                FlowerVariantIndex = c.FlowerVariantIndex
+                FlowerVariantIndex = c.FlowerVariantIndex,
+                PlantHealth = c.PlantHealth,
+                StompHits = c.StompHits,
+                PlantOffsetX = c.PlantOffsetX,
+                PlantOffsetZ = c.PlantOffsetZ
             };
         }
 
@@ -108,6 +112,10 @@ namespace SCoL
             dst.WaterVisual = src.WaterVisual;
             dst.IsPlayerSeedLineage = src.IsPlayerSeedLineage;
             dst.FlowerVariantIndex = src.FlowerVariantIndex;
+            dst.PlantHealth = src.PlantHealth;
+            dst.StompHits = src.StompHits;
+            dst.PlantOffsetX = src.PlantOffsetX;
+            dst.PlantOffsetZ = src.PlantOffsetZ;
         }
     }
 }

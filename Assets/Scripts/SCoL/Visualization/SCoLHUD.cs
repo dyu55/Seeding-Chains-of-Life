@@ -63,7 +63,7 @@ namespace SCoL.Visualization
 
         [Header("Control Labels")]
         public string controlsVR = "VR: A/X = next tool | B/Y = prev tool | Right Trigger = apply | Aim at ball = auto-pickup";
-        public string controlsDesktop = "Desktop: 1/2/3/4 tool | LMB collect/uproot | RMB apply/destroy | V view | F fire overlay | H toggle HUD";
+        public string controlsDesktop = "Desktop: 1/2/3/4 tool | LMB collect | RMB apply/destroy | V view | F fire overlay | H toggle HUD";
 
         [Header("Inventory")]
         public bool showInventory = true;
@@ -234,7 +234,8 @@ namespace SCoL.Visualization
                         $"Selected: {_inventory.GetSeedTypeDisplayName(selected)}\n" +
                         $"Water: {_inventory.water}\n" +
                         $"Fire: {_inventory.fire}\n" +
-                        $"Plant: {_inventory.plants}";
+                        $"Plant: {_inventory.plants}\n" +
+                        $"Stone: {_inventory.stones}";
                 }
             }
 
@@ -300,6 +301,9 @@ namespace SCoL.Visualization
                         return true;
                     case FPSRaycastInteractor.ApplyTool.Plant:
                         type = SCoL.Inventory.SCoLItemType.Plant;
+                        return true;
+                    case FPSRaycastInteractor.ApplyTool.Stone:
+                        type = SCoL.Inventory.SCoLItemType.Stone;
                         return true;
                 }
             }

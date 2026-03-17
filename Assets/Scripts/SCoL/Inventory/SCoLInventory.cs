@@ -18,19 +18,25 @@ namespace SCoL.Inventory
         public int water = 0;
         public int fire = 0;
         public int plants = 0;
+        public int stones = 0;
 
         [Header("Starter Inventory")]
         public bool applyMinimumStarterInventoryOnAwake = true;
-        [Min(0)] public int starterSeeds = 10;
+        [Min(0)] public int starterSeeds = 300;
+        [Min(0)] public int starterRoseglowSeeds = 100;
+        [Min(0)] public int starterAmberbloomSeeds = 100;
+        [Min(0)] public int starterMoonpetalSeeds = 100;
         [Min(0)] public int starterWater = 10;
         [Min(0)] public int starterFire = 10;
         [Min(0)] public int starterPlants = 10;
+        [Min(0)] public int starterStones = 18;
 
         [Header("Discovery (session only)")]
         public bool discoveredSeed = false;
         public bool discoveredWater = false;
         public bool discoveredFire = false;
         public bool discoveredPlant = false;
+        public bool discoveredStone = false;
 
         private void Awake()
         {
@@ -51,6 +57,7 @@ namespace SCoL.Inventory
                 SCoLItemType.Water => water,
                 SCoLItemType.Fire => fire,
                 SCoLItemType.Plant => plants,
+                SCoLItemType.Stone => stones,
                 _ => 0
             };
         }
@@ -152,6 +159,9 @@ namespace SCoL.Inventory
                 case SCoLItemType.Plant:
                     plants += amount;
                     break;
+                case SCoLItemType.Stone:
+                    stones += amount;
+                    break;
             }
 
             Discover(type);
@@ -178,6 +188,10 @@ namespace SCoL.Inventory
                     if (plants < amount) return false;
                     plants -= amount;
                     return true;
+                case SCoLItemType.Stone:
+                    if (stones < amount) return false;
+                    stones -= amount;
+                    return true;
             }
             return false;
         }
@@ -190,6 +204,7 @@ namespace SCoL.Inventory
                 SCoLItemType.Water => discoveredWater,
                 SCoLItemType.Fire => discoveredFire,
                 SCoLItemType.Plant => discoveredPlant,
+                SCoLItemType.Stone => discoveredStone,
                 _ => false
             };
         }
@@ -210,6 +225,9 @@ namespace SCoL.Inventory
                 case SCoLItemType.Plant:
                     discoveredPlant = true;
                     break;
+                case SCoLItemType.Stone:
+                    discoveredStone = true;
+                    break;
             }
         }
 
@@ -224,6 +242,7 @@ namespace SCoL.Inventory
                 SCoLItemType.Water => "Water",
                 SCoLItemType.Fire => "Fire",
                 SCoLItemType.Plant => "Plant",
+                SCoLItemType.Stone => "Stone",
                 _ => "Unknown item"
             };
         }
@@ -239,6 +258,7 @@ namespace SCoL.Inventory
                 SCoLItemType.Water => "Hydrates plants and can extinguish fire.",
                 SCoLItemType.Fire => "Ignites and burns targets.",
                 SCoLItemType.Plant => "Used to feed animals.",
+                SCoLItemType.Stone => "Thrown weapon. Effective against wolves and other animals.",
                 _ => "You have not discovered this item yet."
             };
         }
@@ -250,6 +270,7 @@ namespace SCoL.Inventory
             if (water > 0) discoveredWater = true;
             if (fire > 0) discoveredFire = true;
             if (plants > 0) discoveredPlant = true;
+            if (stones > 0) discoveredStone = true;
         }
 
         private void EnsureMinimumStarterInventory()
@@ -260,17 +281,21 @@ namespace SCoL.Inventory
             water = Mathf.Max(water, starterWater);
             fire = Mathf.Max(fire, starterFire);
             plants = Mathf.Max(plants, starterPlants);
+            stones = Mathf.Max(stones, starterStones);
+
+            seedV1 = Mathf.Max(seedV1, starterRoseglowSeeds);
+            seedV2 = Mathf.Max(seedV2, starterAmberbloomSeeds);
+            seedV3 = Mathf.Max(seedV3, starterMoonpetalSeeds);
 
             int totalSeedVariants = seedV1 + seedV2 + seedV3 + seedType1;
             int seedDeficit = Mathf.Max(0, starterSeeds - totalSeedVariants);
             for (int i = 0; i < seedDeficit; i++)
             {
-                switch (i % 4)
+                switch (i % 3)
                 {
                     case 0: seedV1++; break;
                     case 1: seedV2++; break;
-                    case 2: seedV3++; break;
-                    default: seedType1++; break;
+                    default: seedV3++; break;
                 }
             }
 

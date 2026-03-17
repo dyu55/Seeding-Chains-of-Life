@@ -23,6 +23,6 @@ namespace SCoL.InputLayer
         bool ToolSlot2PressedThisFrame { get; }
         bool ToolSlot3PressedThisFrame { get; }
         bool ToolSlot4PressedThisFrame { get; }
+        bool ToolSlot5PressedThisFrame { get; }
     }
 }
-

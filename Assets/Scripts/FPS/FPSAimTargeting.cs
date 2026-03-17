@@ -44,6 +44,10 @@ public struct FPSAimTargetInfo
 
 public static class FPSAimTargeting
 {
+    const float AnimalAimWorldTolerance = 1.2f;
+    const float AnimalAimViewportTolerance = 0.16f;
+    const float AnimalAimHeightBias = 0.3f;
+
     public static bool TryResolve(
         Camera cameraSource,
         float maxDistance,
@@ -55,63 +59,73 @@ public static class FPSAimTargeting
         info = default;
         if (!SCoLInteractionInput.TryGetAimRay(cameraSource, out var ray))
             return false;
-        if (!Physics.Raycast(ray, out var hit, maxDistance, hitMask, QueryTriggerInteraction.Ignore))
-            return false;
 
-        info.hit = hit;
-        var col = hit.collider;
-        var t = col != null ? col.transform : null;
-
-        if (t != null)
+        bool hasHit = Physics.Raycast(ray, out var hit, maxDistance, hitMask, QueryTriggerInteraction.Ignore);
+        if (hasHit)
         {
-            var pickup = t.GetComponentInParent<SCoLPickup>();
-            if (pickup != null)
-            {
-                info.kind = FPSAimTargetKind.Pickup;
-                info.pickup = pickup;
-                info.root = pickup.transform;
-                return true;
-            }
+            info.hit = hit;
+            var col = hit.collider;
+            var t = col != null ? col.transform : null;
 
-            var legacyPlant = t.GetComponentInParent<FPSSeedGrowth>();
-            if (legacyPlant != null)
+            if (t != null)
             {
-                info.kind = FPSAimTargetKind.LegacyPlant;
-                info.legacyPlant = legacyPlant;
-                info.root = legacyPlant.transform;
-                return true;
-            }
-
-            var animal = t.GetComponentInParent<FPSBoidAgent>();
-            if (animal != null)
-            {
-                info.kind = FPSAimTargetKind.Animal;
-                info.animal = animal;
-                info.root = animal.transform;
-                return true;
-            }
-
-            var grabbable = t.GetComponentInParent<SCoLGrabbable>();
-            if (grabbable != null)
-            {
-                info.kind = FPSAimTargetKind.Grabbable;
-                info.grabbable = grabbable;
-                info.root = grabbable.transform;
-                return true;
-            }
-
-            for (Transform p = t; p != null; p = p.parent)
-            {
-                if (p.gameObject.CompareTag("Harvestable"))
+                var pickup = t.GetComponentInParent<SCoLPickup>();
+                if (pickup != null)
                 {
-                    info.kind = FPSAimTargetKind.Harvestable;
-                    info.root = p;
+                    info.kind = FPSAimTargetKind.Pickup;
+                    info.pickup = pickup;
+                    info.root = pickup.transform;
                     return true;
+                }
+
+                var legacyPlant = t.GetComponentInParent<FPSSeedGrowth>();
+                if (legacyPlant != null)
+                {
+                    info.kind = FPSAimTargetKind.LegacyPlant;
+                    info.legacyPlant = legacyPlant;
+                    info.root = legacyPlant.transform;
+                    return true;
+                }
+
+                var animal = t.GetComponentInParent<FPSBoidAgent>();
+                if (animal != null)
+                {
+                    info.kind = FPSAimTargetKind.Animal;
+                    info.animal = animal;
+                    info.root = animal.transform;
+                    return true;
+                }
+
+                var grabbable = t.GetComponentInParent<SCoLGrabbable>();
+                if (grabbable != null)
+                {
+                    info.kind = FPSAimTargetKind.Grabbable;
+                    info.grabbable = grabbable;
+                    info.root = grabbable.transform;
+                    return true;
+                }
+
+                for (Transform p = t; p != null; p = p.parent)
+                {
+                    if (p.gameObject.CompareTag("Harvestable"))
+                    {
+                        info.kind = FPSAimTargetKind.Harvestable;
+                        info.root = p;
+                        return true;
+                    }
                 }
             }
         }
 
-        if (runtime != null && runtime.Grid != null && runtime.TryWorldToCell(hit.point, out int x, out int y))
+        if (TryResolveAnimalNearAim(cameraSource, maxDistance, hitMask, out var fallbackAnimal, out _))
+        {
+            info.kind = FPSAimTargetKind.Animal;
+            info.animal = fallbackAnimal;
+            info.root = fallbackAnimal != null ? fallbackAnimal.transform : null;
+            return true;
+        }
+
+        if (hasHit && runtime != null && runtime.Grid != null && runtime.TryWorldToCell(hit.point, out int x, out int y))
         {
             var cell = runtime.Grid.Get(x, y);
             if (cell != null && cell.HasPlant)
@@ -131,6 +145,84 @@ public static class FPSAimTargeting
 
         info.kind = FPSAimTargetKind.None;
         info.root = null;
-        return true;
+        return hasHit;
+    }
+
+    public static bool TryResolveAnimalNearAim(
+        Camera cameraSource,
+        float maxDistance,
+        LayerMask hitMask,
+        out FPSBoidAgent animal,
+        out Vector3 targetPoint)
+    {
+        animal = null;
+        targetPoint = default;
+
+        if (cameraSource == null || !SCoLInteractionInput.TryGetAimRay(cameraSource, out var ray))
+            return false;
+
+        if (Physics.Raycast(ray, out var hit, maxDistance, hitMask, QueryTriggerInteraction.Ignore))
+        {
+            animal = hit.collider != null ? hit.collider.GetComponentInParent<FPSBoidAgent>() : null;
+            if (animal != null)
+            {
+                targetPoint = GetAnimalAimPoint(animal);
+                return true;
+            }
+        }
+
+        float bestScore = float.PositiveInfinity;
+        var activeAgents = FPSBoidAgent.ActiveAgentsView;
+        if (activeAgents == null)
+            return false;
+
+        for (int i = 0; i < activeAgents.Count; i++)
+        {
+            var candidate = activeAgents[i];
+            if (candidate == null || !candidate.isActiveAndEnabled)
+                continue;
+
+            Vector3 aimPoint = GetAnimalAimPoint(candidate);
+            Vector3 toCandidate = aimPoint - ray.origin;
+            float alongRay = Vector3.Dot(ray.direction, toCandidate);
+            if (alongRay < 0.05f || alongRay > maxDistance + AnimalAimWorldTolerance)
+                continue;
+
+            Vector3 nearestPoint = ray.origin + ray.direction * alongRay;
+            float worldOffset = Vector3.Distance(nearestPoint, aimPoint);
+
+            Vector3 viewport = cameraSource.WorldToViewportPoint(aimPoint);
+            if (viewport.z <= 0f)
+                continue;
+
+            float viewportOffset = Vector2.Distance(
+                new Vector2(viewport.x, viewport.y),
+                new Vector2(0.5f, 0.5f));
+
+            if (worldOffset > AnimalAimWorldTolerance && viewportOffset > AnimalAimViewportTolerance)
+                continue;
+
+            float score = worldOffset * 0.9f + viewportOffset * 7.5f + alongRay * 0.02f;
+            if (score >= bestScore)
+                continue;
+
+            bestScore = score;
+            animal = candidate;
+            targetPoint = aimPoint;
+        }
+
+        return animal != null;
+    }
+
+    static Vector3 GetAnimalAimPoint(FPSBoidAgent animal)
+    {
+        if (animal == null)
+            return default;
+
+        var col = animal.GetComponent<Collider>();
+        if (col != null)
+            return col.bounds.center;
+
+        return animal.transform.position + Vector3.up * AnimalAimHeightBias;
     }
 }

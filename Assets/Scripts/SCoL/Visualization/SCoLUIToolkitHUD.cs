@@ -2,6 +2,7 @@ using System.Text;
 using UnityEngine;
 using UnityEngine.UI;
 using SCoL.Inventory;
+using SCoL.Combat;
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
@@ -44,11 +45,18 @@ namespace SCoL.Visualization
         private Image _crosshairTop;
         private Image _crosshairBottom;
         private Image _crosshairDot;
+        private Text _statusHeroLabel;
         private Text _statusLabel;
         private RectTransform _aimPanel;
+        private CanvasGroup _aimCanvasGroup;
         private Text _aimTitleLabel;
         private Text _aimDetailLabel;
         private Text _inventoryLabel;
+        private Text _toolSummaryLabel;
+        private Image[] _toolSlotBorders;
+        private Image[] _toolSlotFills;
+        private Text[] _toolSlotKeyLabels;
+        private Text[] _toolSlotNameLabels;
         private RectTransform _healthTrackRect;
         private RectTransform _healthLagRect;
         private RectTransform _healthFillRect;
@@ -59,18 +67,27 @@ namespace SCoL.Visualization
         private Image _healthPulse;
         private Image _healthLagFill;
         private Image _healthFill;
+        private Image _hurtOverlay;
+        private Text _invulnerableLabel;
+        private CanvasGroup _deathOverlayGroup;
+        private Text _deathTitleLabel;
+        private Text _deathDetailLabel;
+        private Button _respawnButton;
 
         private SCoLInventory _inventory;
         private PlantVoxelRenderer _plantRenderer;
         private FPSRaycastInteractor _fpsInteractor;
         private SCoLPlayerHealth _playerHealth;
+        private SCoLPlayerRespawn _playerRespawn;
+        private SCoLCombatHealth _playerCombatHealth;
 
         private float _nextUpdateAt;
         private float _displayHealth = -1f;
         private float _displayLagHealth = -1f;
+        private float _lastObservedHealth = -1f;
+        private float _hurtFlashUntil;
         private readonly StringBuilder _sb = new StringBuilder(256);
         private static Sprite _fallbackWhiteUISprite;
-
         private static readonly Color CrosshairIdle = new Color(1f, 1f, 1f, 0.90f);
         private static readonly Color CrosshairHover = new Color(0.35f, 1f, 0.35f, 0.98f);
         private const string SimpleUIKitPanelPrefabPath = "Assets/SimpleUIKit/Prefabs/Elements/Parts/Background.prefab";
@@ -88,6 +105,9 @@ namespace SCoL.Visualization
         private static readonly Color HudAccentWarm = new Color(0.94f, 0.75f, 0.38f, 0.98f);
         private static readonly Color HudAccentCool = new Color(0.41f, 0.80f, 0.98f, 0.98f);
         private static readonly Color HudAccentGreen = new Color(0.51f, 0.88f, 0.57f, 0.98f);
+        private static readonly Color HudPanelMuted = new Color(0.07f, 0.08f, 0.10f, 0.82f);
+        private static readonly Color HudSlotIdleBorder = new Color(1f, 1f, 1f, 0.10f);
+        private static readonly Color HudSlotIdleFill = new Color(0.07f, 0.08f, 0.10f, 0.92f);
 
         private void Awake()
         {
@@ -98,6 +118,7 @@ namespace SCoL.Visualization
             _plantRenderer = FindFirstObjectByType<PlantVoxelRenderer>();
             _fpsInteractor = FindFirstObjectByType<FPSRaycastInteractor>();
             EnsurePlayerHealth();
+            EnsurePlayerRespawn();
             DisableLegacyHudObjects();
 
             EnsureUI();
@@ -117,6 +138,7 @@ namespace SCoL.Visualization
             if (Time.unscaledTime < _nextUpdateAt)
             {
                 UpdateHealth();
+                UpdateDeathOverlay();
                 return;
             }
             _nextUpdateAt = Time.unscaledTime + Mathf.Max(0.02f, updateInterval);
@@ -127,11 +149,16 @@ namespace SCoL.Visualization
             if (_plantRenderer == null) _plantRenderer = FindFirstObjectByType<PlantVoxelRenderer>();
             if (_fpsInteractor == null) _fpsInteractor = FindFirstObjectByType<FPSRaycastInteractor>();
             EnsurePlayerHealth();
+            EnsurePlayerRespawn();
+            EnsurePlayerCombatHealth();
 
             UpdateStatus();
             UpdateAimInfo();
             UpdateInventory();
+            UpdateToolbelt();
             UpdateHealth();
+            UpdateDeathOverlay();
+            Canvas.ForceUpdateCanvases();
         }
 
         private void EnsureUI()
@@ -165,6 +192,8 @@ namespace SCoL.Visualization
             BuildPanelsAndLabels();
             BuildCrosshair();
             BuildStylizedHealthBar(_root);
+            BuildHurtOverlay(_root);
+            BuildDeathOverlay(_root);
         }
 
         private void BuildPanelsAndLabels()
@@ -176,19 +205,32 @@ namespace SCoL.Visualization
                 anchorMax: new Vector2(0f, 1f),
                 pivot: new Vector2(0f, 1f),
                 anchoredPos: new Vector2(26f, -26f),
-                size: new Vector2(480f, 212f),
-                title: "WORLD STATE",
+                size: new Vector2(452f, 204f),
+                title: "WORLD LOOP",
                 accent: HudAccentWarm);
+
+            _statusHeroLabel = CreateText(
+                statusPanel,
+                "StatusHero",
+                anchorMin: new Vector2(0f, 1f),
+                anchorMax: new Vector2(1f, 1f),
+                pivot: new Vector2(0.5f, 1f),
+                anchoredPos: new Vector2(0f, -54f),
+                size: new Vector2(-40f, 38f),
+                fontSize: 29,
+                color: HudTextPrimary,
+                alignment: TextAnchor.MiddleLeft,
+                addOutline: true);
 
             _statusLabel = CreateText(
                 statusPanel,
                 "StatusText",
                 anchorMin: new Vector2(0f, 0f),
-                anchorMax: new Vector2(1f, 1f),
+                anchorMax: new Vector2(1f, 0.68f),
                 pivot: new Vector2(0.5f, 0.5f),
-                anchoredPos: new Vector2(0f, -20f),
-                size: new Vector2(-42f, -72f),
-                fontSize: 20,
+                anchoredPos: new Vector2(0f, -8f),
+                size: new Vector2(-40f, -16f),
+                fontSize: 19,
                 color: HudTextSecondary,
                 alignment: TextAnchor.UpperLeft);
 
@@ -198,11 +240,12 @@ namespace SCoL.Visualization
                 anchorMin: new Vector2(1f, 0.5f),
                 anchorMax: new Vector2(1f, 0.5f),
                 pivot: new Vector2(1f, 0.5f),
-                anchoredPos: new Vector2(-28f, 118f),
-                size: new Vector2(380f, 132f),
+                anchoredPos: new Vector2(-28f, 122f),
+                size: new Vector2(430f, 146f),
                 title: "FOCUS",
                 accent: HudAccentCool);
-            _aimPanel.gameObject.SetActive(false);
+            _aimCanvasGroup = _aimPanel.gameObject.AddComponent<CanvasGroup>();
+            _aimCanvasGroup.alpha = 0f;
 
             _aimTitleLabel = CreateText(
                 _aimPanel,
@@ -210,9 +253,9 @@ namespace SCoL.Visualization
                 anchorMin: new Vector2(0f, 0.50f),
                 anchorMax: new Vector2(1f, 1f),
                 pivot: new Vector2(0.5f, 0.5f),
-                anchoredPos: new Vector2(0f, -12f),
-                size: new Vector2(-34f, -40f),
-                fontSize: 25,
+                anchoredPos: new Vector2(0f, -14f),
+                size: new Vector2(-34f, -42f),
+                fontSize: 28,
                 color: HudTextPrimary,
                 alignment: TextAnchor.MiddleLeft,
                 addOutline: true);
@@ -223,9 +266,9 @@ namespace SCoL.Visualization
                 anchorMin: new Vector2(0f, 0f),
                 anchorMax: new Vector2(1f, 0.54f),
                 pivot: new Vector2(0.5f, 0.5f),
-                anchoredPos: new Vector2(0f, -4f),
-                size: new Vector2(-34f, -24f),
-                fontSize: 18,
+                anchoredPos: new Vector2(0f, -6f),
+                size: new Vector2(-34f, -20f),
+                fontSize: 19,
                 color: HudTextSecondary,
                 alignment: TextAnchor.UpperLeft,
                 addOutline: true);
@@ -237,7 +280,7 @@ namespace SCoL.Visualization
                 anchorMax: new Vector2(1f, 0f),
                 pivot: new Vector2(1f, 0f),
                 anchoredPos: new Vector2(-26f, 26f),
-                size: new Vector2(390f, 222f),
+                size: new Vector2(418f, 222f),
                 title: "RESERVES",
                 accent: HudAccentGreen);
 
@@ -249,9 +292,57 @@ namespace SCoL.Visualization
                 pivot: new Vector2(0.5f, 0.5f),
                 anchoredPos: new Vector2(0f, -12f),
                 size: new Vector2(-34f, -62f),
-                fontSize: 20,
+                fontSize: 21,
                 color: HudTextSecondary,
                 alignment: TextAnchor.UpperLeft);
+
+            var toolPanel = CreateHudCard(
+                _root,
+                "ToolbeltPanel",
+                anchorMin: new Vector2(0.5f, 0f),
+                anchorMax: new Vector2(0.5f, 0f),
+                pivot: new Vector2(0.5f, 0f),
+                anchoredPos: new Vector2(0f, 166f),
+                size: new Vector2(760f, 146f),
+                title: "TOOLS",
+                accent: HudAccentCool);
+
+            _toolSummaryLabel = CreateText(
+                toolPanel,
+                "ToolSummary",
+                anchorMin: new Vector2(0f, 1f),
+                anchorMax: new Vector2(1f, 1f),
+                pivot: new Vector2(0.5f, 1f),
+                anchoredPos: new Vector2(0f, -36f),
+                size: new Vector2(-40f, 20f),
+                fontSize: 15,
+                color: HudTextSecondary,
+                alignment: TextAnchor.MiddleCenter);
+
+            int toolCount = System.Enum.GetValues(typeof(FPSRaycastInteractor.ApplyTool)).Length;
+            _toolSlotBorders = new Image[toolCount];
+            _toolSlotFills = new Image[toolCount];
+            _toolSlotKeyLabels = new Text[toolCount];
+            _toolSlotNameLabels = new Text[toolCount];
+
+            var slotRow = CreateRect(
+                toolPanel,
+                "ToolSlots",
+                anchorMin: new Vector2(0.5f, 0f),
+                anchorMax: new Vector2(0.5f, 0f),
+                pivot: new Vector2(0.5f, 0f),
+                anchoredPos: new Vector2(0f, 18f),
+                size: new Vector2(toolCount * 124f + Mathf.Max(0, toolCount - 1) * 10f + 32f, 56f));
+
+            const float slotWidth = 124f;
+            const float slotGap = 10f;
+            float totalWidth = (slotWidth * toolCount) + (slotGap * Mathf.Max(0, toolCount - 1));
+            float startX = -totalWidth * 0.5f + (slotWidth * 0.5f);
+            for (int i = 0; i < toolCount; i++)
+            {
+                float x = startX + i * (slotWidth + slotGap);
+                CreateToolSlot(slotRow, i, x, slotWidth);
+            }
         }
 
         private void BuildCrosshair()
@@ -345,7 +436,7 @@ namespace SCoL.Visualization
                 alignment: TextAnchor.MiddleCenter,
                 addOutline: true);
             _healthBadgeLabel.transform.localRotation = Quaternion.Euler(0f, 0f, -45f);
-            _healthBadgeLabel.text = "HP";
+            SetText(_healthBadgeLabel, "HP");
 
             _healthCaptionLabel = CreateText(
                 panel,
@@ -358,7 +449,7 @@ namespace SCoL.Visualization
                 fontSize: 18,
                 color: new Color(0.94f, 0.82f, 0.62f, 0.92f),
                 alignment: TextAnchor.MiddleLeft);
-            _healthCaptionLabel.text = "VITALITY";
+            SetText(_healthCaptionLabel, "VITALITY");
 
             _healthTrackRect = CreateRect(
                 panel,
@@ -485,46 +576,92 @@ namespace SCoL.Visualization
             _playerHealth.SetMaxHealth(defaultMaxHealth, fillToMax: true);
         }
 
+        private void EnsurePlayerRespawn()
+        {
+            if (_playerRespawn != null)
+                return;
+
+            _playerRespawn = FindFirstObjectByType<SCoLPlayerRespawn>();
+            if (_playerRespawn != null)
+                return;
+
+            GameObject target = null;
+            if (_playerHealth != null)
+                target = _playerHealth.gameObject;
+            else
+            {
+                var controller = FindFirstObjectByType<SimpleFirstPersonController>();
+                if (controller != null)
+                    target = controller.gameObject;
+                else if (cameraSource != null)
+                    target = cameraSource.transform.root.gameObject;
+            }
+
+            if (target == null)
+                return;
+
+            _playerRespawn = target.GetComponent<SCoLPlayerRespawn>();
+            if (_playerRespawn == null)
+                _playerRespawn = target.AddComponent<SCoLPlayerRespawn>();
+        }
+
+        private void EnsurePlayerCombatHealth()
+        {
+            if (_playerCombatHealth != null)
+                return;
+
+            GameObject target = null;
+            if (_playerHealth != null)
+                target = _playerHealth.gameObject;
+            else if (_playerRespawn != null)
+                target = _playerRespawn.gameObject;
+            else
+            {
+                var controller = FindFirstObjectByType<SimpleFirstPersonController>();
+                if (controller != null)
+                    target = controller.gameObject;
+                else if (cameraSource != null)
+                    target = cameraSource.transform.root.gameObject;
+            }
+
+            if (target == null)
+                return;
+
+            _playerCombatHealth = target.GetComponent<SCoLCombatHealth>();
+        }
+
         private void UpdateStatus()
         {
-            if (_statusLabel == null)
+            if (_statusHeroLabel == null || _statusLabel == null)
                 return;
 
             _sb.Clear();
-            _sb.AppendLine("<size=21><b>SCoL</b></size>");
 
             if (runtime != null)
             {
-                _sb.Append("<color=#F1D598><b>Season</b></color> ");
-                _sb.Append(runtime.CurrentSeason);
-                _sb.Append("  <color=#F1D598><b>Weather</b></color> ");
-                _sb.AppendLine(runtime.CurrentWeather.ToString());
+                SetText(_statusHeroLabel, $"{runtime.CurrentSeason.ToString().ToUpperInvariant()}  /  {runtime.CurrentWeather.ToString().ToUpperInvariant()}");
                 _sb.Append("<color=#F1D598><b>View</b></color> ");
-                _sb.Append(runtime.ViewMode);
-                _sb.Append("  <color=#F1D598><b>Fire Overlay</b></color> ");
-                _sb.AppendLine(runtime.OverlayFire ? "ON" : "OFF");
+                _sb.AppendLine(runtime.ViewMode.ToString().ToUpperInvariant());
+                _sb.Append("<color=#F1D598><b>Fire</b></color> ");
+                _sb.AppendLine(runtime.OverlayFire ? "ACTIVE" : "OFF");
+            }
+            else
+            {
+                SetText(_statusHeroLabel, "WORLD STATE");
             }
 
             if (_fpsInteractor != null)
             {
                 _sb.Append("<color=#F1D598><b>Tool</b></color> ");
-                _sb.AppendLine(_fpsInteractor.currentTool.ToString());
+                _sb.AppendLine(GetToolLabel(_fpsInteractor.currentTool));
                 if (_fpsInteractor.currentTool == FPSRaycastInteractor.ApplyTool.Seed)
                 {
-                    _sb.Append("<color=#F1D598><b>Flower</b></color> ");
+                    _sb.Append("<color=#F1D598><b>Focus</b></color> ");
                     _sb.AppendLine(_fpsInteractor.GetSelectedFlowerName());
-                    if (_inventory != null)
-                    {
-                        int idx = _fpsInteractor.GetSelectedSeedVariantIndex();
-                        _sb.Append("<color=#F1D598><b>Seed Type</b></color> ");
-                        _sb.Append(_inventory.GetSeedTypeDisplayName(idx));
-                        _sb.Append("  <color=#F1D598><b>Count</b></color> ");
-                        _sb.AppendLine(_inventory.GetSeedTypeCount(idx).ToString());
-                    }
                 }
             }
 
-            _statusLabel.text = _sb.ToString();
+            SetText(_statusLabel, _sb.ToString());
         }
 
         private void UpdateInventory()
@@ -533,21 +670,22 @@ namespace SCoL.Visualization
                 return;
             if (_inventory == null)
             {
-                _inventoryLabel.text = string.Empty;
+                SetText(_inventoryLabel, string.Empty);
                 return;
             }
 
             int selected = _fpsInteractor != null ? _fpsInteractor.GetSelectedSeedVariantIndex() : 0;
             _sb.Clear();
-            _sb.Append("<color=#7FD390><b>Total Seeds</b></color> ");
-            _sb.AppendLine(_inventory.seeds.ToString());
-            _sb.Append("<color=#F0E9D7>Roseglow</color>  ");
+            _sb.Append("<size=24><color=#7FD390><b>Seeds</b></color> ");
+            _sb.Append(_inventory.seeds);
+            _sb.AppendLine("</size>");
+            _sb.Append("<color=#F4DFA2><b>Rose</b></color> ");
             _sb.Append(_inventory.GetSeedTypeCount(0));
-            _sb.Append("    <color=#F0E9D7>Amberbloom</color>  ");
+            _sb.Append("    <color=#E8B96A><b>Amber</b></color> ");
             _sb.AppendLine(_inventory.GetSeedTypeCount(1).ToString());
-            _sb.Append("<color=#F0E9D7>Moonpetal</color>  ");
+            _sb.Append("<color=#B8C3FF><b>Moon</b></color> ");
             _sb.Append(_inventory.GetSeedTypeCount(2));
-            _sb.Append("    <color=#7FD390><b>Selected</b></color> ");
+            _sb.Append("    <color=#7FD390><b>Held</b></color> ");
             _sb.AppendLine(_inventory.GetSeedTypeDisplayName(selected));
             _sb.Append("<color=#67C8FF><b>Water</b></color> ");
             _sb.Append(_inventory.water);
@@ -555,7 +693,37 @@ namespace SCoL.Visualization
             _sb.Append(_inventory.fire);
             _sb.Append("    <color=#8BE39E><b>Plants</b></color> ");
             _sb.Append(_inventory.plants);
-            _inventoryLabel.text = _sb.ToString();
+            _sb.Append("    <color=#D2D5DE><b>Stone</b></color> ");
+            _sb.Append(_inventory.stones);
+            SetText(_inventoryLabel, _sb.ToString());
+        }
+
+        private void UpdateToolbelt()
+        {
+            if (_toolSummaryLabel == null || _toolSlotBorders == null || _toolSlotFills == null)
+                return;
+
+            var activeTool = _fpsInteractor != null ? _fpsInteractor.currentTool : FPSRaycastInteractor.ApplyTool.Seed;
+            SetText(_toolSummaryLabel, GetToolSummary(activeTool));
+
+            for (int i = 0; i < _toolSlotBorders.Length; i++)
+            {
+                var tool = (FPSRaycastInteractor.ApplyTool)i;
+                bool selected = tool == activeTool;
+                Color accent = GetToolAccent(tool);
+                float pulse = selected ? (0.78f + 0.18f * (0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * 4.2f))) : 0f;
+
+                if (_toolSlotBorders[i] != null)
+                    _toolSlotBorders[i].color = selected ? accent : HudSlotIdleBorder;
+                if (_toolSlotFills[i] != null)
+                    _toolSlotFills[i].color = selected
+                        ? new Color(accent.r * 0.22f, accent.g * 0.22f, accent.b * 0.22f, pulse)
+                        : HudSlotIdleFill;
+                if (_toolSlotKeyLabels[i] != null)
+                    _toolSlotKeyLabels[i].color = selected ? HudTextPrimary : new Color(1f, 1f, 1f, 0.55f);
+                if (_toolSlotNameLabels[i] != null)
+                    _toolSlotNameLabels[i].color = selected ? HudTextPrimary : HudTextSecondary;
+            }
         }
 
         private void UpdateHealth()
@@ -570,6 +738,21 @@ namespace SCoL.Visualization
             {
                 max = Mathf.Max(1f, _playerHealth.MaxHealth);
                 current = Mathf.Clamp(_playerHealth.CurrentHealth, 0f, max);
+            }
+
+            if (_lastObservedHealth < 0f)
+            {
+                _lastObservedHealth = current;
+            }
+            else if (current < _lastObservedHealth - 0.01f)
+            {
+                _hurtFlashUntil = Time.unscaledTime + 0.34f;
+                FPSGameFeel.Shake(0.045f, 0.09f);
+                _lastObservedHealth = current;
+            }
+            else
+            {
+                _lastObservedHealth = current;
             }
 
             if (_displayHealth < 0f)
@@ -620,8 +803,26 @@ namespace SCoL.Visualization
             {
                 _healthLabel.gameObject.SetActive(showHealthText);
                 if (showHealthText)
-                    _healthLabel.text = $"{Mathf.RoundToInt(current)} / {Mathf.RoundToInt(max)}";
+                    SetText(_healthLabel, $"{Mathf.RoundToInt(current)} / {Mathf.RoundToInt(max)}");
             }
+
+            UpdateHurtOverlay();
+        }
+
+        private void UpdateDeathOverlay()
+        {
+            if (_deathOverlayGroup == null)
+                return;
+
+            bool isDead = _playerRespawn != null && _playerRespawn.IsDead;
+            _deathOverlayGroup.alpha = isDead ? 1f : 0f;
+            _deathOverlayGroup.interactable = false;
+            _deathOverlayGroup.blocksRaycasts = false;
+
+            if (_deathTitleLabel != null)
+                SetText(_deathTitleLabel, "YOU DIED");
+            if (_deathDetailLabel != null)
+                SetText(_deathDetailLabel, isDead ? "Wolves and the wild got you.\nPress Y to respawn at a new location with full health." : string.Empty);
         }
 
         private void UpdateAimInfo()
@@ -649,40 +850,47 @@ namespace SCoL.Visualization
                         if (pickup != null && _inventory != null)
                         {
                             title = _inventory.GetItemDisplayName(pickup.type, true);
-                            detail = _inventory.GetItemDescription(pickup.type, true);
+                            detail = $"{_inventory.GetItemDescription(pickup.type, true)}\n<color=#91E6FF><b>LMB</b></color> Collect";
                         }
                         else
                         {
                             title = "Unknown item";
-                            detail = "You have not discovered this item yet.";
+                            detail = "You have not discovered this item yet.\n<color=#91E6FF><b>LMB</b></color> Collect";
                         }
                         break;
                     }
                     case FPSAimTargetKind.Harvestable:
                         title = target.root != null ? target.root.name : "Harvestable";
-                        detail = "Harvestable";
+                        detail = "No direct click action";
                         break;
                     case FPSAimTargetKind.LegacyPlant:
                     case FPSAimTargetKind.CAPlant:
                     {
+                        int required = _fpsInteractor != null ? Mathf.Max(1, _fpsInteractor.plantDestroyClicksRequired) : 4;
                         title = ResolvePlantHoverName(target);
-                        detail = "Plant";
+                        detail = $"<color=#FFAF82><b>RMB</b></color> Destroy x{required}";
                         break;
                     }
                     case FPSAimTargetKind.Animal:
                     {
                         title = target.animal != null ? target.animal.name : "Animal";
-                        detail = "Animal";
+                        bool plantTool = _fpsInteractor != null && _fpsInteractor.currentTool == FPSRaycastInteractor.ApplyTool.Plant;
+                        bool stoneTool = _fpsInteractor != null && _fpsInteractor.currentTool == FPSRaycastInteractor.ApplyTool.Stone;
+                        detail = stoneTool
+                            ? "<color=#FFAF82><b>RMB</b></color> Throw stone"
+                            : plantTool
+                            ? "<color=#FFAF82><b>RMB</b></color> Feed animal"
+                            : "Press <color=#F1D598><b>4</b></color> to feed or <color=#F1D598><b>5</b></color> to throw stone";
                         break;
                     }
                 }
             }
-            if (_aimPanel != null)
-                _aimPanel.gameObject.SetActive(!string.IsNullOrEmpty(title));
+
+            SetAimPanelVisible(!string.IsNullOrEmpty(title));
             if (_aimTitleLabel != null)
-                _aimTitleLabel.text = title;
+                SetText(_aimTitleLabel, title);
             if (_aimDetailLabel != null)
-                _aimDetailLabel.text = detail;
+                SetText(_aimDetailLabel, detail);
         }
 
         private string ResolvePlantHoverName(FPSAimTargetInfo target)
@@ -711,13 +919,167 @@ namespace SCoL.Visualization
 
         private static Font ResolveFont()
         {
-            var f = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            var f = Font.CreateDynamicFontFromOSFont(
+                new[] { "Avenir Next", "Trebuchet MS", "Arial", "Helvetica", "PingFang SC", "Microsoft YaHei" },
+                18);
+            if (f != null) return f;
+
+            f = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             if (f != null) return f;
 
             f = Resources.GetBuiltinResource<Font>("Arial.ttf");
             if (f != null) return f;
 
             return Font.CreateDynamicFontFromOSFont(new[] { "Arial", "Helvetica", "PingFang SC", "Microsoft YaHei" }, 16);
+        }
+
+        private void SetAimPanelVisible(bool isVisible)
+        {
+            if (_aimCanvasGroup == null)
+                return;
+
+            _aimCanvasGroup.alpha = isVisible ? 1f : 0f;
+            _aimCanvasGroup.interactable = false;
+            _aimCanvasGroup.blocksRaycasts = false;
+        }
+
+        private string GetToolSummary(FPSRaycastInteractor.ApplyTool tool)
+        {
+            switch (tool)
+            {
+                case FPSRaycastInteractor.ApplyTool.Seed:
+                {
+                    string flowerName = _fpsInteractor != null ? _fpsInteractor.GetSelectedFlowerName() : "Roseglow";
+                    int count = _inventory != null && _fpsInteractor != null
+                        ? _inventory.GetSeedTypeCount(_fpsInteractor.GetSelectedSeedVariantIndex())
+                        : 0;
+                    return $"<color=#F1D598><b>RMB</b></color> Plant {flowerName}   <color=#F1D598><b>1</b></color> Cycle   Stock {count}";
+                }
+                case FPSRaycastInteractor.ApplyTool.Water:
+                    return "<color=#67C8FF><b>RMB</b></color> Hydrate plants or collect water";
+                case FPSRaycastInteractor.ApplyTool.Fire:
+                    return "<color=#FF8E62><b>RMB</b></color> Ignite targets and nearby tiles";
+                case FPSRaycastInteractor.ApplyTool.Plant:
+                    return "<color=#8BE39E><b>RMB</b></color> Feed animals and attract them";
+                case FPSRaycastInteractor.ApplyTool.Stone:
+                    return "<color=#D2D5DE><b>RMB</b></color> Throw stone projectiles";
+                default:
+                    return "Press 1-5 to switch tools.";
+            }
+        }
+
+        private string GetToolLabel(FPSRaycastInteractor.ApplyTool tool)
+        {
+            switch (tool)
+            {
+                case FPSRaycastInteractor.ApplyTool.Seed:
+                    return "Seed";
+                case FPSRaycastInteractor.ApplyTool.Water:
+                    return "Water";
+                case FPSRaycastInteractor.ApplyTool.Fire:
+                    return "Fire";
+                case FPSRaycastInteractor.ApplyTool.Plant:
+                    return "Plant";
+                case FPSRaycastInteractor.ApplyTool.Stone:
+                    return "Stone";
+                default:
+                    return tool.ToString();
+            }
+        }
+
+        private Color GetToolAccent(FPSRaycastInteractor.ApplyTool tool)
+        {
+            switch (tool)
+            {
+                case FPSRaycastInteractor.ApplyTool.Seed:
+                    return HudAccentWarm;
+                case FPSRaycastInteractor.ApplyTool.Water:
+                    return HudAccentCool;
+                case FPSRaycastInteractor.ApplyTool.Fire:
+                    return new Color(1f, 0.56f, 0.38f, 0.98f);
+                case FPSRaycastInteractor.ApplyTool.Plant:
+                    return HudAccentGreen;
+                case FPSRaycastInteractor.ApplyTool.Stone:
+                    return new Color(0.82f, 0.84f, 0.92f, 0.98f);
+                default:
+                    return HudTextSecondary;
+            }
+        }
+
+        private void CreateToolSlot(RectTransform parent, int slotIndex, float anchoredX, float width)
+        {
+            var border = CreateImage(
+                parent,
+                $"ToolSlot_{slotIndex + 1}",
+                anchorMin: new Vector2(0.5f, 0f),
+                anchorMax: new Vector2(0.5f, 0f),
+                pivot: new Vector2(0.5f, 0f),
+                anchoredPos: new Vector2(anchoredX, 0f),
+                size: new Vector2(width, 56f),
+                color: HudSlotIdleBorder);
+            _toolSlotBorders[slotIndex] = border;
+
+            var fill = CreateImage(
+                border.transform,
+                "Fill",
+                anchorMin: new Vector2(0.5f, 0.5f),
+                anchorMax: new Vector2(0.5f, 0.5f),
+                pivot: new Vector2(0.5f, 0.5f),
+                anchoredPos: Vector2.zero,
+                size: new Vector2(width - 4f, 52f),
+                color: HudSlotIdleFill);
+            _toolSlotFills[slotIndex] = fill;
+
+            CreateImage(
+                fill.transform,
+                "TopRim",
+                anchorMin: new Vector2(0f, 1f),
+                anchorMax: new Vector2(1f, 1f),
+                pivot: new Vector2(0.5f, 1f),
+                anchoredPos: new Vector2(0f, -1f),
+                size: new Vector2(0f, 2f),
+                color: new Color(1f, 1f, 1f, 0.10f));
+
+            _toolSlotKeyLabels[slotIndex] = CreateText(
+                fill.transform,
+                "Key",
+                anchorMin: new Vector2(0f, 1f),
+                anchorMax: new Vector2(0f, 1f),
+                pivot: new Vector2(0f, 1f),
+                anchoredPos: new Vector2(10f, -8f),
+                size: new Vector2(28f, 18f),
+                fontSize: 14,
+                color: new Color(1f, 1f, 1f, 0.55f),
+                alignment: TextAnchor.MiddleLeft);
+            SetText(_toolSlotKeyLabels[slotIndex], (slotIndex + 1).ToString());
+
+            _toolSlotNameLabels[slotIndex] = CreateText(
+                fill.transform,
+                "Name",
+                anchorMin: new Vector2(0.5f, 0.5f),
+                anchorMax: new Vector2(0.5f, 0.5f),
+                pivot: new Vector2(0.5f, 0.5f),
+                anchoredPos: new Vector2(0f, 6f),
+                size: new Vector2(width - 24f, 22f),
+                fontSize: 20,
+                color: HudTextSecondary,
+                alignment: TextAnchor.MiddleCenter,
+                addOutline: true);
+            SetText(_toolSlotNameLabels[slotIndex], GetToolLabel((FPSRaycastInteractor.ApplyTool)slotIndex).ToUpperInvariant());
+        }
+
+        private static void SetText(Text label, string value)
+        {
+            if (label == null)
+                return;
+
+            value ??= string.Empty;
+            label.text = value;
+
+            if (label.font != null && value.Length > 0)
+                label.font.RequestCharactersInTexture(value, label.fontSize, label.fontStyle);
+
+            label.SetAllDirty();
         }
 
         private static void DisableLegacyHudObjects()
@@ -841,6 +1203,113 @@ namespace SCoL.Visualization
             return rt;
         }
 
+        private void BuildDeathOverlay(RectTransform parent)
+        {
+            var overlay = CreateImage(
+                parent,
+                "DeathOverlay",
+                anchorMin: Vector2.zero,
+                anchorMax: Vector2.one,
+                pivot: new Vector2(0.5f, 0.5f),
+                anchoredPos: Vector2.zero,
+                size: Vector2.zero,
+                color: new Color(0.01f, 0.01f, 0.02f, 0.72f));
+            overlay.raycastTarget = false;
+
+            _deathOverlayGroup = overlay.gameObject.AddComponent<CanvasGroup>();
+            _deathOverlayGroup.alpha = 0f;
+            _deathOverlayGroup.interactable = false;
+            _deathOverlayGroup.blocksRaycasts = false;
+
+            var card = CreateHudCard(
+                overlay.transform,
+                "DeathCard",
+                anchorMin: new Vector2(0.5f, 0.5f),
+                anchorMax: new Vector2(0.5f, 0.5f),
+                pivot: new Vector2(0.5f, 0.5f),
+                anchoredPos: new Vector2(0f, 10f),
+                size: new Vector2(480f, 260f),
+                title: "RESPAWN",
+                accent: new Color(0.98f, 0.50f, 0.40f, 0.98f));
+
+            _deathTitleLabel = CreateText(
+                card,
+                "DeathTitle",
+                anchorMin: new Vector2(0f, 1f),
+                anchorMax: new Vector2(1f, 1f),
+                pivot: new Vector2(0.5f, 1f),
+                anchoredPos: new Vector2(0f, -72f),
+                size: new Vector2(-46f, 46f),
+                fontSize: 36,
+                color: new Color(0.98f, 0.92f, 0.90f, 0.98f),
+                alignment: TextAnchor.MiddleCenter,
+                addOutline: true);
+
+            _deathDetailLabel = CreateText(
+                card,
+                "DeathDetail",
+                anchorMin: new Vector2(0f, 0.5f),
+                anchorMax: new Vector2(1f, 0.5f),
+                pivot: new Vector2(0.5f, 0.5f),
+                anchoredPos: new Vector2(0f, -8f),
+                size: new Vector2(-56f, 110f),
+                fontSize: 22,
+                color: HudTextSecondary,
+                alignment: TextAnchor.MiddleCenter,
+                addOutline: true);
+        }
+
+        private void BuildHurtOverlay(RectTransform parent)
+        {
+            _hurtOverlay = CreateImage(
+                parent,
+                "HurtOverlay",
+                anchorMin: Vector2.zero,
+                anchorMax: Vector2.one,
+                pivot: new Vector2(0.5f, 0.5f),
+                anchoredPos: Vector2.zero,
+                size: Vector2.zero,
+                color: new Color(0.78f, 0.08f, 0.06f, 0f));
+
+            _invulnerableLabel = CreateText(
+                parent,
+                "InvulnerableLabel",
+                anchorMin: new Vector2(0.5f, 0f),
+                anchorMax: new Vector2(0.5f, 0f),
+                pivot: new Vector2(0.5f, 0f),
+                anchoredPos: new Vector2(0f, 196f),
+                size: new Vector2(260f, 28f),
+                fontSize: 18,
+                color: new Color(1f, 0.88f, 0.82f, 0.9f),
+                alignment: TextAnchor.MiddleCenter,
+                addOutline: true);
+            _invulnerableLabel.gameObject.SetActive(false);
+        }
+
+        private void UpdateHurtOverlay()
+        {
+            if (_hurtOverlay == null)
+                return;
+
+            float flashT = Mathf.Clamp01((_hurtFlashUntil - Time.unscaledTime) / 0.34f);
+            float flashAlpha = flashT * flashT * 0.34f;
+            bool invulnerable = _playerCombatHealth != null &&
+                                _playerCombatHealth.IsDamageInvulnerable &&
+                                !(_playerRespawn != null && _playerRespawn.IsDead);
+            float invulnerablePulse = invulnerable
+                ? (0.06f + 0.04f * (0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * 14f)))
+                : 0f;
+
+            _hurtOverlay.color = new Color(0.78f, 0.08f, 0.06f, Mathf.Max(flashAlpha, invulnerablePulse));
+
+            if (_invulnerableLabel != null)
+            {
+                _invulnerableLabel.gameObject.SetActive(invulnerable);
+                if (invulnerable)
+                    SetText(_invulnerableLabel, "RECOVERING");
+            }
+        }
+
         private Text CreateText(Transform parent, string name, Vector2 anchorMin, Vector2 anchorMax, Vector2 pivot, Vector2 anchoredPos, Vector2 size, int fontSize, Color color, TextAnchor alignment, bool addOutline = false)
         {
             var go = new GameObject(name, typeof(RectTransform), typeof(Text));
@@ -929,6 +1398,57 @@ namespace SCoL.Visualization
             return image;
         }
 
+        private Button CreateButton(Transform parent, string name, Vector2 anchorMin, Vector2 anchorMax, Vector2 pivot, Vector2 anchoredPos, Vector2 size, string label, Color color)
+        {
+            var image = CreateImage(parent, name, anchorMin, anchorMax, pivot, anchoredPos, size, color);
+            image.raycastTarget = true;
+
+            var button = image.gameObject.AddComponent<Button>();
+            var colors = button.colors;
+            colors.normalColor = color;
+            colors.highlightedColor = Color.Lerp(color, Color.white, 0.14f);
+            colors.pressedColor = Color.Lerp(color, Color.black, 0.12f);
+            colors.selectedColor = colors.highlightedColor;
+            colors.disabledColor = new Color(color.r * 0.45f, color.g * 0.45f, color.b * 0.45f, 0.42f);
+            colors.fadeDuration = 0.08f;
+            button.colors = colors;
+            button.targetGraphic = image;
+
+            CreateImage(
+                image.transform,
+                "ButtonTopRim",
+                anchorMin: new Vector2(0f, 1f),
+                anchorMax: new Vector2(1f, 1f),
+                pivot: new Vector2(0.5f, 1f),
+                anchoredPos: new Vector2(0f, -2f),
+                size: new Vector2(0f, 3f),
+                color: new Color(1f, 1f, 1f, 0.18f));
+
+            CreateText(
+                image.transform,
+                "ButtonLabel",
+                anchorMin: Vector2.zero,
+                anchorMax: Vector2.one,
+                pivot: new Vector2(0.5f, 0.5f),
+                anchoredPos: Vector2.zero,
+                size: Vector2.zero,
+                fontSize: 22,
+                color: new Color(0.97f, 0.98f, 0.94f, 0.98f),
+                alignment: TextAnchor.MiddleCenter,
+                addOutline: true).text = label;
+
+            return button;
+        }
+
+        private void OnRespawnClicked()
+        {
+            if (_playerRespawn == null)
+                return;
+
+            if (_playerRespawn.RespawnAtRandomLocation())
+                UpdateDeathOverlay();
+        }
+
         private void CreateSegmentTicks(RectTransform parent, int count)
         {
             count = Mathf.Max(1, count);
@@ -978,5 +1498,6 @@ namespace SCoL.Visualization
             _fallbackWhiteUISprite.name = "SCoL_HUD_WhiteSprite";
             return _fallbackWhiteUISprite;
         }
+
     }
 }

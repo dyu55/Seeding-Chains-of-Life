@@ -123,7 +123,7 @@ namespace SCoL.Visualization
             sb.AppendLine();
             sb.AppendLine("Controls:");
             sb.AppendLine("- View: V cycle | F toggle fire overlay | 0/4/5/6/7/8 set mode");
-            sb.AppendLine("- Tool (Editor): 1/2/3/4 select | LMB collect/uproot | RMB apply/destroy");
+            sb.AppendLine("- Tool (Editor): 1/2/3/4 select | LMB collect | RMB apply/destroy");
 
             // Top-left debug panel
             var bg = new Color(0f, 0f, 0f, 0.55f);
@@ -216,6 +216,9 @@ namespace SCoL.Visualization
                         return true;
                     case FPSRaycastInteractor.ApplyTool.Plant:
                         itemType = SCoL.Inventory.SCoLItemType.Plant;
+                        return true;
+                    case FPSRaycastInteractor.ApplyTool.Stone:
+                        itemType = SCoL.Inventory.SCoLItemType.Stone;
                         return true;
                 }
             }

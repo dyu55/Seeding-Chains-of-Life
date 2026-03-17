@@ -239,6 +239,16 @@ namespace SCoL.Voxels
         private Material _stylizedMushroomMaterial;
         private Material _stylizedRockMaterial;
         private Material _stylizedPathRockMaterial;
+        private Mesh _runtimeGrassFallbackA;
+        private Mesh _runtimeGrassFallbackB;
+        private Mesh _runtimeGrassFallbackC;
+        private Mesh _runtimeFlowerFallbackA;
+        private Mesh _runtimeFlowerFallbackB;
+        private Mesh _runtimeFlowerFallbackC;
+        private Mesh _runtimeBushFallback;
+        private Mesh _runtimePlantFallback;
+        private Mesh _runtimeTreeTrunkMesh;
+        private Mesh _runtimeTreeCanopyMesh;
 
         private struct FlatBuildPad
         {
@@ -709,6 +719,340 @@ namespace SCoL.Voxels
                 if (treeMaterial.HasProperty("_Color")) treeMaterial.SetColor("_Color", Color.white);
             }
 #endif
+            EnsureRuntimeVegetationFallbackAssets();
+        }
+
+        private void EnsureRuntimeVegetationFallbackAssets()
+        {
+            Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+            if (shader == null) shader = Shader.Find("Standard");
+
+            EnsureRuntimeStylizedNatureAssets(shader);
+            EnsureRuntimeResourceTreeVariants();
+
+            if ((_incomingGroundGrassMeshes == null || _incomingGroundGrassMeshes.Length == 0) &&
+                (_stylizedGrassMeshes == null || _stylizedGrassMeshes.Length == 0))
+            {
+                _runtimeGrassFallbackA ??= CreateBladeClusterMesh("RuntimeGrass_A", 0.18f, 0.85f, 3, 0.04f);
+                _runtimeGrassFallbackB ??= CreateBladeClusterMesh("RuntimeGrass_B", 0.14f, 0.72f, 4, 0.02f);
+                _runtimeGrassFallbackC ??= CreateBladeClusterMesh("RuntimeGrass_C", 0.11f, 0.60f, 5, 0.01f);
+                _incomingGroundGrassMeshes = new[] { _runtimeGrassFallbackA, _runtimeGrassFallbackB, _runtimeGrassFallbackC };
+
+                Material grassA = CreateRuntimeTintMaterial(shader, "Runtime_Grass_A", new Color(0.38f, 0.70f, 0.33f, 1f));
+                Material grassB = CreateRuntimeTintMaterial(shader, "Runtime_Grass_B", new Color(0.46f, 0.77f, 0.36f, 1f));
+                Material grassC = CreateRuntimeTintMaterial(shader, "Runtime_Grass_C", new Color(0.54f, 0.82f, 0.40f, 1f));
+                _incomingGroundGrassMaterials = new[] { grassA, grassB, grassC };
+
+                enableGrassProps = true;
+                grassPropDensity = Mathf.Max(grassPropDensity, 0.14f);
+                grassPropsMaxPerChunk = Mathf.Max(grassPropsMaxPerChunk, 120);
+            }
+
+            if ((_stylizedFlowerMeshes == null || _stylizedFlowerMeshes.Length == 0))
+            {
+                _runtimeFlowerFallbackA ??= CreateSimpleFlowerMesh("RuntimeFlower_A", 0.18f, 0.42f, 5);
+                _runtimeFlowerFallbackB ??= CreateSimpleFlowerMesh("RuntimeFlower_B", 0.16f, 0.38f, 6);
+                _runtimeFlowerFallbackC ??= CreateSimpleFlowerMesh("RuntimeFlower_C", 0.20f, 0.46f, 4);
+                _stylizedFlowerMeshes = new[] { _runtimeFlowerFallbackA, _runtimeFlowerFallbackB, _runtimeFlowerFallbackC };
+            }
+
+            if (_stylizedFlowerMaterial == null)
+                _stylizedFlowerMaterial = CreateRuntimeTintMaterial(shader, "Runtime_Flower", new Color(0.98f, 0.67f, 0.86f, 1f));
+
+            if ((_stylizedBushMeshes == null || _stylizedBushMeshes.Length == 0))
+            {
+                _runtimeBushFallback ??= CreateBladeClusterMesh("RuntimeBush", 0.26f, 0.72f, 7, 0.10f);
+                _stylizedBushMeshes = new[] { _runtimeBushFallback };
+            }
+
+            if ((_stylizedPlantMeshes == null || _stylizedPlantMeshes.Length == 0))
+            {
+                _runtimePlantFallback ??= CreateLeafFanMesh("RuntimePlant", 0.58f, 0.72f, 5);
+                _stylizedPlantMeshes = new[] { _runtimePlantFallback };
+            }
+
+            if (_stylizedLeafMaterial == null)
+                _stylizedLeafMaterial = CreateRuntimeTintMaterial(shader, "Runtime_Leaf", new Color(0.34f, 0.66f, 0.34f, 1f));
+
+            if (flowerMaterial == null)
+                flowerMaterial = CreateRuntimeTintMaterial(shader, "Runtime_FlowerProp", new Color(0.95f, 0.82f, 0.92f, 1f));
+
+            if (daisyMesh == null)
+                daisyMesh = _runtimeFlowerFallbackA != null ? _runtimeFlowerFallbackA : CreateSimpleFlowerMesh("RuntimeDaisy", 0.18f, 0.40f, 5);
+            if (roseMesh == null)
+                roseMesh = _runtimeFlowerFallbackB != null ? _runtimeFlowerFallbackB : CreateSimpleFlowerMesh("RuntimeRose", 0.16f, 0.36f, 6);
+
+            if (treeMaterial == null)
+                treeMaterial = CreateRuntimeTintMaterial(shader, "Runtime_Tree", new Color(0.45f, 0.72f, 0.38f, 1f));
+
+            if (treeMesh == null)
+                treeMesh = CreateSimpleTreeMesh("RuntimeTreeFallback");
+
+            if ((_featuredTreeVariants == null || _featuredTreeVariants.Length == 0) && treeMesh != null)
+                enableFeaturedTrees = true;
+
+            if ((_incomingGroundGrassMeshes != null && _incomingGroundGrassMeshes.Length > 0) ||
+                (_stylizedFlowerMeshes != null && _stylizedFlowerMeshes.Length > 0) ||
+                (_stylizedBushMeshes != null && _stylizedBushMeshes.Length > 0) ||
+                (_stylizedPlantMeshes != null && _stylizedPlantMeshes.Length > 0))
+            {
+                enableFloraProps = true;
+            }
+        }
+
+        private void EnsureRuntimeStylizedNatureAssets(Shader shader)
+        {
+            if ((_incomingGroundGrassMeshes == null || _incomingGroundGrassMeshes.Length == 0))
+            {
+                _incomingGroundGrassMeshes = LoadMeshesFromResources(
+                    "StylizedNature/FBX/Grass_Common_Short",
+                    "StylizedNature/FBX/Grass_Wispy_Short");
+                if (_incomingGroundGrassMeshes != null && _incomingGroundGrassMeshes.Length > 0)
+                {
+                    Material grassMatA = CreateRuntimeTexturedMaterial(shader, "StylizedNature_Runtime_GrassA", "StylizedNature/Textures/Grass", alphaClipped: true);
+                    Material grassMatB = CreateRuntimeTexturedMaterial(shader, "StylizedNature_Runtime_GrassB", "StylizedNature/Textures/Grass", alphaClipped: true);
+                    _incomingGroundGrassMaterials = new[] { grassMatA, grassMatB };
+                    if (grassPropMesh == null)
+                        grassPropMesh = _incomingGroundGrassMeshes[0];
+                    if (grassPropMaterial == null)
+                        grassPropMaterial = grassMatA;
+                }
+            }
+
+            if ((_stylizedFlowerMeshes == null || _stylizedFlowerMeshes.Length == 0))
+                _stylizedFlowerMeshes = LoadMeshesFromResources(
+                    "StylizedNature/FBX/Flower_3_Group",
+                    "StylizedNature/FBX/Flower_4_Group");
+
+            if ((_stylizedBushMeshes == null || _stylizedBushMeshes.Length == 0))
+                _stylizedBushMeshes = LoadMeshesFromResources(
+                    "StylizedNature/FBX/Bush_Common",
+                    "StylizedNature/FBX/Bush_Common_Flowers");
+
+            if ((_stylizedPlantMeshes == null || _stylizedPlantMeshes.Length == 0))
+                _stylizedPlantMeshes = LoadMeshesFromResources(
+                    "StylizedNature/FBX/Clover_1",
+                    "StylizedNature/FBX/Clover_2",
+                    "StylizedNature/FBX/Fern_1",
+                    "StylizedNature/FBX/Plant_1",
+                    "StylizedNature/FBX/Plant_7");
+
+            if ((_stylizedMushroomMeshes == null || _stylizedMushroomMeshes.Length == 0))
+                _stylizedMushroomMeshes = LoadMeshesFromResources(
+                    "StylizedNature/FBX/Mushroom_Common",
+                    "StylizedNature/FBX/Mushroom_Laetiporus");
+
+            if ((_stylizedRockMeshes == null || _stylizedRockMeshes.Length == 0))
+                _stylizedRockMeshes = LoadMeshesFromResources(
+                    "StylizedNature/FBX/Rock_Medium_1",
+                    "StylizedNature/FBX/Rock_Medium_2",
+                    "StylizedNature/FBX/Rock_Medium_3");
+
+            if ((_stylizedPebbleMeshes == null || _stylizedPebbleMeshes.Length == 0))
+                _stylizedPebbleMeshes = LoadMeshesFromResources(
+                    "StylizedNature/FBX/Pebble_Round_1",
+                    "StylizedNature/FBX/Pebble_Round_2",
+                    "StylizedNature/FBX/Pebble_Round_3");
+
+            if ((_stylizedPathRockMeshes == null || _stylizedPathRockMeshes.Length == 0))
+                _stylizedPathRockMeshes = LoadMeshesFromResources(
+                    "StylizedNature/FBX/RockPath_Round_Thin",
+                    "StylizedNature/FBX/RockPath_Round_Wide",
+                    "StylizedNature/FBX/RockPath_Square_Thin",
+                    "StylizedNature/FBX/RockPath_Square_Wide");
+
+            if (_stylizedFlowerMaterial == null)
+                _stylizedFlowerMaterial = CreateRuntimeTexturedMaterial(shader, "StylizedNature_Runtime_Flowers", "StylizedNature/Textures/Flowers", alphaClipped: true);
+            if (_stylizedLeafMaterial == null)
+                _stylizedLeafMaterial = CreateRuntimeTexturedMaterial(shader, "StylizedNature_Runtime_Leaves", "StylizedNature/Textures/Leaves", alphaClipped: true);
+            if (_stylizedMushroomMaterial == null)
+                _stylizedMushroomMaterial = CreateRuntimeTexturedMaterial(shader, "StylizedNature_Runtime_Mushrooms", "StylizedNature/Textures/Mushrooms", alphaClipped: true);
+            if (_stylizedRockMaterial == null)
+                _stylizedRockMaterial = CreateRuntimeTexturedMaterial(shader, "StylizedNature_Runtime_Rocks", "StylizedNature/Textures/Rocks_Diffuse", alphaClipped: false);
+            if (_stylizedPathRockMaterial == null)
+                _stylizedPathRockMaterial = CreateRuntimeTexturedMaterial(shader, "StylizedNature_Runtime_PathRocks", "StylizedNature/Textures/PathRocks_Diffuse", alphaClipped: false);
+
+            if ((_incomingGroundGrassMeshes != null && _incomingGroundGrassMeshes.Length > 0) ||
+                (_stylizedFlowerMeshes != null && _stylizedFlowerMeshes.Length > 0) ||
+                (_stylizedBushMeshes != null && _stylizedBushMeshes.Length > 0) ||
+                (_stylizedPlantMeshes != null && _stylizedPlantMeshes.Length > 0) ||
+                (_stylizedMushroomMeshes != null && _stylizedMushroomMeshes.Length > 0) ||
+                (_stylizedRockMeshes != null && _stylizedRockMeshes.Length > 0) ||
+                (_stylizedPebbleMeshes != null && _stylizedPebbleMeshes.Length > 0) ||
+                (_stylizedPathRockMeshes != null && _stylizedPathRockMeshes.Length > 0))
+            {
+                enableGrassProps = true;
+                enableFloraProps = true;
+                grassPropDensity = Mathf.Max(grassPropDensity, 0.20f);
+                grassPropsMaxPerChunk = Mathf.Max(grassPropsMaxPerChunk, 160);
+            }
+        }
+
+        private static Mesh[] LoadMeshesFromResources(params string[] resourcePaths)
+        {
+            if (resourcePaths == null || resourcePaths.Length == 0)
+                return Array.Empty<Mesh>();
+
+            var meshes = new List<Mesh>(resourcePaths.Length);
+            for (int i = 0; i < resourcePaths.Length; i++)
+            {
+                var prefab = Resources.Load<GameObject>(resourcePaths[i]);
+                if (prefab == null)
+                    continue;
+
+                var mf = prefab.GetComponentInChildren<MeshFilter>(true);
+                if (mf != null && mf.sharedMesh != null && !meshes.Contains(mf.sharedMesh))
+                {
+                    meshes.Add(mf.sharedMesh);
+                    continue;
+                }
+
+                var smr = prefab.GetComponentInChildren<SkinnedMeshRenderer>(true);
+                if (smr != null && smr.sharedMesh != null && !meshes.Contains(smr.sharedMesh))
+                    meshes.Add(smr.sharedMesh);
+            }
+
+            return meshes.ToArray();
+        }
+
+        private void EnsureRuntimeResourceTreeVariants()
+        {
+            if (_featuredTreeVariants == null || _featuredTreeVariants.Length == 0)
+            {
+                _featuredTreeVariants = LoadTreeVariantsFromResources(
+                    "ImportedTrees/tree1/smalltree",
+                    "ImportedTrees/tree2/small tree 2",
+                    "ImportedTrees/tree3/tree3",
+                    "ImportedTrees/tree4/tree4",
+                    "ImportedTrees/tree5/3d model",
+                    "ImportedTrees/tree6/tree6",
+                    "ImportedTrees/tree7/tree7",
+                    "ImportedTrees/tree8/tree8");
+            }
+
+            if (_pinkTreeVariants == null || _pinkTreeVariants.Length == 0)
+            {
+                _pinkTreeVariants = LoadTreeVariantsFromResources(
+                    "ImportedTrees/pinktree1/pinktree1",
+                    "ImportedTrees/pinktree2/pinktree2");
+            }
+        }
+
+        private static TreeVariant[] LoadTreeVariantsFromResources(params string[] resourcePaths)
+        {
+            if (resourcePaths == null || resourcePaths.Length == 0)
+                return Array.Empty<TreeVariant>();
+
+            var variants = new List<TreeVariant>(resourcePaths.Length);
+            for (int i = 0; i < resourcePaths.Length; i++)
+            {
+                if (string.IsNullOrWhiteSpace(resourcePaths[i]))
+                    continue;
+
+                var prefab = Resources.Load<GameObject>(resourcePaths[i]);
+                if (prefab == null)
+                    continue;
+
+                float height = 0f;
+                if (TryGetRenderableBounds(prefab, out Bounds bounds))
+                    height = Mathf.Max(0.01f, bounds.size.y);
+                if (height <= 0.01f)
+                    continue;
+
+                variants.Add(new TreeVariant
+                {
+                    prefab = prefab,
+                    sourceHeight = height,
+                    materialOverride = BuildResourceTreeVariantMaterial(prefab, resourcePaths[i]),
+                    textureOverride = LoadResourceTreeTexture(resourcePaths[i])
+                });
+            }
+
+            return variants.ToArray();
+        }
+
+        private static Material BuildResourceTreeVariantMaterial(GameObject prefab, string resourcePath)
+        {
+            Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+            if (shader == null) shader = Shader.Find("Standard");
+            Material mat = new Material(shader)
+            {
+                name = prefab != null ? $"{prefab.name}_RuntimeTreeMat" : "RuntimeTreeMat",
+                enableInstancing = true
+            };
+
+            Texture2D tex = LoadResourceTreeTexture(resourcePath);
+            if (tex != null)
+            {
+                tex.filterMode = FilterMode.Bilinear;
+                tex.anisoLevel = 4;
+                if (mat.HasProperty("_BaseMap")) mat.SetTexture("_BaseMap", tex);
+                if (mat.HasProperty("_MainTex")) mat.SetTexture("_MainTex", tex);
+            }
+
+            if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", Color.white);
+            if (mat.HasProperty("_Color")) mat.SetColor("_Color", Color.white);
+            if (mat.HasProperty("_Smoothness")) mat.SetFloat("_Smoothness", 0.05f);
+            if (mat.HasProperty("_Metallic")) mat.SetFloat("_Metallic", 0f);
+            if (mat.HasProperty("_Cull")) mat.SetFloat("_Cull", 0f);
+            if (mat.HasProperty("_CullMode")) mat.SetFloat("_CullMode", 0f);
+            return mat;
+        }
+
+        private static Texture2D LoadResourceTreeTexture(string resourcePath)
+        {
+            if (string.IsNullOrWhiteSpace(resourcePath))
+                return null;
+
+            string dir = resourcePath;
+            int slash = dir.LastIndexOf('/');
+            if (slash >= 0)
+                dir = dir.Substring(0, slash);
+
+            string[] candidates =
+            {
+                $"{dir}/material_BaseColor",
+                $"{dir}/mesh1",
+                $"{dir}/defaultMat"
+            };
+
+            for (int i = 0; i < candidates.Length; i++)
+            {
+                var tex = Resources.Load<Texture2D>(candidates[i]);
+                if (tex != null)
+                    return tex;
+            }
+
+            return null;
+        }
+
+        private static Material CreateRuntimeTexturedMaterial(Shader shader, string materialName, string resourceTexturePath, bool alphaClipped)
+        {
+            var mat = new Material(shader) { name = materialName };
+            mat.enableInstancing = true;
+
+            var tex = Resources.Load<Texture2D>(resourceTexturePath);
+            if (tex != null)
+            {
+                tex.filterMode = FilterMode.Bilinear;
+                tex.anisoLevel = 4;
+                if (mat.HasProperty("_BaseMap")) mat.SetTexture("_BaseMap", tex);
+                if (mat.HasProperty("_MainTex")) mat.SetTexture("_MainTex", tex);
+            }
+
+            if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", Color.white);
+            if (mat.HasProperty("_Color")) mat.SetColor("_Color", Color.white);
+
+            if (alphaClipped)
+            {
+                if (mat.HasProperty("_AlphaClip")) mat.SetFloat("_AlphaClip", 1f);
+                if (mat.HasProperty("_Cutoff")) mat.SetFloat("_Cutoff", 0.33f);
+                if (mat.HasProperty("_Cull")) mat.SetFloat("_Cull", 0f);
+                if (mat.HasProperty("_CullMode")) mat.SetFloat("_CullMode", 0f);
+                mat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.AlphaTest;
+            }
+
+            return mat;
         }
 
 #if UNITY_EDITOR
@@ -904,66 +1248,6 @@ namespace SCoL.Voxels
             }
 
             return mat;
-        }
-
-        private static void ApplyPlaneWaterAnimatedMaterial(Material mat, string matName)
-        {
-            if (mat == null)
-                return;
-
-            var shader = Shader.Find("SCoL/StylizedAnimatedWater");
-            if (shader != null && mat.shader != shader)
-            {
-                mat.shader = shader;
-                mat.name = matName;
-            }
-
-            var normalTex = LoadAnimatedWaterNormalTexture();
-
-            if (normalTex != null)
-            {
-                normalTex.filterMode = FilterMode.Bilinear;
-                normalTex.anisoLevel = 2;
-                if (mat.HasProperty("_NormalMap")) mat.SetTexture("_NormalMap", normalTex);
-                if (mat.HasProperty("_BumpMap")) mat.SetTexture("_BumpMap", normalTex);
-            }
-
-            if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", new Color(0.10f, 0.24f, 0.44f, 1f));
-            if (mat.HasProperty("_Color")) mat.SetColor("_Color", new Color(0.10f, 0.24f, 0.44f, 1f));
-            if (mat.HasProperty("_NormalStrength")) mat.SetFloat("_NormalStrength", 0.38f);
-            if (mat.HasProperty("_NormalTiling")) mat.SetFloat("_NormalTiling", 0.42f);
-            if (mat.HasProperty("_Opacity")) mat.SetFloat("_Opacity", 0.64f);
-            if (mat.HasProperty("_HighlightStrength")) mat.SetFloat("_HighlightStrength", 0.06f);
-            if (mat.HasProperty("_FresnelPower")) mat.SetFloat("_FresnelPower", 5.5f);
-            if (mat.HasProperty("_FlowContrast")) mat.SetFloat("_FlowContrast", 0.32f);
-            if (mat.HasProperty("_LightingStrength")) mat.SetFloat("_LightingStrength", 1.0f);
-            if (mat.HasProperty("_ScrollA")) mat.SetVector("_ScrollA", new Vector4(0.115f, 0.035f, 0f, 0f));
-            if (mat.HasProperty("_ScrollB")) mat.SetVector("_ScrollB", new Vector4(-0.075f, 0.085f, 0f, 0f));
-            mat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
-        }
-
-        private static Texture2D LoadAnimatedWaterNormalTexture()
-        {
-            var tex = Resources.Load<Texture2D>("Water/plane_water_normal");
-            if (tex != null)
-            {
-                tex.filterMode = FilterMode.Bilinear;
-                tex.anisoLevel = 2;
-                return tex;
-            }
-
-#if UNITY_EDITOR
-            tex = AssetDatabase.LoadAssetAtPath<Texture2D>(
-                "Assets/Models/Modeling/_Incoming/Water/plane_water_low_gltf/textures/water_normal.png");
-            if (tex != null)
-            {
-                tex.filterMode = FilterMode.Bilinear;
-                tex.anisoLevel = 2;
-            }
-            return tex;
-#else
-            return null;
-#endif
         }
 
         private void EnsureFeaturedTreeVariants()
@@ -1194,6 +1478,66 @@ namespace SCoL.Voxels
             return null;
         }
 #endif
+
+        private static void ApplyPlaneWaterAnimatedMaterial(Material mat, string matName)
+        {
+            if (mat == null)
+                return;
+
+            var shader = Shader.Find("SCoL/StylizedAnimatedWater");
+            if (shader != null && mat.shader != shader)
+            {
+                mat.shader = shader;
+                mat.name = matName;
+            }
+
+            var normalTex = LoadAnimatedWaterNormalTexture();
+
+            if (normalTex != null)
+            {
+                normalTex.filterMode = FilterMode.Bilinear;
+                normalTex.anisoLevel = 2;
+                if (mat.HasProperty("_NormalMap")) mat.SetTexture("_NormalMap", normalTex);
+                if (mat.HasProperty("_BumpMap")) mat.SetTexture("_BumpMap", normalTex);
+            }
+
+            if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", new Color(0.10f, 0.24f, 0.44f, 1f));
+            if (mat.HasProperty("_Color")) mat.SetColor("_Color", new Color(0.10f, 0.24f, 0.44f, 1f));
+            if (mat.HasProperty("_NormalStrength")) mat.SetFloat("_NormalStrength", 0.38f);
+            if (mat.HasProperty("_NormalTiling")) mat.SetFloat("_NormalTiling", 0.42f);
+            if (mat.HasProperty("_Opacity")) mat.SetFloat("_Opacity", 0.64f);
+            if (mat.HasProperty("_HighlightStrength")) mat.SetFloat("_HighlightStrength", 0.06f);
+            if (mat.HasProperty("_FresnelPower")) mat.SetFloat("_FresnelPower", 5.5f);
+            if (mat.HasProperty("_FlowContrast")) mat.SetFloat("_FlowContrast", 0.32f);
+            if (mat.HasProperty("_LightingStrength")) mat.SetFloat("_LightingStrength", 1.0f);
+            if (mat.HasProperty("_ScrollA")) mat.SetVector("_ScrollA", new Vector4(0.115f, 0.035f, 0f, 0f));
+            if (mat.HasProperty("_ScrollB")) mat.SetVector("_ScrollB", new Vector4(-0.075f, 0.085f, 0f, 0f));
+            mat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+        }
+
+        private static Texture2D LoadAnimatedWaterNormalTexture()
+        {
+            var tex = Resources.Load<Texture2D>("Water/plane_water_normal");
+            if (tex != null)
+            {
+                tex.filterMode = FilterMode.Bilinear;
+                tex.anisoLevel = 2;
+                return tex;
+            }
+
+#if UNITY_EDITOR
+            tex = AssetDatabase.LoadAssetAtPath<Texture2D>(
+                "Assets/Models/Modeling/_Incoming/Water/plane_water_low_gltf/textures/water_normal.png");
+            if (tex != null)
+            {
+                tex.filterMode = FilterMode.Bilinear;
+                tex.anisoLevel = 2;
+            }
+            return tex;
+#else
+            return null;
+#endif
+        }
 
         private static void ApplyTextureFromResourcesIfAvailable(Material m, params string[] resourcePaths)
         {
@@ -2416,17 +2760,45 @@ namespace SCoL.Voxels
                             name = $"IncomingGrass_{i}",
                             mesh = _incomingGroundGrassMeshes[i],
                             material = _incomingGroundGrassMaterials[i],
-                            density = 0.065f,
-                            maxPerChunk = 18,
-                            onlyOnGrass = true,
+                            density = 0.12f,
+                            maxPerChunk = 28,
+                            onlyOnGrass = false,
                             requireAboveSeaLevel = true,
                             strictGridPlacement = false,
                             randomOffsetXZ = new Vector2(0.18f, 0.18f),
-                            scaleRange = new Vector2(0.38f, 0.62f),
+                            scaleRange = new Vector2(1.0f, 1.0f),
+                            normalizeScaleByMeshHeight = true,
+                            targetHeightRange = new Vector2(0.24f, 0.42f),
+                            avoidSteepSlopes = true,
+                            maxNeighborDelta = 1,
+                            alignToSmoothedTerrain = true,
+                            embedDepth = 0.08f
+                        });
+                    }
+                }
+
+                if (_stylizedFlowerMeshes != null && _stylizedFlowerMeshes.Length > 0 && _stylizedFlowerMaterial != null)
+                {
+                    for (int i = 0; i < _stylizedFlowerMeshes.Length; i++)
+                    {
+                        props.Add(new FloraPropChunk.Prop
+                        {
+                            name = $"StylizedFlower_{i}",
+                            mesh = _stylizedFlowerMeshes[i],
+                            material = _stylizedFlowerMaterial,
+                            density = 0.024f,
+                            maxPerChunk = 14,
+                            onlyOnGrass = false,
+                            requireAboveSeaLevel = true,
+                            strictGridPlacement = false,
+                            randomOffsetXZ = new Vector2(0.14f, 0.14f),
+                            scaleRange = new Vector2(1.0f, 1.0f),
+                            normalizeScaleByMeshHeight = true,
+                            targetHeightRange = new Vector2(0.20f, 0.34f),
                             avoidSteepSlopes = true,
                             maxNeighborDelta = 0,
                             alignToSmoothedTerrain = true,
-                            embedDepth = 0.08f
+                            embedDepth = 0.04f
                         });
                     }
                 }
@@ -2440,13 +2812,15 @@ namespace SCoL.Voxels
                             name = $"StylizedBush_{i}",
                             mesh = _stylizedBushMeshes[i],
                             material = _stylizedLeafMaterial,
-                            density = 0.012f,
-                            maxPerChunk = 6,
-                            onlyOnGrass = true,
+                            density = 0.028f,
+                            maxPerChunk = 12,
+                            onlyOnGrass = false,
                             requireAboveSeaLevel = true,
                             strictGridPlacement = false,
                             randomOffsetXZ = new Vector2(0.18f, 0.18f),
-                            scaleRange = new Vector2(0.035f, 0.055f),
+                            scaleRange = new Vector2(1.0f, 1.0f),
+                            normalizeScaleByMeshHeight = true,
+                            targetHeightRange = new Vector2(0.20f, 0.36f),
                             avoidSteepSlopes = true,
                             maxNeighborDelta = 1,
                             alignToSmoothedTerrain = true,
@@ -2459,22 +2833,24 @@ namespace SCoL.Voxels
                 {
                     for (int i = 0; i < _stylizedPlantMeshes.Length; i++)
                     {
-                        Vector2 scaleRange = i >= 3
-                            ? new Vector2(0.05f, 0.09f)
-                            : new Vector2(0.18f, 0.32f);
+                        Vector2 targetHeightRange = i >= 3
+                            ? new Vector2(0.18f, 0.28f)
+                            : new Vector2(0.14f, 0.24f);
 
                         props.Add(new FloraPropChunk.Prop
                         {
                             name = $"StylizedPlant_{i}",
                             mesh = _stylizedPlantMeshes[i],
                             material = _stylizedLeafMaterial,
-                            density = 0.020f,
-                            maxPerChunk = 10,
-                            onlyOnGrass = true,
+                            density = 0.040f,
+                            maxPerChunk = 18,
+                            onlyOnGrass = false,
                             requireAboveSeaLevel = true,
                             strictGridPlacement = false,
                             randomOffsetXZ = new Vector2(0.18f, 0.18f),
-                            scaleRange = scaleRange,
+                            scaleRange = new Vector2(1.0f, 1.0f),
+                            normalizeScaleByMeshHeight = true,
+                            targetHeightRange = targetHeightRange,
                             avoidSteepSlopes = true,
                             maxNeighborDelta = 0,
                             alignToSmoothedTerrain = true,
@@ -2494,7 +2870,7 @@ namespace SCoL.Voxels
                             material = _stylizedMushroomMaterial,
                             density = 0.009f,
                             maxPerChunk = 5,
-                            onlyOnGrass = true,
+                            onlyOnGrass = false,
                             requireAboveSeaLevel = true,
                             strictGridPlacement = false,
                             randomOffsetXZ = new Vector2(0.26f, 0.26f),
@@ -3639,6 +4015,12 @@ namespace SCoL.Voxels
                 }
             }
 
+            if (treeMesh == null || treeMaterial == null)
+            {
+                CreateProceduralFeaturedTree(index, targetPos, yaw, prng, targetHeightRange);
+                return;
+            }
+
             var fallback = new GameObject($"FeaturedTree_{index:000}");
             fallback.transform.SetParent(_featuredTreesRoot.transform, worldPositionStays: true);
             fallback.transform.position = targetPos;
@@ -3655,6 +4037,204 @@ namespace SCoL.Voxels
             mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             mr.receiveShadows = false;
             AddTreeCollider(fallback);
+        }
+
+        private void CreateProceduralFeaturedTree(int index, Vector3 targetPos, float yaw, System.Random prng, Vector2 targetHeightRange)
+        {
+            _runtimeTreeTrunkMesh ??= CreateBoxMeshAsset("RuntimeTreeTrunk", new Vector3(0.38f, 2.2f, 0.38f));
+            _runtimeTreeCanopyMesh ??= CreateBoxMeshAsset("RuntimeTreeCanopy", new Vector3(1.7f, 1.5f, 1.7f));
+
+            var root = new GameObject($"FeaturedTree_{index:000}_Runtime");
+            root.transform.SetParent(_featuredTreesRoot.transform, worldPositionStays: true);
+            root.transform.SetPositionAndRotation(targetPos, Quaternion.Euler(0f, yaw, 0f));
+            root.isStatic = true;
+
+            float desiredHeight = Mathf.Lerp(
+                Mathf.Min(targetHeightRange.x, targetHeightRange.y),
+                Mathf.Max(targetHeightRange.x, targetHeightRange.y),
+                (float)prng.NextDouble());
+            float scale = Mathf.Max(0.45f, desiredHeight / 4.2f);
+            root.transform.localScale = Vector3.one * scale;
+
+            var trunk = new GameObject("Trunk");
+            trunk.transform.SetParent(root.transform, worldPositionStays: false);
+            trunk.transform.localPosition = new Vector3(0f, 1.1f, 0f);
+            var trunkMf = trunk.AddComponent<MeshFilter>();
+            trunkMf.sharedMesh = _runtimeTreeTrunkMesh;
+            var trunkMr = trunk.AddComponent<MeshRenderer>();
+            trunkMr.sharedMaterial = dirtMat != null ? dirtMat : treeMaterial;
+            trunkMr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            trunkMr.receiveShadows = false;
+
+            var canopy = new GameObject("Canopy");
+            canopy.transform.SetParent(root.transform, worldPositionStays: false);
+            canopy.transform.localPosition = new Vector3(0f, 2.55f, 0f);
+            var canopyMf = canopy.AddComponent<MeshFilter>();
+            canopyMf.sharedMesh = _runtimeTreeCanopyMesh;
+            var canopyMr = canopy.AddComponent<MeshRenderer>();
+            canopyMr.sharedMaterial = grassMat != null ? grassMat : treeMaterial;
+            canopyMr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            canopyMr.receiveShadows = false;
+
+            SnapInstanceBottomToY(root, targetPos.y);
+            AddTreeCollider(root);
+        }
+
+        private static Material CreateRuntimeTintMaterial(Shader shader, string materialName, Color tint)
+        {
+            var mat = new Material(shader) { name = materialName };
+            mat.enableInstancing = true;
+            if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", tint);
+            if (mat.HasProperty("_Color")) mat.SetColor("_Color", tint);
+            if (mat.HasProperty("_Smoothness")) mat.SetFloat("_Smoothness", 0.04f);
+            if (mat.HasProperty("_Glossiness")) mat.SetFloat("_Glossiness", 0.04f);
+            if (mat.HasProperty("_Cull")) mat.SetFloat("_Cull", 0f);
+            if (mat.HasProperty("_CullMode")) mat.SetFloat("_CullMode", 0f);
+            return mat;
+        }
+
+        private static Mesh CreateBoxMeshAsset(string meshName, Vector3 size)
+        {
+            var mesh = new Mesh { name = meshName };
+            BuildBoxMesh(mesh, size);
+            return mesh;
+        }
+
+        private static Mesh CreateSimpleTreeMesh(string meshName)
+        {
+            var vertices = new List<Vector3>();
+            var triangles = new List<int>();
+            AppendBox(vertices, triangles, new Vector3(0f, 1.0f, 0f), new Vector3(0.34f, 2.0f, 0.34f));
+            AppendBox(vertices, triangles, new Vector3(0f, 2.55f, 0f), new Vector3(1.55f, 1.45f, 1.55f));
+            var mesh = new Mesh { name = meshName };
+            mesh.SetVertices(vertices);
+            mesh.SetTriangles(triangles, 0);
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
+            return mesh;
+        }
+
+        private static Mesh CreateBladeClusterMesh(string meshName, float bladeWidth, float bladeHeight, int bladeCount, float radialOffset)
+        {
+            var vertices = new List<Vector3>();
+            var triangles = new List<int>();
+            bladeCount = Mathf.Max(2, bladeCount);
+            for (int i = 0; i < bladeCount; i++)
+            {
+                float yaw = (360f / bladeCount) * i;
+                float radians = yaw * Mathf.Deg2Rad;
+                Vector3 center = new Vector3(Mathf.Cos(radians) * radialOffset, 0f, Mathf.Sin(radians) * radialOffset);
+                AppendVerticalQuad(vertices, triangles, center, bladeWidth, bladeHeight, yaw);
+            }
+
+            var mesh = new Mesh { name = meshName };
+            mesh.SetVertices(vertices);
+            mesh.SetTriangles(triangles, 0);
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
+            return mesh;
+        }
+
+        private static Mesh CreateLeafFanMesh(string meshName, float width, float height, int leafCount)
+        {
+            var vertices = new List<Vector3>();
+            var triangles = new List<int>();
+            leafCount = Mathf.Max(3, leafCount);
+            for (int i = 0; i < leafCount; i++)
+            {
+                float t = leafCount <= 1 ? 0f : i / (float)(leafCount - 1);
+                float yaw = Mathf.Lerp(-55f, 55f, t);
+                float pitch = Mathf.Lerp(-6f, 18f, t);
+                AppendVerticalQuad(vertices, triangles, Vector3.zero, width * Mathf.Lerp(0.65f, 1f, t), height * Mathf.Lerp(0.8f, 1.05f, t), yaw, pitch);
+            }
+
+            var mesh = new Mesh { name = meshName };
+            mesh.SetVertices(vertices);
+            mesh.SetTriangles(triangles, 0);
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
+            return mesh;
+        }
+
+        private static Mesh CreateSimpleFlowerMesh(string meshName, float petalWidth, float stemHeight, int petalCount)
+        {
+            var vertices = new List<Vector3>();
+            var triangles = new List<int>();
+            AppendVerticalQuad(vertices, triangles, new Vector3(0f, stemHeight * 0.5f, 0f), petalWidth * 0.16f, stemHeight, 0f);
+
+            petalCount = Mathf.Max(4, petalCount);
+            float bloomY = stemHeight + petalWidth * 0.18f;
+            for (int i = 0; i < petalCount; i++)
+            {
+                float yaw = (360f / petalCount) * i;
+                AppendVerticalQuad(vertices, triangles, new Vector3(0f, bloomY, 0f), petalWidth, petalWidth, yaw, -6f);
+            }
+
+            var mesh = new Mesh { name = meshName };
+            mesh.SetVertices(vertices);
+            mesh.SetTriangles(triangles, 0);
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
+            return mesh;
+        }
+
+        private static void AppendVerticalQuad(List<Vector3> vertices, List<int> triangles, Vector3 center, float width, float height, float yawDegrees, float pitchDegrees = 0f)
+        {
+            Quaternion rot = Quaternion.Euler(pitchDegrees, yawDegrees, 0f);
+            Vector3 right = rot * Vector3.right * (width * 0.5f);
+            Vector3 up = rot * Vector3.up * height;
+            Vector3 bottomCenter = center;
+            Vector3 topCenter = center + up;
+
+            int start = vertices.Count;
+            vertices.Add(bottomCenter - right);
+            vertices.Add(bottomCenter + right);
+            vertices.Add(topCenter + right);
+            vertices.Add(topCenter - right);
+
+            triangles.Add(start + 0);
+            triangles.Add(start + 2);
+            triangles.Add(start + 1);
+            triangles.Add(start + 0);
+            triangles.Add(start + 3);
+            triangles.Add(start + 2);
+
+            triangles.Add(start + 0);
+            triangles.Add(start + 1);
+            triangles.Add(start + 2);
+            triangles.Add(start + 0);
+            triangles.Add(start + 2);
+            triangles.Add(start + 3);
+        }
+
+        private static void AppendBox(List<Vector3> vertices, List<int> triangles, Vector3 center, Vector3 size)
+        {
+            int start = vertices.Count;
+            float hx = size.x * 0.5f;
+            float hy = size.y * 0.5f;
+            float hz = size.z * 0.5f;
+
+            vertices.Add(center + new Vector3(-hx, -hy, -hz));
+            vertices.Add(center + new Vector3(hx, -hy, -hz));
+            vertices.Add(center + new Vector3(hx, hy, -hz));
+            vertices.Add(center + new Vector3(-hx, hy, -hz));
+            vertices.Add(center + new Vector3(-hx, -hy, hz));
+            vertices.Add(center + new Vector3(hx, -hy, hz));
+            vertices.Add(center + new Vector3(hx, hy, hz));
+            vertices.Add(center + new Vector3(-hx, hy, hz));
+
+            int[] tris =
+            {
+                0,2,1, 0,3,2,
+                4,5,6, 4,6,7,
+                0,1,5, 0,5,4,
+                3,7,6, 3,6,2,
+                1,2,6, 1,6,5,
+                0,4,7, 0,7,3
+            };
+
+            for (int i = 0; i < tris.Length; i++)
+                triangles.Add(start + tris[i]);
         }
 
         private static void DisableInstancePhysics(GameObject go)

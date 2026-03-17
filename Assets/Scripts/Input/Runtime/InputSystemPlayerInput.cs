@@ -53,6 +53,7 @@ namespace SCoL.InputLayer
         private InputAction _tool2;
         private InputAction _tool3;
         private InputAction _tool4;
+        private InputAction _tool5;
         private InputAction _jumpSupplemental;
         private InputAction _primarySupplemental;
         private InputAction _secondarySupplemental;
@@ -63,6 +64,7 @@ namespace SCoL.InputLayer
         private InputAction _tool2Supplemental;
         private InputAction _tool3Supplemental;
         private InputAction _tool4Supplemental;
+        private InputAction _tool5Supplemental;
 
         private InputActionMap _runtimeFallbackMap;
         private InputActionMap _resolvedMap;
@@ -86,6 +88,7 @@ namespace SCoL.InputLayer
         public bool ToolSlot2PressedThisFrame => WasPressedAny(_tool2, _tool2Supplemental);
         public bool ToolSlot3PressedThisFrame => WasPressedAny(_tool3, _tool3Supplemental);
         public bool ToolSlot4PressedThisFrame => WasPressedAny(_tool4, _tool4Supplemental);
+        public bool ToolSlot5PressedThisFrame => WasPressedAny(_tool5, _tool5Supplemental);
 
         private void Awake()
         {
@@ -175,6 +178,7 @@ namespace SCoL.InputLayer
             _tool2 = FindAction(map, "Tool2");
             _tool3 = FindAction(map, "Tool3");
             _tool4 = FindAction(map, "Tool4");
+            _tool5 = FindAction(map, "Tool5");
 
             BuildSupplementalActions();
         }
@@ -243,6 +247,7 @@ namespace SCoL.InputLayer
             _tool2 = _runtimeFallbackMap.AddAction("Tool2", InputActionType.Button, "<Keyboard>/2");
             _tool3 = _runtimeFallbackMap.AddAction("Tool3", InputActionType.Button, "<Keyboard>/3");
             _tool4 = _runtimeFallbackMap.AddAction("Tool4", InputActionType.Button, "<Keyboard>/4");
+            _tool5 = _runtimeFallbackMap.AddAction("Tool5", InputActionType.Button, "<Keyboard>/5");
         }
 
         private void BuildSupplementalActions()
@@ -269,6 +274,8 @@ namespace SCoL.InputLayer
                 _tool3Supplemental = CreateSupplementalAction("Tool3", "<Keyboard>/3");
             if (_tool4 == null)
                 _tool4Supplemental = CreateSupplementalAction("Tool4", "<Keyboard>/4");
+            if (_tool5 == null)
+                _tool5Supplemental = CreateSupplementalAction("Tool5", "<Keyboard>/5");
         }
 
         private InputAction CreateSupplementalAction(string name, string path)
@@ -290,6 +297,7 @@ namespace SCoL.InputLayer
             _tool2Supplemental = null;
             _tool3Supplemental = null;
             _tool4Supplemental = null;
+            _tool5Supplemental = null;
         }
 
         private void EnableSupplementalActions()

@@ -40,6 +40,10 @@ namespace SCoL.Voxels
 
             public Vector2 randomOffsetXZ = new Vector2(0.35f, 0.35f);
             public Vector2 scaleRange = new Vector2(0.9f, 1.2f);
+            [Tooltip("If enabled, rescales instances based on mesh height so imported models with odd units still reach a consistent world size.")]
+            public bool normalizeScaleByMeshHeight = false;
+            [Tooltip("Target world-space height range used when normalizeScaleByMeshHeight is enabled.")]
+            public Vector2 targetHeightRange = new Vector2(0.5f, 1.0f);
 
             [Header("Optional slope filter")]
             [Tooltip("If enabled, will avoid steep areas by comparing neighbor surface heights.")]
@@ -125,6 +129,13 @@ namespace SCoL.Voxels
                         oz = (float)(rng.NextDouble() * 2.0 - 1.0) * p.randomOffsetXZ.y;
                         yaw = (float)rng.NextDouble() * 360f;
                         s = Mathf.Lerp(p.scaleRange.x, p.scaleRange.y, (float)rng.NextDouble());
+                    }
+
+                    if (p.normalizeScaleByMeshHeight && p.mesh != null)
+                    {
+                        float meshHeight = Mathf.Max(0.01f, p.mesh.bounds.size.y);
+                        float desiredHeight = Mathf.Lerp(p.targetHeightRange.x, p.targetHeightRange.y, (float)rng.NextDouble());
+                        s *= desiredHeight / meshHeight;
                     }
 
                     Vector3 pos = world.OriginWorld + new Vector3(x + 0.5f + ox, ySurface + 1.0f, z + 0.5f + oz);

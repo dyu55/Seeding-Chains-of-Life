@@ -2,6 +2,7 @@ using UnityEngine;
 using System.Collections.Generic;
 using SCoL.Voxels;
 using SCoL;
+using SCoL.Combat;
 
 /// <summary>
 /// T11: Craig Reynolds boids core agent.
@@ -103,19 +104,32 @@ public class FPSBoidAgent : MonoBehaviour
     [Tooltip("If true, animals can target CA-rendered mature flowers (no collider required).")]
     public bool canEatCARuntimePlants = true;
 
+    [Header("Combat")]
+    public bool canAttackPlayer = false;
+    public bool canAttackOtherAnimals = false;
+    [Min(0.1f)] public float attackRange = 1.35f;
+    [Min(0f)] public float attackDamage = 10f;
+    [Min(0.1f)] public float attackCooldownSeconds = 1.1f;
+    [Min(0f)] public float attackApproachWeight = 4.2f;
+
     [HideInInspector] public Vector3 velocity;
 
     static readonly List<FPSBoidAgent> ActiveAgents = new List<FPSBoidAgent>(128);
+    public static IReadOnlyList<FPSBoidAgent> ActiveAgentsView => ActiveAgents;
     static Transform _plantAttractor;
     static bool _plantAttractorEnabled;
     static float _plantAttractorRadius = 8f;
     static float _plantAttractorWeight = 3f;
+    static float _plantAttractorStopDistance = 1.1f;
+    static float _plantAttractorFrontOffset = 1.4f;
 
     Camera _playerCam;
     float _feedReactionTimer;
     float _feedReactionDuration = 1.2f;
     float _feedReactionJumpHeight = 0.35f;
     int _feedReactionJumpCount = 3;
+    float _nextAttackAt;
+    SCoLCombatHealth _combatHealth;
     Vector3 _wanderDir;
     float _nextWanderRetargetAt;
     float _nextEatCheckAt;
@@ -164,6 +178,7 @@ public class FPSBoidAgent : MonoBehaviour
             _wanderDir = Vector3.forward;
         _wanderDir.Normalize();
         _nextWanderRetargetAt = Time.time + Random.Range(0.05f, wanderRetargetSeconds);
+        _combatHealth = GetComponent<SCoLCombatHealth>();
     }
 
     void Update()
@@ -196,6 +211,8 @@ public class FPSBoidAgent : MonoBehaviour
 
         if (canEatMaturePlants)
             UpdateEatProgress();
+
+        TryAttackCombatTarget();
 
         // face direction
         if (velocity.sqrMagnitude > 0.01f)
@@ -277,7 +294,13 @@ public class FPSBoidAgent : MonoBehaviour
         float plantAttractorDistance = float.PositiveInfinity;
         if (hasPlantAttractor)
         {
-            toAttractor = _plantAttractor.position - transform.position;
+            Vector3 targetPoint = _plantAttractor.position;
+            Vector3 forward = _plantAttractor.forward;
+            forward.y = 0f;
+            if (forward.sqrMagnitude > 0.0001f)
+                targetPoint += forward.normalized * Mathf.Max(0f, _plantAttractorFrontOffset);
+
+            toAttractor = targetPoint - transform.position;
             toAttractor.y = 0f;
             plantAttractorDistance = toAttractor.magnitude;
             plantAttractorInRange = plantAttractorDistance <= Mathf.Max(0.1f, _plantAttractorRadius);
@@ -300,7 +323,25 @@ public class FPSBoidAgent : MonoBehaviour
         // Plant lure: when player equips Plant tool, nearby animals follow.
         if (plantAttractorInRange)
         {
-            accel += SteerTowards(toAttractor) * Mathf.Max(0f, _plantAttractorWeight);
+            float stopDistance = Mathf.Max(0.1f, _plantAttractorStopDistance);
+            if (plantAttractorDistance > stopDistance)
+            {
+                float slowRadius = Mathf.Max(stopDistance + 0.75f, stopDistance * 1.8f);
+                float t = Mathf.InverseLerp(stopDistance, slowRadius, plantAttractorDistance);
+                accel += SteerTowards(toAttractor) * Mathf.Max(0f, _plantAttractorWeight) * Mathf.Clamp01(t);
+            }
+            else
+            {
+                // Brake as the animal reaches the player's front-side rendezvous point.
+                velocity = Vector3.Lerp(velocity, Vector3.zero, Mathf.Clamp01(6f * Time.deltaTime));
+            }
+        }
+        else if (TryGetCombatTarget(out var combatTarget))
+        {
+            var toTarget = combatTarget.transform.position - transform.position;
+            toTarget.y = 0f;
+            if (toTarget.sqrMagnitude > 0.0001f)
+                accel += SteerTowards(toTarget) * Mathf.Max(0f, attackApproachWeight);
         }
         else if (canEatMaturePlants && TryEnsureEatTarget())
         {
@@ -413,12 +454,14 @@ public class FPSBoidAgent : MonoBehaviour
         _nextWanderRetargetAt = Time.time + Mathf.Max(0.2f, wanderRetargetSeconds * 0.6f);
     }
 
-    public static void SetPlantAttractor(Transform target, bool enabled, float radius, float weight)
+    public static void SetPlantAttractor(Transform target, bool enabled, float radius, float weight, float stopDistance = 1.1f, float frontOffset = 1.4f)
     {
         _plantAttractor = target;
         _plantAttractorEnabled = enabled && target != null;
         _plantAttractorRadius = Mathf.Max(0.1f, radius);
         _plantAttractorWeight = Mathf.Max(0f, weight);
+        _plantAttractorStopDistance = Mathf.Max(0.1f, stopDistance);
+        _plantAttractorFrontOffset = Mathf.Max(0f, frontOffset);
     }
 
     public void FeedWithPlant(float jumpHeight, float reactionDurationSeconds, int jumps = 3)
@@ -429,6 +472,74 @@ public class FPSBoidAgent : MonoBehaviour
         _feedReactionTimer = _feedReactionDuration;
         // Feed reaction should always be grounded for land animals.
         constrainToGround = true;
+    }
+
+    void TryAttackCombatTarget()
+    {
+        if (Time.time < _nextAttackAt)
+            return;
+        if (!TryGetCombatTarget(out var target) || target == null || target.IsDead)
+            return;
+
+        float range = Mathf.Max(0.1f, attackRange);
+        Vector3 a = transform.position;
+        Vector3 b = target.transform.position;
+        a.y = 0f;
+        b.y = 0f;
+        if ((a - b).sqrMagnitude > range * range)
+            return;
+
+        if (target.ApplyDamage(Mathf.Max(0f, attackDamage)))
+        {
+            _nextAttackAt = Time.time + Mathf.Max(0.1f, attackCooldownSeconds);
+
+            var visualSwap = GetComponent<AnimatedAnimalVisualSwap>();
+            if (visualSwap != null)
+                visualSwap.TriggerAttack();
+
+            if (target.TryGetComponent<FPSBoidAgent>(out var boid))
+                boid.FeedWithPlant(0.18f, 0.45f, 2);
+        }
+    }
+
+    bool TryGetCombatTarget(out SCoLCombatHealth target)
+    {
+        target = null;
+        if (!canAttackPlayer && !canAttackOtherAnimals)
+            return false;
+
+        var activeHealths = SCoLCombatHealth.ActiveHealths;
+        if (activeHealths == null)
+            return false;
+
+        float bestScore = float.PositiveInfinity;
+        Vector3 myPos = transform.position;
+
+        for (int i = 0; i < activeHealths.Count; i++)
+        {
+            var candidate = activeHealths[i];
+            if (candidate == null || candidate == _combatHealth || candidate.IsDead)
+                continue;
+
+            bool validFaction =
+                (canAttackPlayer && candidate.Faction == SCoLCombatFaction.Player) ||
+                (canAttackOtherAnimals && candidate.Faction == SCoLCombatFaction.Animal);
+            if (!validFaction)
+                continue;
+
+            float dist = Vector3.Distance(candidate.transform.position, myPos);
+            float score = dist;
+            if (candidate.Faction == SCoLCombatFaction.Player)
+                score -= 0.15f;
+
+            if (score >= bestScore)
+                continue;
+
+            bestScore = score;
+            target = candidate;
+        }
+
+        return target != null;
     }
 
     void RetargetWanderIfNeeded()

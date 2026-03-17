@@ -30,6 +30,7 @@ public class FPSCrosshair : MonoBehaviour
     Image _img;
     Text _targetTitle;
     Text _targetDetail;
+    GameObject _runtimeCanvas;
     SCoLInventory _inventory;
     SCoLRuntime _runtime;
     PlantVoxelRenderer _plantRenderer;
@@ -44,6 +45,16 @@ public class FPSCrosshair : MonoBehaviour
         _plantRenderer = FindFirstObjectByType<PlantVoxelRenderer>();
         _interactor = FindFirstObjectByType<FPSRaycastInteractor>();
         EnsureUI();
+    }
+
+    void OnDisable()
+    {
+        CleanupRuntimeCanvas();
+    }
+
+    void OnDestroy()
+    {
+        CleanupRuntimeCanvas();
     }
 
     void Update()
@@ -105,7 +116,7 @@ public class FPSCrosshair : MonoBehaviour
             case FPSAimTargetKind.Harvestable:
             {
                 title = target.root != null ? "Harvestable: " + target.root.name : "Harvestable";
-                detail = "LMB harvest (adds Seed)";
+                detail = "No direct click action";
                 break;
             }
 
@@ -114,15 +125,16 @@ public class FPSCrosshair : MonoBehaviour
             {
                 int required = _interactor != null ? Mathf.Max(1, _interactor.plantDestroyClicksRequired) : 4;
                 title = target.kind == FPSAimTargetKind.LegacyPlant ? "Plant" : $"Plant Cell {target.cellX},{target.cellY}";
-                detail = $"LMB uproot (+Plant)  |  RMB x{required} destroy";
+                detail = $"RMB x{required} destroy";
                 break;
             }
 
             case FPSAimTargetKind.Animal:
             {
                 bool plantTool = _interactor != null && _interactor.currentTool == FPSRaycastInteractor.ApplyTool.Plant;
+                bool stoneTool = _interactor != null && _interactor.currentTool == FPSRaycastInteractor.ApplyTool.Stone;
                 title = target.animal != null ? "Animal: " + target.animal.name : "Animal";
-                detail = plantTool ? "RMB feed animal" : "Press 4 then RMB to feed";
+                detail = stoneTool ? "RMB throw stone" : (plantTool ? "RMB feed animal" : "Press 4 to feed or 5 to throw stone");
                 break;
             }
 
@@ -178,6 +190,10 @@ public class FPSCrosshair : MonoBehaviour
                 itemType = SCoLItemType.Plant;
                 actionHint = "RMB feed animal";
                 break;
+            case FPSRaycastInteractor.ApplyTool.Stone:
+                itemType = SCoLItemType.Stone;
+                actionHint = "RMB throw stone";
+                break;
             default:
                 return false;
         }
@@ -198,18 +214,18 @@ public class FPSCrosshair : MonoBehaviour
         if (_img != null && _targetTitle != null && _targetDetail != null)
             return;
 
-        var canvasGO = new GameObject("FPS Crosshair (Runtime)");
-        DontDestroyOnLoad(canvasGO);
+        _runtimeCanvas = new GameObject("FPS Crosshair (Runtime)");
+        DontDestroyOnLoad(_runtimeCanvas);
 
-        var canvas = canvasGO.AddComponent<Canvas>();
+        var canvas = _runtimeCanvas.AddComponent<Canvas>();
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
         canvas.sortingOrder = short.MaxValue;
 
-        canvasGO.AddComponent<CanvasScaler>();
-        canvasGO.AddComponent<GraphicRaycaster>();
+        _runtimeCanvas.AddComponent<CanvasScaler>();
+        _runtimeCanvas.AddComponent<GraphicRaycaster>();
 
         var imgGO = new GameObject("Crosshair");
-        imgGO.transform.SetParent(canvasGO.transform, false);
+        imgGO.transform.SetParent(_runtimeCanvas.transform, false);
 
         _img = imgGO.AddComponent<Image>();
         _img.raycastTarget = false;
@@ -223,7 +239,7 @@ public class FPSCrosshair : MonoBehaviour
         rt.sizeDelta = new Vector2(sizePx, sizePx);
 
         var titleGO = new GameObject("CrosshairTargetTitle");
-        titleGO.transform.SetParent(canvasGO.transform, false);
+        titleGO.transform.SetParent(_runtimeCanvas.transform, false);
         _targetTitle = titleGO.AddComponent<Text>();
         _targetTitle.raycastTarget = false;
         _targetTitle.alignment = TextAnchor.MiddleCenter;
@@ -234,7 +250,7 @@ public class FPSCrosshair : MonoBehaviour
         titleOutline.effectDistance = new Vector2(1f, -1f);
 
         var detailGO = new GameObject("CrosshairTargetDetail");
-        detailGO.transform.SetParent(canvasGO.transform, false);
+        detailGO.transform.SetParent(_runtimeCanvas.transform, false);
         _targetDetail = detailGO.AddComponent<Text>();
         _targetDetail.raycastTarget = false;
         _targetDetail.alignment = TextAnchor.MiddleCenter;
@@ -263,6 +279,15 @@ public class FPSCrosshair : MonoBehaviour
         detailRt.anchorMax = new Vector2(0.5f, 0.5f);
         detailRt.anchoredPosition = targetDetailOffsetPx;
         detailRt.sizeDelta = new Vector2(980f, 24f);
+    }
+
+    void CleanupRuntimeCanvas()
+    {
+        if (_runtimeCanvas != null)
+        {
+            Destroy(_runtimeCanvas);
+            _runtimeCanvas = null;
+        }
     }
 
     static Sprite BuildCrossSprite(int size, int thickness)

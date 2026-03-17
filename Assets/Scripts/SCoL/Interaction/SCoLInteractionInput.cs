@@ -50,6 +50,7 @@ namespace SCoL.Interaction
                 2 => p.ToolSlot2PressedThisFrame,
                 3 => p.ToolSlot3PressedThisFrame,
                 4 => p.ToolSlot4PressedThisFrame,
+                5 => p.ToolSlot5PressedThisFrame,
                 _ => false
             };
         }
