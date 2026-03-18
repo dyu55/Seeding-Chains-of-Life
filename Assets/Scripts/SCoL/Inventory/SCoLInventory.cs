@@ -29,7 +29,7 @@ namespace SCoL.Inventory
         [Min(0)] public int starterWater = 10;
         [Min(0)] public int starterFire = 10;
         [Min(0)] public int starterPlants = 10;
-        [Min(0)] public int starterStones = 18;
+        [Min(0)] public int starterStones = 50;
 
         [Header("Discovery (session only)")]
         public bool discoveredSeed = false;

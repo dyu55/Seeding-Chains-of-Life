@@ -280,13 +280,22 @@ namespace SCoL
 
             // For now, keep simulation ticking, but tools give immediate visual feedback.
             _tickTimer += Time.deltaTime;
-            _seasonTimer += Time.deltaTime;
             UpdateWindDirectionState(Time.deltaTime);
 
-            if (_seasonTimer >= Config.seasonSeconds)
+            if (TryGetExternalSeason(out var externalSeason))
             {
                 _seasonTimer = 0f;
-                AdvanceSeason();
+                if (CurrentSeason != externalSeason)
+                    SetSeason(externalSeason);
+            }
+            else
+            {
+                _seasonTimer += Time.deltaTime;
+                if (_seasonTimer >= Config.seasonSeconds)
+                {
+                    _seasonTimer = 0f;
+                    AdvanceSeason();
+                }
             }
 
             // Background simulation tick (cellular-automata style).
@@ -308,12 +317,17 @@ namespace SCoL
 
         private void AdvanceSeason()
         {
-            CurrentSeason = (Season)(((int)CurrentSeason + 1) % 4);
+            SetSeason((Season)(((int)CurrentSeason + 1) % 4));
+        }
+
+        private void SetSeason(Season season)
+        {
+            CurrentSeason = season;
 
             // very lightweight season baseline shifts
             Grid.ForEach((x, y, c) =>
             {
-                switch (CurrentSeason)
+                switch (season)
                 {
                     case Season.Summer:
                         c.Sunlight = Mathf.Clamp01(c.Sunlight + 0.05f);
@@ -390,7 +404,7 @@ namespace SCoL
         {
             // Weighted random by season (simple version)
             float r = (float)_rng.NextDouble();
-            switch (CurrentSeason)
+            switch (GetEffectiveSeason())
             {
                 case Season.Summer:
                     CurrentWeather = r < 0.75f ? WeatherType.Clear : WeatherType.Cloudy;
@@ -410,8 +424,14 @@ namespace SCoL
             }
         }
 
-        private bool IsWinterSeasonActive()
+        private Season GetEffectiveSeason()
         {
+            return TryGetExternalSeason(out var externalSeason) ? externalSeason : CurrentSeason;
+        }
+
+        private bool TryGetExternalSeason(out Season season)
+        {
+            season = CurrentSeason;
             if (Time.time >= _nextSeasonProbeAt)
             {
                 if (_weatherSystem == null || !_weatherSystem.isActiveAndEnabled)
@@ -425,10 +445,23 @@ namespace SCoL
                 _nextSeasonProbeAt = Time.time + 1f;
             }
 
-            if (_seasonSkybox != null)
-                return _seasonSkybox.GetCurrentSeason() == SeasonSkyboxController.Season.Winter;
+            if (_seasonSkybox == null)
+                return false;
 
-            return CurrentSeason == Season.Winter;
+            season = _seasonSkybox.GetCurrentSeason() switch
+            {
+                SeasonSkyboxController.Season.Spring => Season.Spring,
+                SeasonSkyboxController.Season.Summer => Season.Summer,
+                SeasonSkyboxController.Season.Autumn => Season.Autumn,
+                SeasonSkyboxController.Season.Winter => Season.Winter,
+                _ => CurrentSeason
+            };
+            return true;
+        }
+
+        private bool IsWinterSeasonActive()
+        {
+            return GetEffectiveSeason() == Season.Winter;
         }
 
         private void ApplyDiffusion(CellState[] next)

@@ -1,6 +1,7 @@
 using UnityEngine;
 using SCoL.Combat;
 using SCoL.Visualization;
+using SCoL.Interaction;
 
 [DisallowMultipleComponent]
 public sealed class SCoLPlayerRespawn : MonoBehaviour
@@ -37,7 +38,7 @@ public sealed class SCoLPlayerRespawn : MonoBehaviour
         {
             if (!_deathStateApplied)
                 ApplyDeathState();
-            if (Input.GetKeyDown(KeyCode.Y))
+            if (SCoLInteractionInput.RespawnPressed())
                 RespawnAtRandomLocation();
             return;
         }

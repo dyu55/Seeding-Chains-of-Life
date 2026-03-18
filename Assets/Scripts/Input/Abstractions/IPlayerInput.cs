@@ -24,5 +24,7 @@ namespace SCoL.InputLayer
         bool ToolSlot3PressedThisFrame { get; }
         bool ToolSlot4PressedThisFrame { get; }
         bool ToolSlot5PressedThisFrame { get; }
+        bool RespawnPressedThisFrame { get; }
+        bool UseGamepadPrompts { get; }
     }
 }

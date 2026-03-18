@@ -20,6 +20,7 @@ using UnityEditor;
 public class FPSRaycastInteractor : MonoBehaviour
 {
     const int MaxBurnTintRendererCount = 64;
+    const string HeldWaterCanAssetPath = "Assets/Models/Modeling/_Incoming/watercan/watercan.obj";
 
     public enum ApplyTool
     {
@@ -43,7 +44,7 @@ public class FPSRaycastInteractor : MonoBehaviour
     public bool logHits = true;
 
     [Header("Apply Tool (RMB)")]
-    public ApplyTool currentTool = ApplyTool.Seed;
+    public ApplyTool currentTool = ApplyTool.Water;
     [Min(1)] public int spreadLayers = 3;
     [Min(0.1f)] public float spreadLayerIntervalSeconds = 1f;
     [Min(0f)] public float lingerAfterSpreadSeconds = 0.05f;
@@ -143,6 +144,15 @@ public class FPSRaycastInteractor : MonoBehaviour
     public bool collectWaterFromRegionOnRightClick = true;
     [Min(1)] public int waterCollectAmount = 1;
 
+    [Header("Held Water Can")]
+    public bool showHeldWaterCan = true;
+    public GameObject heldWaterCanPrefab;
+    public Vector3 heldWaterCanLocalPosition = new Vector3(0.32f, -0.28f, 0.62f);
+    public Vector3 heldWaterCanLocalEuler = new Vector3(12f, -24f, -12f);
+    [Min(0.05f)] public float heldWaterCanScale = 0.42f;
+    public Color heldWaterCanTint = new Color(0.24f, 0.68f, 0.96f, 1f);
+    [Range(0f, 2f)] public float heldWaterCanEmission = 0.18f;
+
     [Header("Primary Plant Pickup (LMB)")]
     [Tooltip("If enabled, LMB can uproot targeted plants (legacy + CA) and convert them into Plant inventory.")]
     public bool pickPlantsOnPrimaryClick = true;
@@ -167,6 +177,8 @@ public class FPSRaycastInteractor : MonoBehaviour
     float _nextThunderTargetCheckAt;
     VoxelWorld _voxelWorld;
     SCoLCombatHealth _playerCombatHealth;
+    SpawnPickups _spawnPickups;
+    GameObject _heldWaterCanInstance;
     struct PlantDestroyClickState
     {
         public int count;
@@ -180,9 +192,12 @@ public class FPSRaycastInteractor : MonoBehaviour
         if (cameraSource == null)
             cameraSource = Camera.main;
 
+        currentTool = ApplyTool.Water;
+
         EnsureFpsFeedbackSystems();
         AutoAssignFinalFlowerStagePrefab();
         AutoAssignFirePlacePrefabs();
+        AutoAssignHeldWaterCanPrefab();
 
         _inventory = FindFirstObjectByType<SCoL.Inventory.SCoLInventory>();
         if (_inventory == null)
@@ -247,6 +262,15 @@ public class FPSRaycastInteractor : MonoBehaviour
         var flower0 = AssetDatabase.LoadAssetAtPath<GameObject>(flower0Path);
         if (flower0 != null)
             matureStagePrefab = flower0;
+#endif
+    }
+
+    private void AutoAssignHeldWaterCanPrefab()
+    {
+#if UNITY_EDITOR
+        if (heldWaterCanPrefab != null)
+            return;
+        heldWaterCanPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(HeldWaterCanAssetPath);
 #endif
     }
 
@@ -317,6 +341,7 @@ public class FPSRaycastInteractor : MonoBehaviour
     {
         if (cameraSource == null) return;
         HandleToolSwitchInput();
+        UpdateHeldToolVisual();
         UpdatePlantAttractor();
         TryIgniteTargetedPlantDuringThunder();
 
@@ -371,6 +396,9 @@ public class FPSRaycastInteractor : MonoBehaviour
 
             // Allow collecting pickups with RMB too (useful for laptop/trackpad workflows).
             if (collectPickupsOnRightClick && TryCollectPickupAtHit(hit))
+                return;
+
+            if (currentTool == ApplyTool.Water && collectWaterFromRegionOnRightClick && TryCollectWaterFromRegionAtHit(hit))
                 return;
 
             // Water and fire tools should apply to hovered plants directly instead of being hijacked
@@ -940,10 +968,13 @@ public class FPSRaycastInteractor : MonoBehaviour
     void OnDisable()
     {
         ClearActiveFire();
+        SetHeldWaterCanVisible(false);
     }
 
     void OnDestroy()
     {
+        if (_heldWaterCanInstance != null)
+            Destroy(_heldWaterCanInstance);
         if (_waterSpreadMat != null) Destroy(_waterSpreadMat);
         if (_fireSpreadMat != null) Destroy(_fireSpreadMat);
         if (_waterSpreadStampTex != null) Destroy(_waterSpreadStampTex);
@@ -1021,6 +1052,165 @@ public class FPSRaycastInteractor : MonoBehaviour
             CycleTool(+1);
         if (SCoL.Interaction.SCoLInteractionInput.ToolPrevPressed())
             CycleTool(-1);
+    }
+
+    void UpdateHeldToolVisual()
+    {
+        bool shouldShow = showHeldWaterCan && currentTool == ApplyTool.Water && cameraSource != null;
+        if (!shouldShow)
+        {
+            SetHeldWaterCanVisible(false);
+            return;
+        }
+
+        if (!EnsureHeldWaterCanInstance())
+            return;
+
+        var t = _heldWaterCanInstance.transform;
+        if (t.parent != cameraSource.transform)
+            t.SetParent(cameraSource.transform, false);
+
+        t.localPosition = heldWaterCanLocalPosition;
+        t.localRotation = Quaternion.Euler(heldWaterCanLocalEuler);
+        t.localScale = Vector3.one * Mathf.Max(0.05f, heldWaterCanScale);
+        SetHeldWaterCanVisible(true);
+    }
+
+    bool EnsureHeldWaterCanInstance()
+    {
+        if (_heldWaterCanInstance != null)
+            return true;
+
+        GameObject prefab = ResolveHeldWaterCanPrefab();
+        if (prefab == null || cameraSource == null)
+            return false;
+
+        _heldWaterCanInstance = Instantiate(prefab, cameraSource.transform, false);
+        _heldWaterCanInstance.name = "HeldWaterCan";
+        SetLayerRecursive(_heldWaterCanInstance, 2);
+        StripHeldToolComponents(_heldWaterCanInstance);
+        TintHeldWaterCan(_heldWaterCanInstance);
+        return true;
+    }
+
+    GameObject ResolveHeldWaterCanPrefab()
+    {
+        if (heldWaterCanPrefab != null)
+            return heldWaterCanPrefab;
+
+        if (_spawnPickups == null || !_spawnPickups.isActiveAndEnabled)
+            _spawnPickups = FindFirstObjectByType<SpawnPickups>();
+        if (_spawnPickups != null)
+        {
+            if (_spawnPickups.waterPickupPrefabs != null)
+            {
+                for (int i = 0; i < _spawnPickups.waterPickupPrefabs.Length; i++)
+                {
+                    if (_spawnPickups.waterPickupPrefabs[i] != null)
+                    {
+                        heldWaterCanPrefab = _spawnPickups.waterPickupPrefabs[i];
+                        return heldWaterCanPrefab;
+                    }
+                }
+            }
+
+            if (_spawnPickups.waterPickupPrefab != null)
+            {
+                heldWaterCanPrefab = _spawnPickups.waterPickupPrefab;
+                return heldWaterCanPrefab;
+            }
+        }
+
+#if UNITY_EDITOR
+        heldWaterCanPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(HeldWaterCanAssetPath);
+#endif
+        return heldWaterCanPrefab;
+    }
+
+    void StripHeldToolComponents(GameObject go)
+    {
+        if (go == null)
+            return;
+
+        var pickups = go.GetComponentsInChildren<SCoLPickup>(true);
+        for (int i = 0; i < pickups.Length; i++)
+        {
+            if (pickups[i] != null)
+                Destroy(pickups[i]);
+        }
+
+        var bodies = go.GetComponentsInChildren<Rigidbody>(true);
+        for (int i = 0; i < bodies.Length; i++)
+        {
+            if (bodies[i] != null)
+                Destroy(bodies[i]);
+        }
+
+        var colliders = go.GetComponentsInChildren<Collider>(true);
+        for (int i = 0; i < colliders.Length; i++)
+        {
+            if (colliders[i] != null)
+                colliders[i].enabled = false;
+        }
+
+        var lights = go.GetComponentsInChildren<Light>(true);
+        for (int i = 0; i < lights.Length; i++)
+        {
+            if (lights[i] != null)
+                lights[i].enabled = false;
+        }
+    }
+
+    void TintHeldWaterCan(GameObject go)
+    {
+        if (go == null)
+            return;
+
+        var renderers = go.GetComponentsInChildren<Renderer>(true);
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            var renderer = renderers[i];
+            if (renderer == null)
+                continue;
+
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+
+            var mats = renderer.materials;
+            bool changed = false;
+            for (int j = 0; j < mats.Length; j++)
+            {
+                var mat = mats[j];
+                if (mat == null)
+                    continue;
+
+                if (mat.HasProperty("_BaseColor"))
+                {
+                    mat.SetColor("_BaseColor", heldWaterCanTint);
+                    changed = true;
+                }
+                if (mat.HasProperty("_Color"))
+                {
+                    mat.SetColor("_Color", heldWaterCanTint);
+                    changed = true;
+                }
+                if (mat.HasProperty("_EmissionColor"))
+                {
+                    mat.EnableKeyword("_EMISSION");
+                    mat.SetColor("_EmissionColor", heldWaterCanTint * Mathf.Max(0f, heldWaterCanEmission));
+                    changed = true;
+                }
+            }
+
+            if (changed)
+                renderer.materials = mats;
+        }
+    }
+
+    void SetHeldWaterCanVisible(bool visible)
+    {
+        if (_heldWaterCanInstance != null && _heldWaterCanInstance.activeSelf != visible)
+            _heldWaterCanInstance.SetActive(visible);
     }
 
     bool TryCycleSeedFlowerVariant()

@@ -40,6 +40,11 @@ namespace SCoL.Interaction
             return GameplayInputFacade.Player != null && GameplayInputFacade.Player.PausePressedThisFrame;
         }
 
+        public static bool RespawnPressed()
+        {
+            return GameplayInputFacade.Player != null && GameplayInputFacade.Player.RespawnPressedThisFrame;
+        }
+
         public static bool ToolSlotPressed(int slot)
         {
             var p = GameplayInputFacade.Player;

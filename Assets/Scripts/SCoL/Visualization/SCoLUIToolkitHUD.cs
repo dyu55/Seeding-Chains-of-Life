@@ -3,6 +3,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using SCoL.Inventory;
 using SCoL.Combat;
+using SCoL.InputLayer;
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
@@ -720,7 +721,10 @@ namespace SCoL.Visualization
                         ? new Color(accent.r * 0.22f, accent.g * 0.22f, accent.b * 0.22f, pulse)
                         : HudSlotIdleFill;
                 if (_toolSlotKeyLabels[i] != null)
+                {
+                    SetText(_toolSlotKeyLabels[i], GetToolSlotKeyLabel(i));
                     _toolSlotKeyLabels[i].color = selected ? HudTextPrimary : new Color(1f, 1f, 1f, 0.55f);
+                }
                 if (_toolSlotNameLabels[i] != null)
                     _toolSlotNameLabels[i].color = selected ? HudTextPrimary : HudTextSecondary;
             }
@@ -822,7 +826,7 @@ namespace SCoL.Visualization
             if (_deathTitleLabel != null)
                 SetText(_deathTitleLabel, "YOU DIED");
             if (_deathDetailLabel != null)
-                SetText(_deathDetailLabel, isDead ? "Wolves and the wild got you.\nPress Y to respawn at a new location with full health." : string.Empty);
+                SetText(_deathDetailLabel, isDead ? $"Wolves and the wild got you.\n{GetRespawnPromptDetail()}" : string.Empty);
         }
 
         private void UpdateAimInfo()
@@ -850,12 +854,12 @@ namespace SCoL.Visualization
                         if (pickup != null && _inventory != null)
                         {
                             title = _inventory.GetItemDisplayName(pickup.type, true);
-                            detail = $"{_inventory.GetItemDescription(pickup.type, true)}\n<color=#91E6FF><b>LMB</b></color> Collect";
+                            detail = $"{_inventory.GetItemDescription(pickup.type, true)}\n{GetPrimaryPromptRich()} Collect";
                         }
                         else
                         {
                             title = "Unknown item";
-                            detail = "You have not discovered this item yet.\n<color=#91E6FF><b>LMB</b></color> Collect";
+                            detail = $"You have not discovered this item yet.\n{GetPrimaryPromptRich()} Collect";
                         }
                         break;
                     }
@@ -868,7 +872,7 @@ namespace SCoL.Visualization
                     {
                         int required = _fpsInteractor != null ? Mathf.Max(1, _fpsInteractor.plantDestroyClicksRequired) : 4;
                         title = ResolvePlantHoverName(target);
-                        detail = $"<color=#FFAF82><b>RMB</b></color> Destroy x{required}";
+                        detail = $"{GetSecondaryPromptRich()} Destroy x{required}";
                         break;
                     }
                     case FPSAimTargetKind.Animal:
@@ -877,10 +881,10 @@ namespace SCoL.Visualization
                         bool plantTool = _fpsInteractor != null && _fpsInteractor.currentTool == FPSRaycastInteractor.ApplyTool.Plant;
                         bool stoneTool = _fpsInteractor != null && _fpsInteractor.currentTool == FPSRaycastInteractor.ApplyTool.Stone;
                         detail = stoneTool
-                            ? "<color=#FFAF82><b>RMB</b></color> Throw stone"
+                            ? $"{GetSecondaryPromptRich()} Throw stone"
                             : plantTool
-                            ? "<color=#FFAF82><b>RMB</b></color> Feed animal"
-                            : "Press <color=#F1D598><b>4</b></color> to feed or <color=#F1D598><b>5</b></color> to throw stone";
+                            ? $"{GetSecondaryPromptRich()} Feed animal"
+                            : GetAnimalPromptDetail();
                         break;
                     }
                 }
@@ -953,19 +957,70 @@ namespace SCoL.Visualization
                     int count = _inventory != null && _fpsInteractor != null
                         ? _inventory.GetSeedTypeCount(_fpsInteractor.GetSelectedSeedVariantIndex())
                         : 0;
-                    return $"<color=#F1D598><b>RMB</b></color> Plant {flowerName}   <color=#F1D598><b>1</b></color> Cycle   Stock {count}";
+                    if (UseGamepadPrompts())
+                        return $"{GetSecondaryPromptRich(HudAccentWarm)} Plant {flowerName}   {GetToolSwitchPromptRich()} Switch Tool   Stock {count}";
+                    return $"{GetSecondaryPromptRich(HudAccentWarm)} Plant {flowerName}   <color=#F1D598><b>1</b></color> Cycle   Stock {count}";
                 }
                 case FPSRaycastInteractor.ApplyTool.Water:
-                    return "<color=#67C8FF><b>RMB</b></color> Hydrate plants or collect water";
+                    return $"{GetSecondaryPromptRich(HudAccentCool)} Hydrate plants or fill at lake";
                 case FPSRaycastInteractor.ApplyTool.Fire:
-                    return "<color=#FF8E62><b>RMB</b></color> Ignite targets and nearby tiles";
+                    return $"{GetSecondaryPromptRich(new Color(1f, 0.56f, 0.38f, 0.98f))} Ignite targets and nearby tiles";
                 case FPSRaycastInteractor.ApplyTool.Plant:
-                    return "<color=#8BE39E><b>RMB</b></color> Feed animals and attract them";
+                    return $"{GetSecondaryPromptRich(HudAccentGreen)} Feed animals and attract them";
                 case FPSRaycastInteractor.ApplyTool.Stone:
-                    return "<color=#D2D5DE><b>RMB</b></color> Throw stone projectiles";
+                    return $"{GetSecondaryPromptRich(new Color(0.82f, 0.84f, 0.92f, 0.98f))} Throw stone projectiles";
                 default:
-                    return "Press 1-5 to switch tools.";
+                    return UseGamepadPrompts() ? $"{GetToolSwitchPromptRich()} Switch tools." : "Press 1-5 to switch tools.";
             }
+        }
+
+        private bool UseGamepadPrompts()
+        {
+            return GameplayInputFacade.Player != null && GameplayInputFacade.Player.UseGamepadPrompts;
+        }
+
+        private string GetPrimaryPromptRich() => GetPrimaryPromptRich(HudAccentCool);
+
+        private string GetPrimaryPromptRich(Color color)
+        {
+            string label = UseGamepadPrompts() ? "RT" : "LMB";
+            return $"<color=#{ColorUtility.ToHtmlStringRGB(color)}><b>{label}</b></color>";
+        }
+
+        private string GetSecondaryPromptRich() => GetSecondaryPromptRich(new Color(1f, 0.69f, 0.51f, 0.98f));
+
+        private string GetSecondaryPromptRich(Color color)
+        {
+            string label = UseGamepadPrompts() ? "LT" : "RMB";
+            return $"<color=#{ColorUtility.ToHtmlStringRGB(color)}><b>{label}</b></color>";
+        }
+
+        private string GetToolSwitchPromptRich()
+        {
+            if (!UseGamepadPrompts())
+                return "<color=#F1D598><b>1-5</b></color>";
+            return "<color=#F1D598><b>LB/RB</b></color> or <color=#F1D598><b>D-PAD</b></color>";
+        }
+
+        private string GetAnimalPromptDetail()
+        {
+            if (UseGamepadPrompts())
+                return $"Use {GetToolSwitchPromptRich()} to pick Plant or Stone";
+            return "Press <color=#F1D598><b>4</b></color> to feed or <color=#F1D598><b>5</b></color> to throw stone";
+        }
+
+        private string GetRespawnPromptDetail()
+        {
+            if (UseGamepadPrompts())
+                return "Press the <color=#F1D598><b>Y</b></color> button to respawn at a new location with full health.";
+            return "Press <color=#F1D598><b>Y</b></color> to respawn at a new location with full health.";
+        }
+
+        private string GetToolSlotKeyLabel(int slotIndex)
+        {
+            if (UseGamepadPrompts())
+                return string.Empty;
+            return (slotIndex + 1).ToString();
         }
 
         private string GetToolLabel(FPSRaycastInteractor.ApplyTool tool)
@@ -1051,7 +1106,7 @@ namespace SCoL.Visualization
                 fontSize: 14,
                 color: new Color(1f, 1f, 1f, 0.55f),
                 alignment: TextAnchor.MiddleLeft);
-            SetText(_toolSlotKeyLabels[slotIndex], (slotIndex + 1).ToString());
+            SetText(_toolSlotKeyLabels[slotIndex], GetToolSlotKeyLabel(slotIndex));
 
             _toolSlotNameLabels[slotIndex] = CreateText(
                 fill.transform,

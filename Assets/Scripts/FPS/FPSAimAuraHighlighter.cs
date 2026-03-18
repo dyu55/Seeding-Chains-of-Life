@@ -6,8 +6,8 @@ using SCoL.Visualization;
 using SCoL.XR;
 
 /// <summary>
-/// Highlights actionable gameplay objects so players can read affordances before aiming directly.
-/// Nearby interactables get a soft glow, and the current aim target gets a stronger pulse.
+/// Marks actionable gameplay objects with floating world-space icons so they read differently from scenery.
+/// Nearby interactables get a subtle marker, and the current aim target gets a brighter focus marker.
 /// </summary>
 [DisallowMultipleComponent]
 public class FPSAimAuraHighlighter : MonoBehaviour
@@ -16,62 +16,73 @@ public class FPSAimAuraHighlighter : MonoBehaviour
     public float maxDistance = 50f;
     public LayerMask hitMask = ~0;
 
-    [Header("Discovery Aura")]
+    [Header("Discovery Marker")]
     [Min(1f)] public float awarenessRadius = 9f;
     [Range(1, 64)] public int maxNearbyHighlights = 24;
     [Min(0.05f)] public float refreshInterval = 0.35f;
-    public Color nearbyAuraColor = new Color(0.34f, 0.90f, 1f);
-    [Min(0f)] public float nearbyMinEmission = 0.16f;
-    [Min(0f)] public float nearbyMaxEmission = 0.42f;
-    [Range(0f, 1f)] public float nearbyTintStrength = 0.16f;
+    public Color nearbyMarkerColor = new Color(0.34f, 0.90f, 1f, 0.92f);
+    [Min(0.1f)] public float nearbyMinScale = 0.20f;
+    [Min(0.1f)] public float nearbyMaxScale = 0.24f;
 
-    [Header("Focus Aura")]
-    public Color focusAuraColor = new Color(0.95f, 0.88f, 0.42f);
-    [Min(0f)] public float focusMinEmission = 0.95f;
-    [Min(0f)] public float focusMaxEmission = 2.30f;
-    [Range(0f, 1f)] public float focusTintStrength = 0.28f;
+    [Header("Focus Marker")]
+    public Color focusMarkerColor = new Color(0.98f, 0.88f, 0.32f, 1f);
+    [Min(0.1f)] public float focusMinScale = 0.28f;
+    [Min(0.1f)] public float focusMaxScale = 0.34f;
     [Min(0.1f)] public float pulseSpeed = 4f;
 
-    private sealed class AuraState
+    [Header("Placement")]
+    [Min(0f)] public float minWorldYOffset = 0.45f;
+    [Min(0f)] public float boundsYOffset = 0.22f;
+    [Min(0f)] public float stemHeight = 0.26f;
+
+    sealed class MarkerState
     {
-        public Transform root;
-        public Renderer[] renderers;
-        public Material[][] originalMaterials;
-        public Material[][] runtimeMaterials;
-        public bool[][] hasBaseColor;
-        public bool[][] hasColor;
-        public Color[][] baseColors;
-        public Color[][] colorValues;
+        public Transform target;
+        public Renderer[] sourceRenderers;
+        public Transform markerRoot;
+        public Transform halo;
+        public Transform diamond;
+        public Transform stem;
+        public Material haloMaterial;
+        public Material diamondMaterial;
+        public Material stemMaterial;
         public bool isFocused;
     }
 
-    private SCoLRuntime _runtime;
-    private PlantVoxelRenderer _plantRenderer;
-    private float _nextRefreshAt;
+    SCoLRuntime _runtime;
+    PlantVoxelRenderer _plantRenderer;
+    Camera _cam;
+    float _nextRefreshAt;
 
-    private readonly Dictionary<int, AuraState> _activeStates = new Dictionary<int, AuraState>(32);
-    private readonly List<Transform> _sceneCandidates = new List<Transform>(64);
-    private readonly List<int> _pendingRemoval = new List<int>(32);
-    private readonly HashSet<int> _sceneCandidateIds = new HashSet<int>();
-    private readonly HashSet<int> _desiredIds = new HashSet<int>();
+    readonly Dictionary<int, MarkerState> _activeStates = new Dictionary<int, MarkerState>(32);
+    readonly List<Transform> _sceneCandidates = new List<Transform>(64);
+    readonly List<int> _pendingRemoval = new List<int>(32);
+    readonly HashSet<int> _sceneCandidateIds = new HashSet<int>();
+    readonly HashSet<int> _desiredIds = new HashSet<int>();
 
-    private void Awake()
+    void Awake()
     {
-        if (cameraSource == null) cameraSource = Camera.main;
+        if (cameraSource == null)
+            cameraSource = Camera.main;
         _runtime = FindFirstObjectByType<SCoLRuntime>();
         _plantRenderer = FindFirstObjectByType<PlantVoxelRenderer>();
     }
 
-    private void OnDisable()
+    void OnDisable()
     {
         ClearAll();
     }
 
-    private void Update()
+    void Update()
     {
-        if (cameraSource == null) cameraSource = Camera.main;
-        if (_runtime == null) _runtime = FindFirstObjectByType<SCoLRuntime>();
-        if (_plantRenderer == null) _plantRenderer = FindFirstObjectByType<PlantVoxelRenderer>();
+        if (cameraSource == null)
+            cameraSource = Camera.main;
+        if (_runtime == null)
+            _runtime = FindFirstObjectByType<SCoLRuntime>();
+        if (_plantRenderer == null)
+            _plantRenderer = FindFirstObjectByType<PlantVoxelRenderer>();
+        if (_cam == null)
+            _cam = cameraSource != null ? cameraSource : Camera.main;
 
         if (Time.unscaledTime >= _nextRefreshAt)
         {
@@ -79,10 +90,10 @@ public class FPSAimAuraHighlighter : MonoBehaviour
             RefreshHighlights();
         }
 
-        UpdateEmissionPulse();
+        UpdateMarkers();
     }
 
-    private void RefreshHighlights()
+    void RefreshHighlights()
     {
         Transform focusedRoot = null;
         if (FPSAimTargeting.TryResolve(cameraSource, maxDistance, hitMask, _runtime, _plantRenderer, out var target) &&
@@ -116,7 +127,7 @@ public class FPSAimAuraHighlighter : MonoBehaviour
         foreach (var kvp in _activeStates)
         {
             var state = kvp.Value;
-            if (state == null || state.root == null || !_desiredIds.Contains(kvp.Key))
+            if (state == null || state.target == null || !_desiredIds.Contains(kvp.Key))
                 _pendingRemoval.Add(kvp.Key);
         }
 
@@ -124,7 +135,96 @@ public class FPSAimAuraHighlighter : MonoBehaviour
             RemoveState(_pendingRemoval[i]);
     }
 
-    private void CollectSceneCandidates()
+    void UpdateMarkers()
+    {
+        if (_activeStates.Count == 0 || _cam == null)
+            return;
+
+        float pulse = 0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * Mathf.Max(0.1f, pulseSpeed));
+        foreach (var kvp in _activeStates)
+        {
+            var state = kvp.Value;
+            if (state == null || state.target == null || state.markerRoot == null)
+                continue;
+
+            Vector3 worldPos = ResolveMarkerPosition(state);
+            state.markerRoot.position = worldPos;
+            state.markerRoot.rotation = Quaternion.LookRotation(_cam.transform.forward, Vector3.up);
+
+            float markerScale = state.isFocused
+                ? Mathf.Lerp(focusMinScale, focusMaxScale, pulse)
+                : Mathf.Lerp(nearbyMinScale, nearbyMaxScale, pulse);
+            state.markerRoot.localScale = Vector3.one * markerScale;
+
+            ApplyMarkerVisual(state, pulse);
+        }
+    }
+
+    void ApplyMarkerVisual(MarkerState state, float pulse)
+    {
+        Color color = state.isFocused ? focusMarkerColor : nearbyMarkerColor;
+        float haloAlpha = state.isFocused ? Mathf.Lerp(0.28f, 0.48f, pulse) : Mathf.Lerp(0.14f, 0.24f, pulse);
+        float solidAlpha = state.isFocused ? Mathf.Lerp(0.92f, 1f, pulse) : Mathf.Lerp(0.72f, 0.88f, pulse);
+
+        if (state.halo != null)
+            state.halo.localScale = Vector3.one * (state.isFocused ? Mathf.Lerp(1.45f, 1.75f, pulse) : Mathf.Lerp(1.20f, 1.38f, pulse));
+        if (state.diamond != null)
+            state.diamond.localScale = Vector3.one * (state.isFocused ? Mathf.Lerp(1f, 1.12f, pulse) : Mathf.Lerp(0.92f, 1f, pulse));
+
+        SetMaterialColor(state.haloMaterial, new Color(color.r, color.g, color.b, haloAlpha));
+        SetMaterialColor(state.diamondMaterial, new Color(color.r, color.g, color.b, solidAlpha));
+        SetMaterialColor(state.stemMaterial, new Color(color.r, color.g, color.b, solidAlpha * 0.85f));
+    }
+
+    static void SetMaterialColor(Material material, Color color)
+    {
+        if (material == null)
+            return;
+        if (material.HasProperty("_BaseColor"))
+            material.SetColor("_BaseColor", color);
+        if (material.HasProperty("_Color"))
+            material.SetColor("_Color", color);
+    }
+
+    Vector3 ResolveMarkerPosition(MarkerState state)
+    {
+        if (state == null || state.target == null)
+            return Vector3.zero;
+
+        if (TryGetRenderableBounds(state, out Bounds bounds))
+            return new Vector3(bounds.center.x, bounds.max.y + Mathf.Max(minWorldYOffset, boundsYOffset), bounds.center.z);
+
+        return state.target.position + Vector3.up * Mathf.Max(0.35f, minWorldYOffset);
+    }
+
+    bool TryGetRenderableBounds(MarkerState state, out Bounds bounds)
+    {
+        bounds = default;
+        if (state == null || state.sourceRenderers == null || state.sourceRenderers.Length == 0)
+            return false;
+
+        bool found = false;
+        for (int i = 0; i < state.sourceRenderers.Length; i++)
+        {
+            var renderer = state.sourceRenderers[i];
+            if (renderer == null || !renderer.enabled || !renderer.gameObject.activeInHierarchy)
+                continue;
+
+            if (!found)
+            {
+                bounds = renderer.bounds;
+                found = true;
+            }
+            else
+            {
+                bounds.Encapsulate(renderer.bounds);
+            }
+        }
+
+        return found;
+    }
+
+    void CollectSceneCandidates()
     {
         _sceneCandidates.Clear();
         _sceneCandidateIds.Clear();
@@ -149,7 +249,6 @@ public class FPSAimAuraHighlighter : MonoBehaviour
         for (int i = 0; i < harvestables.Length; i++)
             AddSceneCandidate(harvestables[i] != null ? harvestables[i].transform : null);
 
-        // CA plants are spawned as named runtime roots by PlantVoxelRenderer.
         var transforms = FindObjectsByType<Transform>(FindObjectsSortMode.None);
         for (int i = 0; i < transforms.Length; i++)
         {
@@ -160,7 +259,7 @@ public class FPSAimAuraHighlighter : MonoBehaviour
         }
     }
 
-    private void AddSceneCandidate(Transform root)
+    void AddSceneCandidate(Transform root)
     {
         if (root == null || !root.gameObject.activeInHierarchy)
             return;
@@ -172,7 +271,7 @@ public class FPSAimAuraHighlighter : MonoBehaviour
         _sceneCandidates.Add(root);
     }
 
-    private void AddDesiredRoot(Transform root, bool isFocused)
+    void AddDesiredRoot(Transform root, bool isFocused)
     {
         if (root == null)
             return;
@@ -191,173 +290,85 @@ public class FPSAimAuraHighlighter : MonoBehaviour
         state.isFocused = isFocused;
     }
 
-    private AuraState CreateState(Transform root)
+    MarkerState CreateState(Transform root)
     {
         if (root == null)
             return null;
 
-        var renderers = root.GetComponentsInChildren<Renderer>(includeInactive: true);
+        var renderers = root.GetComponentsInChildren<Renderer>(includeInactive: false);
         if (renderers == null || renderers.Length == 0)
             return null;
 
-        var rendererList = new List<Renderer>(renderers.Length);
-        var originalList = new List<Material[]>(renderers.Length);
-        var runtimeList = new List<Material[]>(renderers.Length);
-        var hasBaseColorList = new List<bool[]>(renderers.Length);
-        var hasColorList = new List<bool[]>(renderers.Length);
-        var baseColorList = new List<Color[]>(renderers.Length);
-        var colorValueList = new List<Color[]>(renderers.Length);
+        var haloMaterial = NewMarkerMaterial("InteractableMarker_Halo");
+        var diamondMaterial = NewMarkerMaterial("InteractableMarker_Diamond");
+        var stemMaterial = NewMarkerMaterial("InteractableMarker_Stem");
 
-        for (int i = 0; i < renderers.Length; i++)
+        var markerRoot = new GameObject(root.name + "_InteractableMarker").transform;
+        markerRoot.SetParent(transform, false);
+
+        var halo = CreateQuad("Halo", markerRoot, new Vector2(0.34f, 0.34f), new Vector3(0f, 0f, 0.02f), Vector3.zero, haloMaterial);
+        var diamond = CreateQuad("Diamond", markerRoot, new Vector2(0.18f, 0.18f), Vector3.zero, new Vector3(0f, 0f, 45f), diamondMaterial);
+        var stem = CreateQuad("Stem", markerRoot, new Vector2(0.035f, stemHeight), new Vector3(0f, -0.17f, 0.01f), Vector3.zero, stemMaterial);
+
+        return new MarkerState
         {
-            var renderer = renderers[i];
-            if (renderer == null)
-                continue;
-
-            var originals = renderer.sharedMaterials;
-            if (originals == null || originals.Length == 0)
-                continue;
-
-            var runtimeMaterials = new Material[originals.Length];
-            var hasBaseColor = new bool[originals.Length];
-            var hasColor = new bool[originals.Length];
-            var baseColors = new Color[originals.Length];
-            var colorValues = new Color[originals.Length];
-            bool hasAnyMaterial = false;
-
-            for (int m = 0; m < originals.Length; m++)
-            {
-                var original = originals[m];
-                if (original == null)
-                    continue;
-
-                var runtime = new Material(original)
-                {
-                    name = original.name + "_InteractableAura"
-                };
-
-                if (runtime.HasProperty("_EmissionColor"))
-                    runtime.EnableKeyword("_EMISSION");
-
-                hasBaseColor[m] = runtime.HasProperty("_BaseColor");
-                hasColor[m] = runtime.HasProperty("_Color");
-                if (hasBaseColor[m])
-                    baseColors[m] = runtime.GetColor("_BaseColor");
-                if (hasColor[m])
-                    colorValues[m] = runtime.GetColor("_Color");
-
-                runtimeMaterials[m] = runtime;
-                hasAnyMaterial = true;
-            }
-
-            if (!hasAnyMaterial)
-                continue;
-
-            renderer.sharedMaterials = runtimeMaterials;
-            rendererList.Add(renderer);
-            originalList.Add(originals);
-            runtimeList.Add(runtimeMaterials);
-            hasBaseColorList.Add(hasBaseColor);
-            hasColorList.Add(hasColor);
-            baseColorList.Add(baseColors);
-            colorValueList.Add(colorValues);
-        }
-
-        if (rendererList.Count == 0)
-            return null;
-
-        return new AuraState
-        {
-            root = root,
-            renderers = rendererList.ToArray(),
-            originalMaterials = originalList.ToArray(),
-            runtimeMaterials = runtimeList.ToArray(),
-            hasBaseColor = hasBaseColorList.ToArray(),
-            hasColor = hasColorList.ToArray(),
-            baseColors = baseColorList.ToArray(),
-            colorValues = colorValueList.ToArray(),
+            target = root,
+            sourceRenderers = renderers,
+            markerRoot = markerRoot,
+            halo = halo,
+            diamond = diamond,
+            stem = stem,
+            haloMaterial = haloMaterial,
+            diamondMaterial = diamondMaterial,
+            stemMaterial = stemMaterial,
             isFocused = false
         };
     }
 
-    private void UpdateEmissionPulse()
+    static Transform CreateQuad(string name, Transform parent, Vector2 size, Vector3 localPos, Vector3 localEuler, Material material)
     {
-        if (_activeStates.Count == 0)
-            return;
+        var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
+        go.name = name;
+        go.transform.SetParent(parent, false);
+        go.transform.localPosition = localPos;
+        go.transform.localRotation = Quaternion.Euler(localEuler);
+        go.transform.localScale = new Vector3(size.x, size.y, 1f);
 
-        float pulse = 0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * Mathf.Max(0.1f, pulseSpeed));
+        var collider = go.GetComponent<Collider>();
+        if (collider != null)
+            Destroy(collider);
 
-        foreach (var kvp in _activeStates)
+        var renderer = go.GetComponent<Renderer>();
+        if (renderer != null)
         {
-            var state = kvp.Value;
-            if (state == null || state.root == null)
-                continue;
-
-            Color auraColor = state.isFocused ? focusAuraColor : nearbyAuraColor;
-            float intensity = state.isFocused
-                ? Mathf.Lerp(focusMinEmission, focusMaxEmission, pulse)
-                : Mathf.Lerp(nearbyMinEmission, nearbyMaxEmission, pulse);
-            float tintStrength = state.isFocused
-                ? Mathf.Lerp(focusTintStrength * 0.7f, focusTintStrength, pulse)
-                : Mathf.Lerp(nearbyTintStrength * 0.7f, nearbyTintStrength, pulse);
-
-            ApplyAura(state, auraColor, intensity, tintStrength);
+            renderer.sharedMaterial = material;
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+            renderer.lightProbeUsage = UnityEngine.Rendering.LightProbeUsage.Off;
+            renderer.reflectionProbeUsage = UnityEngine.Rendering.ReflectionProbeUsage.Off;
         }
+
+        return go.transform;
     }
 
-    private static void ApplyAura(AuraState state, Color auraColor, float intensity, float tintStrength)
+    static Material NewMarkerMaterial(string name)
     {
-        if (state == null || state.runtimeMaterials == null)
-            return;
+        Shader shader = Shader.Find("Sprites/Default");
+        if (shader == null)
+            shader = Shader.Find("Unlit/Color");
+        if (shader == null)
+            shader = Shader.Find("Universal Render Pipeline/Unlit");
+        if (shader == null)
+            shader = Shader.Find("Standard");
 
-        var emissionColor = auraColor * intensity;
-        for (int i = 0; i < state.runtimeMaterials.Length; i++)
-        {
-            var mats = state.runtimeMaterials[i];
-            if (mats == null)
-                continue;
-
-            for (int m = 0; m < mats.Length; m++)
-            {
-                var mat = mats[m];
-                if (mat == null)
-                    continue;
-
-                if (mat.HasProperty("_EmissionColor"))
-                    mat.SetColor("_EmissionColor", emissionColor);
-
-                if (state.hasBaseColor != null &&
-                    i < state.hasBaseColor.Length &&
-                    state.hasBaseColor[i] != null &&
-                    m < state.hasBaseColor[i].Length &&
-                    state.hasBaseColor[i][m] &&
-                    state.baseColors != null &&
-                    i < state.baseColors.Length &&
-                    state.baseColors[i] != null &&
-                    m < state.baseColors[i].Length)
-                {
-                    var original = state.baseColors[i][m];
-                    mat.SetColor("_BaseColor", Color.Lerp(original, Color.Lerp(original, auraColor, 0.55f), tintStrength));
-                }
-
-                if (state.hasColor != null &&
-                    i < state.hasColor.Length &&
-                    state.hasColor[i] != null &&
-                    m < state.hasColor[i].Length &&
-                    state.hasColor[i][m] &&
-                    state.colorValues != null &&
-                    i < state.colorValues.Length &&
-                    state.colorValues[i] != null &&
-                    m < state.colorValues[i].Length)
-                {
-                    var original = state.colorValues[i][m];
-                    mat.SetColor("_Color", Color.Lerp(original, Color.Lerp(original, auraColor, 0.55f), tintStrength));
-                }
-            }
-        }
+        var material = new Material(shader) { name = name };
+        material.renderQueue = 3100;
+        if (material.HasProperty("_ZWrite"))
+            material.SetFloat("_ZWrite", 0f);
+        return material;
     }
 
-    private bool IsWithinAwareness(Transform root)
+    bool IsWithinAwareness(Transform root)
     {
         if (cameraSource == null || root == null)
             return false;
@@ -367,7 +378,7 @@ public class FPSAimAuraHighlighter : MonoBehaviour
         return (root.position - camPos).sqrMagnitude <= radiusSq;
     }
 
-    private void RemoveState(int id)
+    void RemoveState(int id)
     {
         if (!_activeStates.TryGetValue(id, out var state))
             return;
@@ -376,7 +387,7 @@ public class FPSAimAuraHighlighter : MonoBehaviour
         _activeStates.Remove(id);
     }
 
-    private void ClearAll()
+    void ClearAll()
     {
         foreach (var kvp in _activeStates)
             RestoreState(kvp.Value);
@@ -388,40 +399,23 @@ public class FPSAimAuraHighlighter : MonoBehaviour
         _sceneCandidates.Clear();
     }
 
-    private static void RestoreState(AuraState state)
+    static void RestoreState(MarkerState state)
     {
         if (state == null)
             return;
 
-        if (state.renderers != null && state.originalMaterials != null)
-        {
-            for (int i = 0; i < state.renderers.Length; i++)
-            {
-                var renderer = state.renderers[i];
-                if (renderer != null && i < state.originalMaterials.Length)
-                    renderer.sharedMaterials = state.originalMaterials[i];
-            }
-        }
-
-        if (state.runtimeMaterials == null)
-            return;
-
-        for (int i = 0; i < state.runtimeMaterials.Length; i++)
-        {
-            var mats = state.runtimeMaterials[i];
-            if (mats == null)
-                continue;
-
-            for (int m = 0; m < mats.Length; m++)
-            {
-                if (mats[m] != null)
-                    Destroy(mats[m]);
-            }
-        }
+        if (state.haloMaterial != null)
+            Destroy(state.haloMaterial);
+        if (state.diamondMaterial != null)
+            Destroy(state.diamondMaterial);
+        if (state.stemMaterial != null)
+            Destroy(state.stemMaterial);
+        if (state.markerRoot != null)
+            Destroy(state.markerRoot.gameObject);
     }
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
-    private static void EnsureExists()
+    static void EnsureExists()
     {
         if (FindFirstObjectByType<FPSAimAuraHighlighter>() != null)
             return;

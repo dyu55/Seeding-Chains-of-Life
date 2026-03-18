@@ -6,7 +6,7 @@ namespace SCoL.InputLayer
 {
     /// <summary>
     /// Input System-backed implementation with PlayerInput/InputActionAsset first,
-    /// and safe runtime fallback actions for keyboard+mouse.
+    /// and safe runtime fallback actions for keyboard, mouse, and gamepad.
     /// </summary>
     [DisallowMultipleComponent]
     public class InputSystemPlayerInput : MonoBehaviour, IPlayerInput
@@ -54,6 +54,7 @@ namespace SCoL.InputLayer
         private InputAction _tool3;
         private InputAction _tool4;
         private InputAction _tool5;
+        private InputAction _respawn;
         private InputAction _jumpSupplemental;
         private InputAction _primarySupplemental;
         private InputAction _secondarySupplemental;
@@ -65,6 +66,7 @@ namespace SCoL.InputLayer
         private InputAction _tool3Supplemental;
         private InputAction _tool4Supplemental;
         private InputAction _tool5Supplemental;
+        private InputAction _respawnSupplemental;
 
         private InputActionMap _runtimeFallbackMap;
         private InputActionMap _resolvedMap;
@@ -72,6 +74,7 @@ namespace SCoL.InputLayer
         private readonly List<InputAction> _supplementalActions = new List<InputAction>(16);
         private bool _snapReady = true;
         private Vector2 _smoothedLook;
+        private bool _useGamepadPrompts;
 
         public Vector2 Move => ReadVector2(_move);
         public Vector2 Look => _smoothedLook;
@@ -89,6 +92,8 @@ namespace SCoL.InputLayer
         public bool ToolSlot3PressedThisFrame => WasPressedAny(_tool3, _tool3Supplemental);
         public bool ToolSlot4PressedThisFrame => WasPressedAny(_tool4, _tool4Supplemental);
         public bool ToolSlot5PressedThisFrame => WasPressedAny(_tool5, _tool5Supplemental);
+        public bool RespawnPressedThisFrame => WasPressedAny(_respawn, _respawnSupplemental);
+        public bool UseGamepadPrompts => _useGamepadPrompts;
 
         private void Awake()
         {
@@ -127,6 +132,7 @@ namespace SCoL.InputLayer
 
         private void Update()
         {
+            Vector2 moveInput = ReadVector2(_move);
             Vector2 rawLook = ReadVector2(_look);
             rawLook = new Vector2(rawLook.x * lookSensitivityX, rawLook.y * lookSensitivityY);
             float dt = Mathf.Max(0.0001f, Time.unscaledDeltaTime);
@@ -144,6 +150,8 @@ namespace SCoL.InputLayer
             if (Mathf.Abs(turnAxis) < Mathf.Clamp01(turnAxisDeadzone))
                 turnAxis = 0f;
             TurnDegreesThisFrame = ComputeTurnDelta(turnAxis, dt);
+
+            UpdatePromptDevice(moveInput, rawLook, turnAxis);
 
             if (lockCursorOnStart && PausePressedThisFrame)
                 SetCursorLocked(false);
@@ -179,6 +187,7 @@ namespace SCoL.InputLayer
             _tool3 = FindAction(map, "Tool3");
             _tool4 = FindAction(map, "Tool4");
             _tool5 = FindAction(map, "Tool5");
+            _respawn = FindAction(map, "Respawn");
 
             BuildSupplementalActions();
         }
@@ -229,43 +238,66 @@ namespace SCoL.InputLayer
             _runtimeFallbackMap = new InputActionMap("Gameplay");
 
             _move = _runtimeFallbackMap.AddAction("Move", InputActionType.Value, null, null, null, null, "Vector2");
+            _move.AddBinding("<Gamepad>/leftStick");
             _move.AddCompositeBinding("2DVector")
                 .With("Up", "<Keyboard>/w")
                 .With("Down", "<Keyboard>/s")
                 .With("Left", "<Keyboard>/a")
                 .With("Right", "<Keyboard>/d");
 
-            _look = _runtimeFallbackMap.AddAction("Look", InputActionType.Value, "<Mouse>/delta", null, null, null, "Vector2");
-            _jump = _runtimeFallbackMap.AddAction("Jump", InputActionType.Button, "<Keyboard>/space");
-            _sprint = _runtimeFallbackMap.AddAction("Sprint", InputActionType.Button, "<Keyboard>/leftShift");
-            _primary = _runtimeFallbackMap.AddAction("Primary", InputActionType.Button, "<Mouse>/leftButton");
-            _secondary = _runtimeFallbackMap.AddAction("Secondary", InputActionType.Button, "<Mouse>/rightButton");
-            _toolNext = _runtimeFallbackMap.AddAction("ToolNext", InputActionType.Button, "<Mouse>/scroll/up");
-            _toolPrev = _runtimeFallbackMap.AddAction("ToolPrev", InputActionType.Button, "<Mouse>/scroll/down");
-            _pause = _runtimeFallbackMap.AddAction("Pause", InputActionType.Button, "<Keyboard>/escape");
+            _look = _runtimeFallbackMap.AddAction("Look", InputActionType.Value, null, null, null, null, "Vector2");
+            _look.AddBinding("<Mouse>/delta");
+            _look.AddBinding("<Gamepad>/rightStick");
+
+            _jump = _runtimeFallbackMap.AddAction("Jump", InputActionType.Button);
+            _jump.AddBinding("<Keyboard>/space");
+            _jump.AddBinding("<Gamepad>/buttonSouth");
+
+            _sprint = _runtimeFallbackMap.AddAction("Sprint", InputActionType.Button);
+            _sprint.AddBinding("<Keyboard>/leftShift");
+            _sprint.AddBinding("<Gamepad>/leftStickPress");
+
+            _primary = _runtimeFallbackMap.AddAction("Primary", InputActionType.Button);
+            _primary.AddBinding("<Mouse>/leftButton");
+            _primary.AddBinding("<Gamepad>/rightTrigger");
+
+            _secondary = _runtimeFallbackMap.AddAction("Secondary", InputActionType.Button);
+            _secondary.AddBinding("<Mouse>/rightButton");
+            _secondary.AddBinding("<Gamepad>/leftTrigger");
+
+            _toolNext = _runtimeFallbackMap.AddAction("ToolNext", InputActionType.Button);
+            _toolNext.AddBinding("<Mouse>/scroll/up");
+            _toolNext.AddBinding("<Gamepad>/rightShoulder");
+            _toolNext.AddBinding("<Gamepad>/dpad/right");
+
+            _toolPrev = _runtimeFallbackMap.AddAction("ToolPrev", InputActionType.Button);
+            _toolPrev.AddBinding("<Mouse>/scroll/down");
+            _toolPrev.AddBinding("<Gamepad>/leftShoulder");
+            _toolPrev.AddBinding("<Gamepad>/dpad/left");
+
+            _pause = _runtimeFallbackMap.AddAction("Pause", InputActionType.Button);
+            _pause.AddBinding("<Keyboard>/escape");
+            _pause.AddBinding("<Gamepad>/startButton");
             _tool1 = _runtimeFallbackMap.AddAction("Tool1", InputActionType.Button, "<Keyboard>/1");
             _tool2 = _runtimeFallbackMap.AddAction("Tool2", InputActionType.Button, "<Keyboard>/2");
             _tool3 = _runtimeFallbackMap.AddAction("Tool3", InputActionType.Button, "<Keyboard>/3");
             _tool4 = _runtimeFallbackMap.AddAction("Tool4", InputActionType.Button, "<Keyboard>/4");
             _tool5 = _runtimeFallbackMap.AddAction("Tool5", InputActionType.Button, "<Keyboard>/5");
+            _respawn = _runtimeFallbackMap.AddAction("Respawn", InputActionType.Button);
+            _respawn.AddBinding("<Keyboard>/y");
+            _respawn.AddBinding("<Gamepad>/buttonNorth");
         }
 
         private void BuildSupplementalActions()
         {
             ClearSupplementalActions();
 
-            if (_primary == null || !HasBindingPath(_primary, "leftButton"))
-                _primarySupplemental = CreateSupplementalAction("PrimaryMouse", "<Mouse>/leftButton");
-            if (_secondary == null || !HasBindingPath(_secondary, "rightButton"))
-                _secondarySupplemental = CreateSupplementalAction("SecondaryMouse", "<Mouse>/rightButton");
-            if (_jump == null || !HasBindingPath(_jump, "space"))
-                _jumpSupplemental = CreateSupplementalAction("JumpSpace", "<Keyboard>/space");
-            if (_toolNext == null || !HasBindingPath(_toolNext, "scroll"))
-                _toolNextSupplemental = CreateSupplementalAction("ToolNextScrollUp", "<Mouse>/scroll/up");
-            if (_toolPrev == null || !HasBindingPath(_toolPrev, "scroll"))
-                _toolPrevSupplemental = CreateSupplementalAction("ToolPrevScrollDown", "<Mouse>/scroll/down");
-            if (_pause == null || !HasBindingPath(_pause, "escape"))
-                _pauseSupplemental = CreateSupplementalAction("PauseEscape", "<Keyboard>/escape");
+            _primarySupplemental = CreateSupplementalAction("PrimarySupplemental", "<Mouse>/leftButton", "<Gamepad>/rightTrigger");
+            _secondarySupplemental = CreateSupplementalAction("SecondarySupplemental", "<Mouse>/rightButton", "<Gamepad>/leftTrigger");
+            _jumpSupplemental = CreateSupplementalAction("JumpSupplemental", "<Keyboard>/space", "<Gamepad>/buttonSouth");
+            _toolNextSupplemental = CreateSupplementalAction("ToolNextSupplemental", "<Mouse>/scroll/up", "<Gamepad>/rightShoulder", "<Gamepad>/dpad/right");
+            _toolPrevSupplemental = CreateSupplementalAction("ToolPrevSupplemental", "<Mouse>/scroll/down", "<Gamepad>/leftShoulder", "<Gamepad>/dpad/left");
+            _pauseSupplemental = CreateSupplementalAction("PauseSupplemental", "<Keyboard>/escape", "<Gamepad>/startButton");
             if (_tool1 == null)
                 _tool1Supplemental = CreateSupplementalAction("Tool1", "<Keyboard>/1");
             if (_tool2 == null)
@@ -276,11 +308,21 @@ namespace SCoL.InputLayer
                 _tool4Supplemental = CreateSupplementalAction("Tool4", "<Keyboard>/4");
             if (_tool5 == null)
                 _tool5Supplemental = CreateSupplementalAction("Tool5", "<Keyboard>/5");
+            _respawnSupplemental = CreateSupplementalAction("RespawnSupplemental", "<Keyboard>/y", "<Gamepad>/buttonNorth");
         }
 
-        private InputAction CreateSupplementalAction(string name, string path)
+        private InputAction CreateSupplementalAction(string name, params string[] paths)
         {
-            var action = new InputAction(name, InputActionType.Button, path);
+            var action = new InputAction(name, InputActionType.Button);
+            if (paths != null)
+            {
+                for (int i = 0; i < paths.Length; i++)
+                {
+                    if (string.IsNullOrWhiteSpace(paths[i]))
+                        continue;
+                    action.AddBinding(paths[i]);
+                }
+            }
             _supplementalActions.Add(action);
             return action;
         }
@@ -298,6 +340,7 @@ namespace SCoL.InputLayer
             _tool3Supplemental = null;
             _tool4Supplemental = null;
             _tool5Supplemental = null;
+            _respawnSupplemental = null;
         }
 
         private void EnableSupplementalActions()
@@ -360,11 +403,59 @@ namespace SCoL.InputLayer
             return Mathf.Sign(axis) * snapTurnDegrees;
         }
 
+        private void UpdatePromptDevice(Vector2 moveInput, Vector2 rawLook, float turnAxis)
+        {
+            InputDevice device;
+            if (TryGetTriggeredDevice(_primary, out device) ||
+                TryGetTriggeredDevice(_secondary, out device) ||
+                TryGetTriggeredDevice(_jump, out device) ||
+                TryGetTriggeredDevice(_sprint, out device) ||
+                TryGetTriggeredDevice(_toolNext, out device) ||
+                TryGetTriggeredDevice(_toolPrev, out device) ||
+                TryGetTriggeredDevice(_pause, out device) ||
+                TryGetTriggeredDevice(_tool1, out device) ||
+                TryGetTriggeredDevice(_tool2, out device) ||
+                TryGetTriggeredDevice(_tool3, out device) ||
+                TryGetTriggeredDevice(_tool4, out device) ||
+                TryGetTriggeredDevice(_tool5, out device) ||
+                TryGetTriggeredDevice(_respawn, out device) ||
+                TryGetTriggeredDevice(_primarySupplemental, out device) ||
+                TryGetTriggeredDevice(_secondarySupplemental, out device) ||
+                TryGetTriggeredDevice(_jumpSupplemental, out device) ||
+                TryGetTriggeredDevice(_toolNextSupplemental, out device) ||
+                TryGetTriggeredDevice(_toolPrevSupplemental, out device) ||
+                TryGetTriggeredDevice(_pauseSupplemental, out device) ||
+                TryGetTriggeredDevice(_tool1Supplemental, out device) ||
+                TryGetTriggeredDevice(_tool2Supplemental, out device) ||
+                TryGetTriggeredDevice(_tool3Supplemental, out device) ||
+                TryGetTriggeredDevice(_tool4Supplemental, out device) ||
+                TryGetTriggeredDevice(_tool5Supplemental, out device) ||
+                TryGetTriggeredDevice(_respawnSupplemental, out device) ||
+                TryGetValueDevice(_look, rawLook.sqrMagnitude > 0.0004f, out device) ||
+                TryGetValueDevice(_move, moveInput.sqrMagnitude > 0.0004f, out device) ||
+                TryGetValueDevice(_turn, Mathf.Abs(turnAxis) > 0.0004f, out device))
+            {
+                _useGamepadPrompts = device is Gamepad || device is Joystick;
+            }
+        }
+
         private static bool WasPressed(InputAction a) => a != null && a.WasPressedThisFrame();
         private static bool WasPressedAny(InputAction a, InputAction b) => WasPressed(a) || WasPressed(b);
         private static bool IsPressed(InputAction a) => a != null && a.IsPressed();
         private static Vector2 ReadVector2(InputAction a) => a != null ? a.ReadValue<Vector2>() : Vector2.zero;
         private static float ReadFloat(InputAction a) => a != null ? a.ReadValue<float>() : 0f;
+
+        private static bool TryGetTriggeredDevice(InputAction action, out InputDevice device)
+        {
+            device = action != null ? action.activeControl?.device : null;
+            return action != null && action.triggered && device != null;
+        }
+
+        private static bool TryGetValueDevice(InputAction action, bool hasValue, out InputDevice device)
+        {
+            device = action != null ? action.activeControl?.device : null;
+            return action != null && hasValue && device != null;
+        }
 
         private static bool HasBindingPath(InputAction a, string pathFragment)
         {

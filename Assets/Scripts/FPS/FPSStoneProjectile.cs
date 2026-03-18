@@ -10,11 +10,13 @@ public sealed class FPSStoneProjectile : MonoBehaviour
     [Min(0.1f)] public float hitReactionDuration = 0.55f;
     [Min(1)] public int hitReactionJumps = 2;
     [Min(0.01f)] public float sweepPadding = 0.06f;
+    [Min(0.01f)] public float targetAssistRadius = 0.42f;
 
     Rigidbody _rb;
     Collider[] _colliders;
     readonly RaycastHit[] _sweepHits = new RaycastHit[12];
     readonly Collider[] _overlapHits = new Collider[12];
+    readonly Collider[] _assistHits = new Collider[24];
     Vector3 _lastSweepPosition;
     float _sweepRadius;
     bool _consumed;
@@ -70,6 +72,18 @@ public sealed class FPSStoneProjectile : MonoBehaviour
             {
                 var hit = _sweepHits[bestIndex];
                 HandleImpact(hit.collider, hit.point, hit.normal);
+                return;
+            }
+
+            if (TryFindDamageableAssistHit(_lastSweepPosition, currentPosition, out var assistCollider, out var assistPoint, out var assistNormal))
+            {
+                HandleImpact(assistCollider, assistPoint, assistNormal);
+                return;
+            }
+
+            if (TryFindBoidAssistHit(_lastSweepPosition, currentPosition, out var boidCollider, out var boidImpactPoint, out var boidImpactNormal))
+            {
+                HandleImpact(boidCollider, boidImpactPoint, boidImpactNormal);
                 return;
             }
         }
@@ -150,6 +164,208 @@ public sealed class FPSStoneProjectile : MonoBehaviour
         {
             if (_colliders[i] == collider)
                 return false;
+        }
+
+        return true;
+    }
+
+    bool TryFindBoidAssistHit(Vector3 from, Vector3 to, out Collider hitCollider, out Vector3 hitPoint, out Vector3 hitNormal)
+    {
+        hitCollider = null;
+        hitPoint = to;
+        hitNormal = -transform.forward;
+
+        var activeBoids = FPSBoidAgent.ActiveAgentsView;
+        if (activeBoids == null || activeBoids.Count == 0)
+            return false;
+
+        Vector3 segment = to - from;
+        float segmentLengthSq = segment.sqrMagnitude;
+        float bestScore = float.MaxValue;
+
+        for (int i = 0; i < activeBoids.Count; i++)
+        {
+            var boid = activeBoids[i];
+            if (boid == null || !boid.isActiveAndEnabled)
+                continue;
+
+            var health = boid.GetComponent<SCoLCombatHealth>();
+            if (health == null || health.IsDead)
+                continue;
+
+            if (!TryGetBoidBounds(boid, out var bounds))
+                continue;
+
+            Vector3 samplePoint;
+            if (segmentLengthSq <= 0.0001f)
+            {
+                samplePoint = to;
+            }
+            else
+            {
+                float t = Mathf.Clamp01(Vector3.Dot(bounds.center - from, segment) / segmentLengthSq);
+                samplePoint = from + segment * t;
+            }
+
+            Vector3 closest = bounds.ClosestPoint(samplePoint);
+            float bodyRadius = Mathf.Max(bounds.extents.x, bounds.extents.z);
+            float allowedDistance = Mathf.Max(targetAssistRadius, 0.28f) + Mathf.Clamp(bodyRadius, 0.22f, 0.95f);
+            float score = (closest - samplePoint).sqrMagnitude;
+            if (score > allowedDistance * allowedDistance || score >= bestScore)
+                continue;
+
+            var collider = boid.GetComponent<Collider>();
+            if (collider == null)
+                collider = boid.GetComponentInChildren<Collider>();
+            if (!IsValidImpactCollider(collider))
+                continue;
+
+            bestScore = score;
+            hitCollider = collider;
+            hitPoint = closest;
+        }
+
+        if (hitCollider == null)
+            return false;
+
+        hitNormal = to - hitPoint;
+        if (hitNormal.sqrMagnitude < 0.0001f)
+        {
+            hitNormal = _rb != null && _rb.linearVelocity.sqrMagnitude > 0.0001f
+                ? -_rb.linearVelocity.normalized
+                : -transform.forward;
+        }
+        else
+        {
+            hitNormal.Normalize();
+        }
+
+        return true;
+    }
+
+    static bool TryGetBoidBounds(FPSBoidAgent boid, out Bounds bounds)
+    {
+        bounds = default;
+        if (boid == null)
+            return false;
+
+        var colliders = boid.GetComponentsInChildren<Collider>(includeInactive: false);
+        bool found = false;
+        for (int i = 0; i < colliders.Length; i++)
+        {
+            var collider = colliders[i];
+            if (collider == null || !collider.enabled || collider.isTrigger)
+                continue;
+
+            if (!found)
+            {
+                bounds = collider.bounds;
+                found = true;
+            }
+            else
+            {
+                bounds.Encapsulate(collider.bounds);
+            }
+        }
+
+        if (found)
+            return true;
+
+        var renderers = boid.GetComponentsInChildren<Renderer>(includeInactive: false);
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            var renderer = renderers[i];
+            if (renderer == null || !renderer.enabled)
+                continue;
+
+            if (!found)
+            {
+                bounds = renderer.bounds;
+                found = true;
+            }
+            else
+            {
+                bounds.Encapsulate(renderer.bounds);
+            }
+        }
+
+        return found;
+    }
+
+    bool HasDamageableTarget(Collider collider)
+    {
+        if (!IsValidImpactCollider(collider))
+            return false;
+
+        var root = collider.transform;
+        if (root == null)
+            return false;
+
+        var health = root.GetComponentInParent<SCoLCombatHealth>();
+        return health != null && !health.IsDead;
+    }
+
+    bool TryFindDamageableAssistHit(Vector3 from, Vector3 to, out Collider hitCollider, out Vector3 hitPoint, out Vector3 hitNormal)
+    {
+        hitCollider = null;
+        hitPoint = to;
+        hitNormal = -transform.forward;
+
+        float assistRadius = Mathf.Max(_sweepRadius, targetAssistRadius);
+        int hitCount = Physics.OverlapCapsuleNonAlloc(
+            from,
+            to,
+            assistRadius,
+            _assistHits,
+            ~0,
+            QueryTriggerInteraction.Ignore);
+
+        if (hitCount <= 0)
+            return false;
+
+        float bestScore = float.MaxValue;
+        Vector3 segment = to - from;
+        float segmentLengthSq = segment.sqrMagnitude;
+        for (int i = 0; i < hitCount; i++)
+        {
+            var collider = _assistHits[i];
+            if (!HasDamageableTarget(collider))
+                continue;
+
+            Vector3 samplePoint;
+            if (segmentLengthSq <= 0.0001f)
+            {
+                samplePoint = to;
+            }
+            else
+            {
+                float t = Mathf.Clamp01(Vector3.Dot(collider.bounds.center - from, segment) / segmentLengthSq);
+                samplePoint = from + segment * t;
+            }
+
+            Vector3 closest = collider.ClosestPoint(samplePoint);
+            float score = (closest - samplePoint).sqrMagnitude;
+            if (score >= bestScore)
+                continue;
+
+            bestScore = score;
+            hitCollider = collider;
+            hitPoint = closest;
+        }
+
+        if (hitCollider == null)
+            return false;
+
+        hitNormal = to - hitPoint;
+        if (hitNormal.sqrMagnitude < 0.0001f)
+        {
+            hitNormal = _rb != null && _rb.linearVelocity.sqrMagnitude > 0.0001f
+                ? -_rb.linearVelocity.normalized
+                : -transform.forward;
+        }
+        else
+        {
+            hitNormal.Normalize();
         }
 
         return true;

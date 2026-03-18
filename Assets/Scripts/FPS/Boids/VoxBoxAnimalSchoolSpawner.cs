@@ -655,10 +655,10 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
         var capsule = root.AddComponent<CapsuleCollider>();
         capsule.direction = 1;
 
-        Vector3 localCenter = root.transform.InverseTransformPoint(new Vector3(bounds.center.x, bounds.min.y + bounds.size.y * 0.42f, bounds.center.z));
+        Vector3 localCenter = root.transform.InverseTransformPoint(new Vector3(bounds.center.x, bounds.min.y + bounds.size.y * 0.48f, bounds.center.z));
         capsule.center = localCenter;
-        capsule.height = Mathf.Max(0.6f, bounds.size.y * 0.72f);
-        capsule.radius = Mathf.Clamp(Mathf.Max(bounds.size.x, bounds.size.z) * 0.18f, 0.08f, capsule.height * 0.42f);
+        capsule.height = Mathf.Max(0.9f, bounds.size.y * 0.92f);
+        capsule.radius = Mathf.Clamp(Mathf.Max(bounds.size.x, bounds.size.z) * 0.28f, 0.16f, capsule.height * 0.46f);
     }
 
     static bool TryGetRenderableBounds(GameObject root, out Bounds bounds)
