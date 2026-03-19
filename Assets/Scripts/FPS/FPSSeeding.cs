@@ -55,6 +55,10 @@ public static class FPSSeeding
 
         var growth = root.AddComponent<FPSSeedGrowth>();
         growth.growthMaterial = GetVoxelMat();
+        growth.sproutToSmallSeconds = 10f;
+        growth.smallToMediumSeconds = 10f;
+        growth.mediumToMatureSeconds = 10f;
+        growth.rainStageTimeReductionSeconds = 5f;
         if (growthSetup != null)
         {
             growth.SetStagePrefabs(
@@ -225,13 +229,13 @@ public sealed class FPSSeedGrowth : MonoBehaviour
     [HideInInspector] public GameObject maturePrefab;
 
     [Header("Growth Timing")]
-    [Min(0.1f)] public float sproutToSmallSeconds = 7f;
-    [Min(0.1f)] public float smallToMediumSeconds = 7f;
-    [Min(0.1f)] public float mediumToMatureSeconds = 7f;
+    [Min(0.1f)] public float sproutToSmallSeconds = 10f;
+    [Min(0.1f)] public float smallToMediumSeconds = 10f;
+    [Min(0.1f)] public float mediumToMatureSeconds = 10f;
     [Min(0f)] public float maxStoredWaterBoostSeconds = 12f;
 
     [Header("Weather Response")]
-    [Min(0f)] public float rainGrowthMultiplier = 3.5f;
+    [Min(0f)] public float rainStageTimeReductionSeconds = 5f;
     public bool pauseGrowthDuringSnow = true;
 
     [Header("Stomp Interaction")]
@@ -244,11 +248,13 @@ public sealed class FPSSeedGrowth : MonoBehaviour
     [Header("Fire Burn Visual")]
     [Min(0.03f)] public float fireBurnBlockWidth = 0.18f;
     [Min(0.08f)] public float fireBurnBlockHeight = 0.48f;
+    [Min(0.1f)] public float fireBurnDisappearSeconds = 4f;
 
     private int _stage; // 0=sprout, 1=small, 2=medium, 3=mature
     private float _stageTimer;
     private float _waterBoostSeconds;
     private bool _burned;
+    private Coroutine _destroyRoutine;
 
     static readonly List<FPSSeedGrowth> _allPlants = new List<FPSSeedGrowth>(256);
     static WeatherSystem _weatherSystem;
@@ -336,9 +342,13 @@ public sealed class FPSSeedGrowth : MonoBehaviour
         if (_burned) return;
         _burned = true;
         BuildFireBurnBlock();
-
+        float burnLifeSeconds = Mathf.Max(0.1f, fireBurnDisappearSeconds);
         if (destroyOnFire && Random.value <= Mathf.Clamp01(destroyChance))
-            StartCoroutine(DestroyAfterDelay(Mathf.Max(0f, destroyDelaySeconds)));
+            burnLifeSeconds = Mathf.Min(burnLifeSeconds, Mathf.Max(0f, destroyDelaySeconds));
+
+        if (_destroyRoutine != null)
+            StopCoroutine(_destroyRoutine);
+        _destroyRoutine = StartCoroutine(DestroyAfterDelay(burnLifeSeconds));
     }
 
     public void ResetToSprout(bool clearBurn = true)
@@ -365,8 +375,6 @@ public sealed class FPSSeedGrowth : MonoBehaviour
         if (pauseGrowthDuringSnow && phase == WeatherPhase.Snow) return;
 
         float delta = Time.deltaTime;
-        if (phase == WeatherPhase.Rain)
-            delta *= Mathf.Max(0f, rainGrowthMultiplier);
 
         if (_waterBoostSeconds > 0f)
         {
@@ -514,12 +522,18 @@ public sealed class FPSSeedGrowth : MonoBehaviour
 
     float CurrentStageDuration()
     {
+        float duration;
         switch (_stage)
         {
-            case 0: return Mathf.Max(0.1f, sproutToSmallSeconds);
-            case 1: return Mathf.Max(0.1f, smallToMediumSeconds);
-            default: return Mathf.Max(0.1f, mediumToMatureSeconds);
+            case 0: duration = Mathf.Max(0.1f, sproutToSmallSeconds); break;
+            case 1: duration = Mathf.Max(0.1f, smallToMediumSeconds); break;
+            default: duration = Mathf.Max(0.1f, mediumToMatureSeconds); break;
         }
+
+        if (ResolveWeatherPhase() == WeatherPhase.Rain)
+            duration = Mathf.Max(0.1f, duration - Mathf.Max(0f, rainStageTimeReductionSeconds));
+
+        return duration;
     }
 
     void BuildStage(int stage)
@@ -684,6 +698,7 @@ public sealed class FPSSeedGrowth : MonoBehaviour
     {
         if (seconds > 0f)
             yield return new WaitForSeconds(seconds);
+        _destroyRoutine = null;
         if (gameObject != null)
             Destroy(gameObject);
     }

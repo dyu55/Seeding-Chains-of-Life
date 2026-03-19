@@ -22,7 +22,11 @@ namespace SCoL.Visualization
             PlaceFire,
             ExtinguishFire,
             PlantSeed,
-            DestroySeed
+            DestroySeed,
+            WaterFill,
+            WaterDrop,
+            ToggleSwitch,
+            PickupItem
         }
 
         static DayNightLightingController _instance;
@@ -114,6 +118,10 @@ namespace SCoL.Visualization
         public AudioClip extinguishFireClip;
         public AudioClip plantSeedClip;
         public AudioClip destroySeedClip;
+        public AudioClip waterFillClip;
+        public AudioClip waterDropClip;
+        public AudioClip toggleSwitchClip;
+        public AudioClip pickupItemClip;
         [Range(0f, 1f)] public float interactionSfxVolume = 1f;
 
         [Header("Thunderstorm Lightning Flash (optional)")]
@@ -220,6 +228,10 @@ namespace SCoL.Visualization
                 InteractionSfx.ExtinguishFire => extinguishFireClip,
                 InteractionSfx.PlantSeed => plantSeedClip,
                 InteractionSfx.DestroySeed => destroySeedClip,
+                InteractionSfx.WaterFill => waterFillClip,
+                InteractionSfx.WaterDrop => waterDropClip,
+                InteractionSfx.ToggleSwitch => toggleSwitchClip,
+                InteractionSfx.PickupItem => pickupItemClip,
                 _ => null
             };
             if (clip == null) return;
@@ -276,6 +288,15 @@ namespace SCoL.Visualization
 #if UNITY_EDITOR
         void OnValidate()
         {
+            if (waterFillClip == null)
+                waterFillClip = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Sounds/waterfill.mp3");
+            if (waterDropClip == null)
+                waterDropClip = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Sounds/waterdrop.mp3");
+            if (toggleSwitchClip == null)
+                toggleSwitchClip = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Sounds/toggleswitch.mp3");
+            if (pickupItemClip == null)
+                pickupItemClip = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Sounds/pickupitem.mp3");
+
             if (!isActiveAndEnabled) return;
             // Apply in edit mode too (nice for tuning curves/gradients)
             Apply(forceGI: true);

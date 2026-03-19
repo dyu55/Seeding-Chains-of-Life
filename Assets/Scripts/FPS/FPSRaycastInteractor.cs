@@ -19,6 +19,8 @@ using UnityEditor;
 /// </summary>
 public class FPSRaycastInteractor : MonoBehaviour
 {
+    static FPSRaycastInteractor _instance;
+
     const int MaxBurnTintRendererCount = 64;
     const string HeldWaterCanAssetPath = "Assets/Models/Modeling/_Incoming/watercan/watercan.obj";
 
@@ -82,6 +84,19 @@ public class FPSRaycastInteractor : MonoBehaviour
     public AnimationClip[] firePlaceV1AnimationClips;
     [Tooltip("Optional clips specifically for GroundFireV2.")]
     public AnimationClip[] firePlaceV2AnimationClips;
+    [Header("Water Place Models (optional)")]
+    [Tooltip("If assigned, water spread visuals will instantiate these prefabs instead of primitive decals/blocks.")]
+    public GameObject[] waterPlacePrefabs;
+    [Range(0.1f, 3f)] public float waterPlacePrefabScale = 0.9f;
+    [Range(0.01f, 80f)] public float waterPlacePrefabSizeMultiplier = 0.12f;
+    [Min(0f)] public float waterPlaceSpawnHeight = 0.18f;
+    [Min(0.01f)] public float waterPlaceTargetHeight = 0.02f;
+    [Min(0.05f)] public float waterEffectLifetimeSeconds = 0.18f;
+    [Range(0.1f, 4f)] public float waterAnimationSpeed = 2.25f;
+    [Tooltip("If enabled, spawned water models auto-play imported animation clips.")]
+    public bool autoPlayWaterModelAnimation = true;
+    [Tooltip("Optional explicit water animation clips. If empty, clips are auto-loaded from waterV2 in editor.")]
+    public AnimationClip[] waterPlaceAnimationClips;
 
     [Header("Seed Growth Models (Optional)")]
     public bool useImportedPlantStageModels = true;
@@ -144,14 +159,30 @@ public class FPSRaycastInteractor : MonoBehaviour
     public bool collectWaterFromRegionOnRightClick = true;
     [Min(1)] public int waterCollectAmount = 1;
 
-    [Header("Held Water Can")]
-    public bool showHeldWaterCan = true;
+    [Header("Held Tool Visuals")]
+    public bool showHeldToolVisuals = true;
     public GameObject heldWaterCanPrefab;
     public Vector3 heldWaterCanLocalPosition = new Vector3(0.32f, -0.28f, 0.62f);
     public Vector3 heldWaterCanLocalEuler = new Vector3(12f, -24f, -12f);
     [Min(0.05f)] public float heldWaterCanScale = 0.42f;
     public Color heldWaterCanTint = new Color(0.24f, 0.68f, 0.96f, 1f);
     [Range(0f, 2f)] public float heldWaterCanEmission = 0.18f;
+    public GameObject heldFirePrefab;
+    public Vector3 heldFireLocalPosition = new Vector3(0.34f, -0.30f, 0.58f);
+    public Vector3 heldFireLocalEuler = new Vector3(18f, -32f, -18f);
+    [Min(0.05f)] public float heldFireScale = 0.34f;
+    public GameObject heldSeedPrefab;
+    public Vector3 heldSeedLocalPosition = new Vector3(0.31f, -0.31f, 0.56f);
+    public Vector3 heldSeedLocalEuler = new Vector3(14f, -18f, -12f);
+    [Min(0.05f)] public float heldSeedScale = 0.26f;
+    public GameObject heldPlantPrefab;
+    public Vector3 heldPlantLocalPosition = new Vector3(0.30f, -0.30f, 0.56f);
+    public Vector3 heldPlantLocalEuler = new Vector3(10f, -12f, -8f);
+    [Min(0.05f)] public float heldPlantScale = 0.28f;
+    public GameObject heldStonePrefab;
+    public Vector3 heldStoneLocalPosition = new Vector3(0.34f, -0.34f, 0.56f);
+    public Vector3 heldStoneLocalEuler = new Vector3(8f, -16f, -10f);
+    [Min(0.05f)] public float heldStoneScale = 0.24f;
 
     [Header("Primary Plant Pickup (LMB)")]
     [Tooltip("If enabled, LMB can uproot targeted plants (legacy + CA) and convert them into Plant inventory.")]
@@ -178,7 +209,8 @@ public class FPSRaycastInteractor : MonoBehaviour
     VoxelWorld _voxelWorld;
     SCoLCombatHealth _playerCombatHealth;
     SpawnPickups _spawnPickups;
-    GameObject _heldWaterCanInstance;
+    GameObject _heldToolInstance;
+    GameObject _heldToolSourcePrefab;
     struct PlantDestroyClickState
     {
         public int count;
@@ -189,6 +221,14 @@ public class FPSRaycastInteractor : MonoBehaviour
 
     void Awake()
     {
+        if (_instance != null && _instance != this)
+        {
+            enabled = false;
+            gameObject.SetActive(false);
+            return;
+        }
+
+        _instance = this;
         if (cameraSource == null)
             cameraSource = Camera.main;
 
@@ -197,7 +237,9 @@ public class FPSRaycastInteractor : MonoBehaviour
         EnsureFpsFeedbackSystems();
         AutoAssignFinalFlowerStagePrefab();
         AutoAssignFirePlacePrefabs();
+        AutoAssignWaterPlacePrefabs();
         AutoAssignHeldWaterCanPrefab();
+        AutoAssignHeldFirePrefab();
 
         _inventory = FindFirstObjectByType<SCoL.Inventory.SCoLInventory>();
         if (_inventory == null)
@@ -222,6 +264,14 @@ public class FPSRaycastInteractor : MonoBehaviour
             fireLoopAudioSource.spatialBlend = 0f;
             fireLoopAudioSource.volume = Mathf.Clamp01(fireLoopVolume);
         }
+    }
+
+    void OnDisable()
+    {
+        if (_instance == this)
+            _instance = null;
+        ClearActiveFire();
+        SetHeldToolVisible(false);
     }
 
     private void EnsureFpsFeedbackSystems()
@@ -274,6 +324,17 @@ public class FPSRaycastInteractor : MonoBehaviour
 #endif
     }
 
+    private void AutoAssignHeldFirePrefab()
+    {
+#if UNITY_EDITOR
+        if (heldFirePrefab != null)
+            return;
+        heldFirePrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Models/Modeling/_Incoming/stick1/stick1.obj");
+        if (heldFirePrefab == null)
+            heldFirePrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Models/Modeling/_Incoming/stick2/stick2.obj");
+#endif
+    }
+
     private void AutoAssignFirePlacePrefabs()
     {
 #if UNITY_EDITOR
@@ -313,6 +374,32 @@ public class FPSRaycastInteractor : MonoBehaviour
             var clips = new System.Collections.Generic.List<AnimationClip>(2);
             AppendAnimationClipsFromAsset(clips, "Assets/Models/Modeling/_Incoming/Fire/GroundFireV2.fbx");
             firePlaceV2AnimationClips = clips.ToArray();
+        }
+#endif
+    }
+
+    private void AutoAssignWaterPlacePrefabs()
+    {
+#if UNITY_EDITOR
+        if (waterPlacePrefabs != null && waterPlacePrefabs.Length > 0)
+        {
+            for (int i = 0; i < waterPlacePrefabs.Length; i++)
+                if (waterPlacePrefabs[i] != null)
+                    return;
+        }
+
+        const string waterPath = "Assets/Models/Modeling/_Incoming/Water/waterV2.fbx";
+        var water = AssetDatabase.LoadAssetAtPath<GameObject>(waterPath);
+        if (water == null)
+            return;
+
+        waterPlacePrefabs = new[] { water };
+
+        if (waterPlaceAnimationClips == null || waterPlaceAnimationClips.Length == 0)
+        {
+            var clips = new System.Collections.Generic.List<AnimationClip>(4);
+            AppendAnimationClipsFromAsset(clips, waterPath);
+            waterPlaceAnimationClips = clips.ToArray();
         }
 #endif
     }
@@ -470,6 +557,8 @@ public class FPSRaycastInteractor : MonoBehaviour
                 case ApplyTool.Water:
                 {
                     bool targetingPlant = TryResolveWaterApplicationTarget(hit, out Vector3 waterPoint, out Vector3 waterNormal);
+                    bool targetedCAPlant = TryResolveCAPlantCellFromWorld(hit.point, out int waterCellX, out int waterCellY);
+                    var targetedLegacyPlant = hit.collider != null ? hit.collider.GetComponentInParent<FPSSeedGrowth>() : null;
 
                     // Non-plant targets still require an upward-facing ground surface.
                     if (!targetingPlant && hit.normal.y < 0.35f)
@@ -487,14 +576,34 @@ public class FPSRaycastInteractor : MonoBehaviour
                         break;
                     }
 
-                    StartCoroutine(SpawnTransientSpread(waterPoint, waterNormal, GetWaterSpreadMat(), false, true));
+                    if (targetedCAPlant || targetedLegacyPlant != null)
+                        StartCoroutine(SpawnSingleWaterEffect(waterPoint, waterNormal));
+                    else
+                        StartCoroutine(SpawnTransientSpread(waterPoint, waterNormal, GetWaterSpreadMat(), false, true));
                     if (_runtime == null || !_runtime.isActiveAndEnabled)
                         _runtime = FindFirstObjectByType<SCoLRuntime>();
                     if (_runtime != null)
                     {
-                        int n = _runtime.AddWaterAroundWorld(waterPoint, radius: 1.6f, amount: 1.0f);
+                        int n;
+                        if (targetedCAPlant)
+                        {
+                            _runtime.AddWaterAtCell(waterCellX, waterCellY, 1.0f);
+                            n = 1;
+                        }
+                        else if (targetedLegacyPlant != null)
+                        {
+                            _runtime.AddWaterAt(waterPoint, 1.0f);
+                            n = 1;
+                        }
+                        else
+                        {
+                            n = _runtime.AddWaterAroundWorld(waterPoint, radius: 1.6f, amount: 1.0f);
+                        }
                         if (logHits) Debug.Log($"[FPSRaycastInteractor] Runtime water affected cells: {n}");
                     }
+                    if (targetedLegacyPlant != null)
+                        targetedLegacyPlant.ApplyWaterBoost(waterBoostSecondsPerTile);
+                    DayNightLightingController.PlayInteractionSfx(DayNightLightingController.InteractionSfx.WaterDrop);
                     break;
                 }
 
@@ -589,6 +698,7 @@ public class FPSRaycastInteractor : MonoBehaviour
             else
                 Debug.Log($"[FPSRaycastInteractor] Collected pickup: {pickup.type} +{amount}");
         }
+        DayNightLightingController.PlayInteractionSfx(DayNightLightingController.InteractionSfx.PickupItem);
         Destroy(pickup.gameObject);
         return true;
     }
@@ -614,6 +724,7 @@ public class FPSRaycastInteractor : MonoBehaviour
 
         int amount = Mathf.Max(1, waterCollectAmount);
         _inventory.Add(SCoLItemType.Water, amount);
+        DayNightLightingController.PlayInteractionSfx(DayNightLightingController.InteractionSfx.WaterFill);
         if (logHits) Debug.Log($"[FPSRaycastInteractor] Collected water from region: +{amount}");
         return true;
     }
@@ -725,6 +836,7 @@ public class FPSRaycastInteractor : MonoBehaviour
         int key;
         string targetLabel;
         System.Action destroyAction;
+        bool rewardsPlantInventory = false;
         Object logContext = null;
 
         if (growth != null)
@@ -732,6 +844,7 @@ public class FPSRaycastInteractor : MonoBehaviour
             key = growth.GetInstanceID();
             targetLabel = growth.name;
             logContext = growth;
+            rewardsPlantInventory = growth.IsMature && !growth.IsBurned;
             destroyAction = () =>
             {
                 if (growth != null)
@@ -748,6 +861,7 @@ public class FPSRaycastInteractor : MonoBehaviour
         {
             key = HashCAPlantCellKey(cx, cy);
             targetLabel = $"CACell({cx},{cy})";
+            rewardsPlantInventory = IsFinalFlowerCell(cx, cy);
             destroyAction = () =>
             {
                 if (_runtime == null)
@@ -776,6 +890,8 @@ public class FPSRaycastInteractor : MonoBehaviour
         if (next >= Mathf.Max(1, plantDestroyClicksRequired))
         {
             _plantDestroyClicks.Remove(key);
+            if (rewardsPlantInventory && _inventory != null)
+                _inventory.Add(SCoLItemType.Plant, 1);
             destroyAction?.Invoke();
             DayNightLightingController.PlayInteractionSfx(DayNightLightingController.InteractionSfx.DestroySeed);
             if (logHits) Debug.Log($"[FPSRaycastInteractor] Plant destroyed by repeated RMB clicks: {targetLabel}", logContext);
@@ -786,6 +902,22 @@ public class FPSRaycastInteractor : MonoBehaviour
         }
 
         return true;
+    }
+
+    bool IsFinalFlowerCell(int x, int y)
+    {
+        if (_runtime == null)
+            _runtime = FindFirstObjectByType<SCoLRuntime>();
+        if (_runtime == null || _runtime.Grid == null || !_runtime.Grid.InBounds(x, y))
+            return false;
+
+        var cell = _runtime.Grid.Get(x, y);
+        if (cell == null || !cell.HasPlant || cell.PlantStage == SCoL.PlantStage.Burnt)
+            return false;
+
+        return cell.IsPlayerSeedLineage &&
+               cell.FlowerVariantIndex >= 0 &&
+               cell.PlantStage >= SCoL.PlantStage.MediumTree;
     }
 
     bool TryPlaceSeedWithRuntime(Vector3 worldPoint, out bool attemptedRuntime)
@@ -965,16 +1097,10 @@ public class FPSRaycastInteractor : MonoBehaviour
         DayNightLightingController.StopInteractionSfx();
     }
 
-    void OnDisable()
-    {
-        ClearActiveFire();
-        SetHeldWaterCanVisible(false);
-    }
-
     void OnDestroy()
     {
-        if (_heldWaterCanInstance != null)
-            Destroy(_heldWaterCanInstance);
+        if (_heldToolInstance != null)
+            Destroy(_heldToolInstance);
         if (_waterSpreadMat != null) Destroy(_waterSpreadMat);
         if (_fireSpreadMat != null) Destroy(_fireSpreadMat);
         if (_waterSpreadStampTex != null) Destroy(_waterSpreadStampTex);
@@ -1037,6 +1163,8 @@ public class FPSRaycastInteractor : MonoBehaviour
 
     void HandleToolSwitchInput()
     {
+        ApplyTool previousTool = currentTool;
+
         if (SCoL.Interaction.SCoLInteractionInput.ToolSlotPressed(1))
         {
             // Key 1 enters Seed tool and cycles owned seed types.
@@ -1052,45 +1180,129 @@ public class FPSRaycastInteractor : MonoBehaviour
             CycleTool(+1);
         if (SCoL.Interaction.SCoLInteractionInput.ToolPrevPressed())
             CycleTool(-1);
+
+        if (currentTool != previousTool)
+            DayNightLightingController.PlayInteractionSfx(DayNightLightingController.InteractionSfx.ToggleSwitch);
     }
 
     void UpdateHeldToolVisual()
     {
-        bool shouldShow = showHeldWaterCan && currentTool == ApplyTool.Water && cameraSource != null;
-        if (!shouldShow)
+        if (!showHeldToolVisuals || cameraSource == null)
         {
-            SetHeldWaterCanVisible(false);
+            SetHeldToolVisible(false);
             return;
         }
 
-        if (!EnsureHeldWaterCanInstance())
+        GameObject desiredPrefab = ResolveHeldToolPrefab();
+        if (desiredPrefab == null)
+        {
+            SetHeldToolVisible(false);
+            return;
+        }
+
+        if (!EnsureHeldToolInstance(desiredPrefab))
             return;
 
-        var t = _heldWaterCanInstance.transform;
+        var t = _heldToolInstance.transform;
         if (t.parent != cameraSource.transform)
             t.SetParent(cameraSource.transform, false);
 
-        t.localPosition = heldWaterCanLocalPosition;
-        t.localRotation = Quaternion.Euler(heldWaterCanLocalEuler);
-        t.localScale = Vector3.one * Mathf.Max(0.05f, heldWaterCanScale);
-        SetHeldWaterCanVisible(true);
+        switch (currentTool)
+        {
+            case ApplyTool.Seed:
+                t.localPosition = heldSeedLocalPosition;
+                t.localRotation = Quaternion.Euler(heldSeedLocalEuler);
+                t.localScale = Vector3.one * Mathf.Max(0.05f, heldSeedScale);
+                break;
+            case ApplyTool.Water:
+                t.localPosition = heldWaterCanLocalPosition;
+                t.localRotation = Quaternion.Euler(heldWaterCanLocalEuler);
+                t.localScale = Vector3.one * Mathf.Max(0.05f, heldWaterCanScale);
+                break;
+            case ApplyTool.Fire:
+                t.localPosition = heldFireLocalPosition;
+                t.localRotation = Quaternion.Euler(heldFireLocalEuler);
+                t.localScale = Vector3.one * Mathf.Max(0.05f, heldFireScale);
+                break;
+            case ApplyTool.Plant:
+                t.localPosition = heldPlantLocalPosition;
+                t.localRotation = Quaternion.Euler(heldPlantLocalEuler);
+                t.localScale = Vector3.one * Mathf.Max(0.05f, heldPlantScale);
+                break;
+            case ApplyTool.Stone:
+                t.localPosition = heldStoneLocalPosition;
+                t.localRotation = Quaternion.Euler(heldStoneLocalEuler);
+                t.localScale = Vector3.one * Mathf.Max(0.05f, heldStoneScale);
+                break;
+        }
+
+        SetHeldToolVisible(true);
     }
 
-    bool EnsureHeldWaterCanInstance()
+    bool EnsureHeldToolInstance(GameObject desiredPrefab)
     {
-        if (_heldWaterCanInstance != null)
+        if (_heldToolInstance != null && _heldToolSourcePrefab == desiredPrefab)
             return true;
 
-        GameObject prefab = ResolveHeldWaterCanPrefab();
-        if (prefab == null || cameraSource == null)
+        if (_heldToolInstance != null)
+            Destroy(_heldToolInstance);
+
+        if (desiredPrefab == null || cameraSource == null)
             return false;
 
-        _heldWaterCanInstance = Instantiate(prefab, cameraSource.transform, false);
-        _heldWaterCanInstance.name = "HeldWaterCan";
-        SetLayerRecursive(_heldWaterCanInstance, 2);
-        StripHeldToolComponents(_heldWaterCanInstance);
-        TintHeldWaterCan(_heldWaterCanInstance);
+        _heldToolInstance = Instantiate(desiredPrefab, cameraSource.transform, false);
+        _heldToolInstance.name = $"Held{currentTool}";
+        _heldToolSourcePrefab = desiredPrefab;
+        SetLayerRecursive(_heldToolInstance, 2);
+        StripHeldToolComponents(_heldToolInstance);
+        if (currentTool == ApplyTool.Water)
+            TintHeldWaterCan(_heldToolInstance);
         return true;
+    }
+
+    GameObject ResolveHeldToolPrefab()
+    {
+        switch (currentTool)
+        {
+            case ApplyTool.Seed:
+                return ResolveHeldSeedPrefab();
+            case ApplyTool.Water:
+                return ResolveHeldWaterCanPrefab();
+            case ApplyTool.Fire:
+                return ResolveHeldFirePrefab();
+            case ApplyTool.Plant:
+                return ResolveHeldPlantPrefab();
+            case ApplyTool.Stone:
+                return ResolveHeldStonePrefab();
+            default:
+                return null;
+        }
+    }
+
+    GameObject ResolveHeldSeedPrefab()
+    {
+        int selectedSeedVariant = Mathf.Max(0, GetSelectedSeedVariantIndex());
+
+        if (_spawnPickups == null || !_spawnPickups.isActiveAndEnabled)
+            _spawnPickups = FindFirstObjectByType<SpawnPickups>();
+        if (_spawnPickups != null && _spawnPickups.seedPickupPrefabs != null && _spawnPickups.seedPickupPrefabs.Length > 0)
+        {
+            int clamped = Mathf.Clamp(selectedSeedVariant, 0, _spawnPickups.seedPickupPrefabs.Length - 1);
+            var selected = _spawnPickups.seedPickupPrefabs[clamped];
+            if (selected != null)
+                return selected;
+
+            for (int i = 0; i < _spawnPickups.seedPickupPrefabs.Length; i++)
+            {
+                if (_spawnPickups.seedPickupPrefabs[i] != null)
+                    return _spawnPickups.seedPickupPrefabs[i];
+            }
+        }
+
+        if (_spawnPickups != null && _spawnPickups.seedPickupPrefab != null)
+            return _spawnPickups.seedPickupPrefab;
+
+        return heldSeedPrefab;
     }
 
     GameObject ResolveHeldWaterCanPrefab()
@@ -1125,6 +1337,90 @@ public class FPSRaycastInteractor : MonoBehaviour
         heldWaterCanPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(HeldWaterCanAssetPath);
 #endif
         return heldWaterCanPrefab;
+    }
+
+    GameObject ResolveHeldFirePrefab()
+    {
+        if (heldFirePrefab != null)
+            return heldFirePrefab;
+
+        if (_spawnPickups == null || !_spawnPickups.isActiveAndEnabled)
+            _spawnPickups = FindFirstObjectByType<SpawnPickups>();
+        if (_spawnPickups != null)
+        {
+            if (_spawnPickups.firePickupPrefabs != null)
+            {
+                for (int i = 0; i < _spawnPickups.firePickupPrefabs.Length; i++)
+                {
+                    if (_spawnPickups.firePickupPrefabs[i] != null)
+                    {
+                        heldFirePrefab = _spawnPickups.firePickupPrefabs[i];
+                        return heldFirePrefab;
+                    }
+                }
+            }
+
+            if (_spawnPickups.firePickupPrefab != null)
+            {
+                heldFirePrefab = _spawnPickups.firePickupPrefab;
+                return heldFirePrefab;
+            }
+        }
+
+        return heldFirePrefab;
+    }
+
+    GameObject ResolveHeldPlantPrefab()
+    {
+        if (_plantRenderer == null)
+            _plantRenderer = FindFirstObjectByType<PlantVoxelRenderer>();
+        if (_plantRenderer == null)
+            return heldPlantPrefab;
+
+        var selected = _plantRenderer.GetSelectedFlowerVariantPrefab(SCoL.PlantStage.MediumTree);
+        if (selected != null)
+            return selected;
+        selected = _plantRenderer.GetSelectedFlowerVariantPrefab(SCoL.PlantStage.SmallTree);
+        if (selected != null)
+            return selected;
+        selected = _plantRenderer.GetSelectedFlowerVariantPrefab(SCoL.PlantStage.SmallPlant);
+        if (selected != null)
+            return selected;
+        return heldPlantPrefab;
+    }
+
+    GameObject ResolveHeldStonePrefab()
+    {
+        if (heldStonePrefab != null)
+            return heldStonePrefab;
+
+        if (_spawnPickups == null || !_spawnPickups.isActiveAndEnabled)
+            _spawnPickups = FindFirstObjectByType<SpawnPickups>();
+        if (_spawnPickups != null && _spawnPickups.stonePickupPrefabs != null)
+        {
+            for (int i = 0; i < _spawnPickups.stonePickupPrefabs.Length; i++)
+            {
+                if (_spawnPickups.stonePickupPrefabs[i] != null)
+                {
+                    heldStonePrefab = _spawnPickups.stonePickupPrefabs[i];
+                    return heldStonePrefab;
+                }
+            }
+        }
+
+        if (stoneProjectilePrefabs != null)
+        {
+            for (int i = 0; i < stoneProjectilePrefabs.Length; i++)
+            {
+                if (stoneProjectilePrefabs[i] != null)
+                {
+                    heldStonePrefab = stoneProjectilePrefabs[i];
+                    return heldStonePrefab;
+                }
+            }
+        }
+
+        return heldStonePrefab;
     }
 
     void StripHeldToolComponents(GameObject go)
@@ -1207,10 +1503,10 @@ public class FPSRaycastInteractor : MonoBehaviour
         }
     }
 
-    void SetHeldWaterCanVisible(bool visible)
+    void SetHeldToolVisible(bool visible)
     {
-        if (_heldWaterCanInstance != null && _heldWaterCanInstance.activeSelf != visible)
-            _heldWaterCanInstance.SetActive(visible);
+        if (_heldToolInstance != null && _heldToolInstance.activeSelf != visible)
+            _heldToolInstance.SetActive(visible);
     }
 
     bool TryCycleSeedFlowerVariant()
@@ -1430,6 +1726,42 @@ public class FPSRaycastInteractor : MonoBehaviour
         }
     }
 
+    static void FitEffectToTargetHeight(GameObject go, float targetHeight)
+    {
+        if (go == null)
+            return;
+
+        var renderers = go.GetComponentsInChildren<Renderer>(includeInactive: true);
+        if (renderers == null || renderers.Length == 0)
+            return;
+
+        bool hasBounds = false;
+        Bounds bounds = default;
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            var r = renderers[i];
+            if (r == null)
+                continue;
+
+            if (!hasBounds)
+            {
+                bounds = r.bounds;
+                hasBounds = true;
+            }
+            else
+            {
+                bounds.Encapsulate(r.bounds);
+            }
+        }
+
+        if (!hasBounds)
+            return;
+
+        float currentHeight = Mathf.Max(0.0001f, bounds.size.y);
+        float scale = Mathf.Max(0.01f, targetHeight) / currentHeight;
+        go.transform.localScale *= scale;
+    }
+
     void IgnorePlayerCollisions(GameObject projectile)
     {
         if (projectile == null || cameraSource == null)
@@ -1514,6 +1846,21 @@ public class FPSRaycastInteractor : MonoBehaviour
         onDone?.Invoke();
     }
 
+    System.Collections.IEnumerator SpawnSingleWaterEffect(Vector3 hitPoint, Vector3 hitNormal)
+    {
+        var spawned = new System.Collections.Generic.List<GameObject>(1);
+        SpawnBlock(hitPoint, GetWaterSpreadMat(), spawned, burnTargets: false, waterTargets: true);
+
+        float linger = Mathf.Max(0.05f, waterEffectLifetimeSeconds);
+        yield return new WaitForSeconds(linger);
+
+        for (int i = 0; i < spawned.Count; i++)
+        {
+            if (spawned[i] != null)
+                Destroy(spawned[i]);
+        }
+    }
+
     void SpawnRing(Vector3 center, int ring, Material mat, System.Collections.Generic.List<GameObject> sink, bool burnTargets, bool waterTargets)
     {
         for (int z = -ring; z <= ring; z++)
@@ -1560,15 +1907,20 @@ public class FPSRaycastInteractor : MonoBehaviour
         }
 
         var firePrefab = burnTargets ? PickFirePlacePrefab() : null;
-        if (suppressTempSpreadVisualsOnLowPoly && IsLowPolyTerrainVisualActive() && firePrefab == null)
+        var waterPrefab = waterTargets ? PickWaterPlacePrefab() : null;
+        if (suppressTempSpreadVisualsOnLowPoly && IsLowPolyTerrainVisualActive() && firePrefab == null && waterPrefab == null)
             return;
 
         string firePrefabName = firePrefab != null ? firePrefab.name : string.Empty;
+        string waterPrefabName = waterPrefab != null ? waterPrefab.name : string.Empty;
         var go = firePrefab != null
             ? Instantiate(firePrefab)
-            : GameObject.CreatePrimitive(useSoftDecalSpreadVisuals ? PrimitiveType.Quad : (waterTargets ? PrimitiveType.Sphere : PrimitiveType.Cube));
+            : (waterPrefab != null
+                ? Instantiate(waterPrefab)
+                : GameObject.CreatePrimitive(useSoftDecalSpreadVisuals ? PrimitiveType.Quad : (waterTargets ? PrimitiveType.Sphere : PrimitiveType.Cube)));
+        string effectPrefabName = firePrefab != null ? firePrefabName : waterPrefabName;
         go.name = currentTool == ApplyTool.Water
-            ? "WaterTempBlock"
+            ? (waterPrefab != null ? $"{waterPrefabName}_WaterTempBlock" : "WaterTempBlock")
             : (firePrefab != null ? $"{firePrefabName}_FireTempBlock" : "FireTempBlock");
         if (firePrefab != null)
         {
@@ -1578,6 +1930,16 @@ public class FPSRaycastInteractor : MonoBehaviour
             go.transform.rotation = Quaternion.FromToRotation(Vector3.up, n) * Quaternion.AngleAxis(Random.Range(0f, 360f), n);
             go.transform.localScale = go.transform.localScale * scale;
             TryPlayFireModelAnimation(go, firePrefabName);
+        }
+        else if (waterPrefab != null)
+        {
+            float scale = Mathf.Max(0.1f, waterPlacePrefabScale * blockScale);
+            go.transform.position = surfacePos + Vector3.up * Mathf.Max(0f, waterPlaceSpawnHeight);
+            go.transform.rotation = Quaternion.Euler(180f, Random.Range(0f, 360f), 0f);
+            go.transform.localScale = go.transform.localScale * scale;
+            FitEffectToTargetHeight(go, Mathf.Max(0.1f, waterPlaceTargetHeight));
+            go.transform.localScale *= Mathf.Max(1f, waterPlacePrefabSizeMultiplier);
+            TryPlayModelAnimation(go, effectPrefabName, waterTargets: true);
         }
         else if (useSoftDecalSpreadVisuals)
         {
@@ -1597,7 +1959,7 @@ public class FPSRaycastInteractor : MonoBehaviour
         }
 
         var r = go.GetComponent<Renderer>();
-        if (firePrefab == null && r != null && mat != null)
+        if (firePrefab == null && waterPrefab == null && r != null && mat != null)
         {
             r.sharedMaterial = mat;
             r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
@@ -1616,19 +1978,31 @@ public class FPSRaycastInteractor : MonoBehaviour
         if (!autoPlayFireModelAnimation || fireGO == null)
             return;
 
+        TryPlayModelAnimation(fireGO, sourcePrefabName, waterTargets: false);
+    }
+
+    void TryPlayModelAnimation(GameObject fxGO, string sourcePrefabName, bool waterTargets)
+    {
+        if (fxGO == null)
+            return;
+        if (waterTargets && !autoPlayWaterModelAnimation)
+            return;
+
         // If prefab already has a configured animator controller, let it run naturally.
-        var animator = fireGO.GetComponentInChildren<Animator>(includeInactive: true);
+        var animator = fxGO.GetComponentInChildren<Animator>(includeInactive: true);
         if (animator != null && animator.runtimeAnimatorController != null)
             return;
 
-        var clip = PickFireAnimationClipForModel(sourcePrefabName);
+        var clip = waterTargets
+            ? PickWaterAnimationClipForModel(sourcePrefabName)
+            : PickFireAnimationClipForModel(sourcePrefabName);
         if (clip == null)
             return;
 
-        var player = fireGO.GetComponent<FireModelClipPlayer>();
+        var player = fxGO.GetComponent<FireModelClipPlayer>();
         if (player == null)
-            player = fireGO.AddComponent<FireModelClipPlayer>();
-        player.Play(clip, loop: true);
+            player = fxGO.AddComponent<FireModelClipPlayer>();
+        player.Play(clip, !waterTargets, waterTargets ? waterAnimationSpeed : 1f);
     }
 
     AnimationClip PickFireAnimationClipForModel(string sourcePrefabName)
@@ -1653,6 +2027,21 @@ public class FPSRaycastInteractor : MonoBehaviour
         any = PickAnyClip(firePlaceV1AnimationClips);
         if (any != null) return any;
         return PickAnyClip(firePlaceV2AnimationClips);
+    }
+
+    AnimationClip PickWaterAnimationClipForModel(string sourcePrefabName)
+    {
+        if (!string.IsNullOrEmpty(sourcePrefabName))
+        {
+            string n = sourcePrefabName.ToLowerInvariant();
+            if (n.Contains("waterv2") || n.Contains("waterv2"))
+            {
+                var direct = PickAnyClip(waterPlaceAnimationClips);
+                if (direct != null) return direct;
+            }
+        }
+
+        return PickAnyClip(waterPlaceAnimationClips);
     }
 
     static AnimationClip PickAnyClip(AnimationClip[] clips)
@@ -1727,6 +2116,29 @@ public class FPSRaycastInteractor : MonoBehaviour
         for (int i = 0; i < firePlacePrefabs.Length; i++)
         {
             var p = firePlacePrefabs[i];
+            if (p == null) continue;
+            if (seen == pick) return p;
+            seen++;
+        }
+        return null;
+    }
+
+    GameObject PickWaterPlacePrefab()
+    {
+        if (waterPlacePrefabs == null || waterPlacePrefabs.Length == 0)
+            return null;
+
+        int valid = 0;
+        for (int i = 0; i < waterPlacePrefabs.Length; i++)
+            if (waterPlacePrefabs[i] != null) valid++;
+        if (valid == 0)
+            return null;
+
+        int pick = Random.Range(0, valid);
+        int seen = 0;
+        for (int i = 0; i < waterPlacePrefabs.Length; i++)
+        {
+            var p = waterPlacePrefabs[i];
             if (p == null) continue;
             if (seen == pick) return p;
             seen++;
@@ -2030,7 +2442,7 @@ public class FPSRaycastInteractor : MonoBehaviour
         PlayableGraph _graph;
         bool _created;
 
-        public void Play(AnimationClip clip, bool loop)
+        public void Play(AnimationClip clip, bool loop, float speed = 1f)
         {
             if (clip == null)
                 return;
@@ -2045,6 +2457,7 @@ public class FPSRaycastInteractor : MonoBehaviour
             var playable = AnimationClipPlayable.Create(_graph, clip);
             playable.SetApplyFootIK(false);
             playable.SetApplyPlayableIK(false);
+            playable.SetSpeed(Mathf.Max(0.01f, speed));
             if (loop)
                 playable.SetDuration(double.PositiveInfinity);
             output.SetSourcePlayable(playable);

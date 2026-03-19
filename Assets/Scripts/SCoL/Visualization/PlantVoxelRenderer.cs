@@ -692,6 +692,29 @@ namespace SCoL.Visualization
             return Mathf.Max(0, selectedFlowerVariantIndex);
         }
 
+        public GameObject GetSelectedFlowerVariantPrefab(PlantStage stage)
+        {
+            var prefabs = PrefabsFor(stage);
+            if (prefabs == null || prefabs.Length == 0)
+                return null;
+
+            int direct = ResolveDirectVariantIndex(stage, selectedFlowerVariantIndex);
+            if (direct >= 0)
+                return prefabs[direct];
+
+            int manual = ResolveManualVariantIndex(stage, selectedFlowerVariantIndex);
+            if (manual >= 0 && manual < prefabs.Length)
+                return prefabs[manual];
+
+            for (int i = 0; i < prefabs.Length; i++)
+            {
+                if (prefabs[i] != null)
+                    return prefabs[i];
+            }
+
+            return null;
+        }
+
         public void SetSelectedFlowerVariantIndex(int index)
         {
             int count = GetFlowerVariantCount();

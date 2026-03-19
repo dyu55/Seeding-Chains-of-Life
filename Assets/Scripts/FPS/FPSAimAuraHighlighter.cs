@@ -12,6 +12,8 @@ using SCoL.XR;
 [DisallowMultipleComponent]
 public class FPSAimAuraHighlighter : MonoBehaviour
 {
+    static FPSAimAuraHighlighter _instance;
+
     public Camera cameraSource;
     public float maxDistance = 50f;
     public LayerMask hitMask = ~0;
@@ -20,12 +22,14 @@ public class FPSAimAuraHighlighter : MonoBehaviour
     [Min(1f)] public float awarenessRadius = 9f;
     [Range(1, 64)] public int maxNearbyHighlights = 24;
     [Min(0.05f)] public float refreshInterval = 0.35f;
-    public Color nearbyMarkerColor = new Color(0.34f, 0.90f, 1f, 0.92f);
+    public Color nearbyMarkerColor = new Color(0.98f, 0.88f, 0.32f, 0.92f);
     [Min(0.1f)] public float nearbyMinScale = 0.20f;
     [Min(0.1f)] public float nearbyMaxScale = 0.24f;
 
     [Header("Focus Marker")]
     public Color focusMarkerColor = new Color(0.98f, 0.88f, 0.32f, 1f);
+    public Color waterFocusMarkerColor = new Color(0.24f, 0.58f, 1f, 1f);
+    public Color fireFocusMarkerColor = new Color(1f, 0.28f, 0.20f, 1f);
     [Min(0.1f)] public float focusMinScale = 0.28f;
     [Min(0.1f)] public float focusMaxScale = 0.34f;
     [Min(0.1f)] public float pulseSpeed = 4f;
@@ -47,10 +51,14 @@ public class FPSAimAuraHighlighter : MonoBehaviour
         public Material diamondMaterial;
         public Material stemMaterial;
         public bool isFocused;
+        public bool isPlant;
     }
 
     SCoLRuntime _runtime;
     PlantVoxelRenderer _plantRenderer;
+    FPSRaycastInteractor _fpsInteractor;
+    SCoLToolController _xrToolController;
+    SCoLXRInteractor _xrInteractor;
     Camera _cam;
     float _nextRefreshAt;
 
@@ -62,6 +70,14 @@ public class FPSAimAuraHighlighter : MonoBehaviour
 
     void Awake()
     {
+        if (_instance != null && _instance != this)
+        {
+            enabled = false;
+            gameObject.SetActive(false);
+            return;
+        }
+
+        _instance = this;
         if (cameraSource == null)
             cameraSource = Camera.main;
         _runtime = FindFirstObjectByType<SCoLRuntime>();
@@ -70,6 +86,8 @@ public class FPSAimAuraHighlighter : MonoBehaviour
 
     void OnDisable()
     {
+        if (_instance == this)
+            _instance = null;
         ClearAll();
     }
 
@@ -81,6 +99,12 @@ public class FPSAimAuraHighlighter : MonoBehaviour
             _runtime = FindFirstObjectByType<SCoLRuntime>();
         if (_plantRenderer == null)
             _plantRenderer = FindFirstObjectByType<PlantVoxelRenderer>();
+        if (_fpsInteractor == null)
+            _fpsInteractor = FindFirstObjectByType<FPSRaycastInteractor>();
+        if (_xrToolController == null)
+            _xrToolController = FindFirstObjectByType<SCoLToolController>();
+        if (_xrInteractor == null)
+            _xrInteractor = FindFirstObjectByType<SCoLXRInteractor>();
         if (_cam == null)
             _cam = cameraSource != null ? cameraSource : Camera.main;
 
@@ -162,7 +186,9 @@ public class FPSAimAuraHighlighter : MonoBehaviour
 
     void ApplyMarkerVisual(MarkerState state, float pulse)
     {
-        Color color = state.isFocused ? focusMarkerColor : nearbyMarkerColor;
+        Color color = nearbyMarkerColor;
+        if (state.isFocused)
+            color = state.isPlant ? ResolveFocusedPlantMarkerColor() : focusMarkerColor;
         float haloAlpha = state.isFocused ? Mathf.Lerp(0.28f, 0.48f, pulse) : Mathf.Lerp(0.14f, 0.24f, pulse);
         float solidAlpha = state.isFocused ? Mathf.Lerp(0.92f, 1f, pulse) : Mathf.Lerp(0.72f, 0.88f, pulse);
 
@@ -174,6 +200,50 @@ public class FPSAimAuraHighlighter : MonoBehaviour
         SetMaterialColor(state.haloMaterial, new Color(color.r, color.g, color.b, haloAlpha));
         SetMaterialColor(state.diamondMaterial, new Color(color.r, color.g, color.b, solidAlpha));
         SetMaterialColor(state.stemMaterial, new Color(color.r, color.g, color.b, solidAlpha * 0.85f));
+    }
+
+    Color ResolveFocusedPlantMarkerColor()
+    {
+        if (_fpsInteractor != null)
+        {
+            switch (_fpsInteractor.currentTool)
+            {
+                case FPSRaycastInteractor.ApplyTool.Water:
+                    return waterFocusMarkerColor;
+                case FPSRaycastInteractor.ApplyTool.Fire:
+                    return fireFocusMarkerColor;
+                default:
+                    return focusMarkerColor;
+            }
+        }
+
+        if (_xrToolController != null)
+        {
+            switch (_xrToolController.currentTool)
+            {
+                case SCoLToolController.Tool.Water:
+                    return waterFocusMarkerColor;
+                case SCoLToolController.Tool.Fire:
+                    return fireFocusMarkerColor;
+                default:
+                    return focusMarkerColor;
+            }
+        }
+
+        if (_xrInteractor != null)
+        {
+            switch (_xrInteractor.currentTool)
+            {
+                case SCoLXRInteractor.Tool.Water:
+                    return waterFocusMarkerColor;
+                case SCoLXRInteractor.Tool.Fire:
+                    return fireFocusMarkerColor;
+                default:
+                    return focusMarkerColor;
+            }
+        }
+
+        return focusMarkerColor;
     }
 
     static void SetMaterialColor(Material material, Color color)
@@ -255,12 +325,15 @@ public class FPSAimAuraHighlighter : MonoBehaviour
             var t = transforms[i];
             if (t == null || !t.name.StartsWith("Plant_"))
                 continue;
+            if (t.parent != null && t.parent.name.StartsWith("Plant_"))
+                continue;
             AddSceneCandidate(t);
         }
     }
 
     void AddSceneCandidate(Transform root)
     {
+        root = NormalizeMarkerRoot(root);
         if (root == null || !root.gameObject.activeInHierarchy)
             return;
 
@@ -273,6 +346,7 @@ public class FPSAimAuraHighlighter : MonoBehaviour
 
     void AddDesiredRoot(Transform root, bool isFocused)
     {
+        root = NormalizeMarkerRoot(root);
         if (root == null)
             return;
 
@@ -321,8 +395,47 @@ public class FPSAimAuraHighlighter : MonoBehaviour
             haloMaterial = haloMaterial,
             diamondMaterial = diamondMaterial,
             stemMaterial = stemMaterial,
-            isFocused = false
+            isFocused = false,
+            isPlant = IsPlantRoot(root)
         };
+    }
+
+    static Transform NormalizeMarkerRoot(Transform root)
+    {
+        if (root == null)
+            return null;
+
+        var legacyPlant = root.GetComponentInParent<FPSSeedGrowth>();
+        if (legacyPlant != null)
+            return legacyPlant.transform;
+
+        var pickup = root.GetComponentInParent<SCoLPickup>();
+        if (pickup != null)
+            return pickup.transform;
+
+        var animal = root.GetComponentInParent<FPSBoidAgent>();
+        if (animal != null)
+            return animal.transform;
+
+        var grabbable = root.GetComponentInParent<SCoLGrabbable>();
+        if (grabbable != null)
+            return grabbable.transform;
+
+        Transform normalized = root;
+        while (normalized.parent != null && normalized.parent.name.StartsWith("Plant_"))
+            normalized = normalized.parent;
+        return normalized;
+    }
+
+    static bool IsPlantRoot(Transform root)
+    {
+        if (root == null)
+            return false;
+
+        if (root.GetComponentInParent<FPSSeedGrowth>() != null)
+            return true;
+
+        return root.name.StartsWith("Plant_");
     }
 
     static Transform CreateQuad(string name, Transform parent, Vector2 size, Vector3 localPos, Vector3 localEuler, Material material)
@@ -412,16 +525,5 @@ public class FPSAimAuraHighlighter : MonoBehaviour
             Destroy(state.stemMaterial);
         if (state.markerRoot != null)
             Destroy(state.markerRoot.gameObject);
-    }
-
-    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
-    static void EnsureExists()
-    {
-        if (FindFirstObjectByType<FPSAimAuraHighlighter>() != null)
-            return;
-
-        var go = new GameObject("FPSAimAuraHighlighter (Runtime)");
-        DontDestroyOnLoad(go);
-        go.AddComponent<FPSAimAuraHighlighter>();
     }
 }

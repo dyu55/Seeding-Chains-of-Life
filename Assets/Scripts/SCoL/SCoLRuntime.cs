@@ -41,7 +41,7 @@ namespace SCoL
         [Tooltip("Multiplier for flower/plant spread birth rate. 0.5 means half spread speed.")]
         [Range(0f, 1f)] public float flowerSpreadMultiplier = 0.5f;
         [Tooltip("Deterministic age threshold (seconds) for each tree promotion stage.")]
-        [Min(0.5f)] public float secondsPerTreeStage = 7f;
+        [Min(0.5f)] public float secondsPerTreeStage = 10f;
         [Tooltip("If true, watering can accelerate plant growth progression.")]
         public bool waterCanAccelerateGrowth = true;
         [Tooltip("When water is applied, add this many growth-age seconds to nearby plants.")]
@@ -90,10 +90,10 @@ namespace SCoL
 
         [Header("Player Flower Seed Drops")]
         public bool dropSeedPickupsNearDensePlayerFlowers = true;
-        [Min(2)] public int densePlayerFlowerThreshold = 6;
+        [Min(2)] public int densePlayerFlowerThreshold = 3;
         [Min(1f)] public float densePlayerFlowerRadius = 4.5f;
-        [Min(0.5f)] public float denseFlowerDropCheckSeconds = 6f;
-        [Range(0f, 1f)] public float denseFlowerDropChance = 0.45f;
+        [Min(0.5f)] public float denseFlowerDropCheckSeconds = 2f;
+        [Range(0f, 1f)] public float denseFlowerDropChance = 1f;
         [Min(1)] public int denseFlowerMaxActiveSeedDrops = 12;
         [Min(0.25f)] public float denseFlowerSeedDropSpacing = 1.6f;
         [Min(0f)] public float denseFlowerSeedDropHeight = 0.24f;
@@ -1140,6 +1140,13 @@ namespace SCoL
         public void AddWaterAt(Vector3 world, float amount = 0.25f)
         {
             if (!TryWorldToCell(world, out int x, out int y)) return;
+            AddWaterAtCell(x, y, amount);
+        }
+
+        public void AddWaterAtCell(int x, int y, float amount = 0.25f)
+        {
+            if (Grid == null || !Grid.InBounds(x, y))
+                return;
             var cell = Grid.Get(x, y);
 
             // Keep sim var
@@ -1360,7 +1367,8 @@ namespace SCoL
             if (!c.HasPlant || c.PlantStage == PlantStage.Burnt)
                 return;
 
-            if (ShouldClampFlowerAtFinalStage(c))
+            // Flower variants should still benefit from watering until they reach the final flower stage.
+            if (ShouldClampFlowerAtFinalStage(c) && c.PlantStage >= PlantStage.MediumTree)
                 return;
 
             c.Success = Mathf.Clamp01(c.Success + Mathf.Max(0f, waterGrowthSuccessBoost));
@@ -1535,7 +1543,7 @@ namespace SCoL
                 int x = UnityEngine.Random.Range(0, Grid.Width);
                 int y = UnityEngine.Random.Range(0, Grid.Height);
                 var cell = Grid.Get(x, y);
-                if (!cell.HasPlant || !cell.IsPlayerSeedLineage || cell.FlowerVariantIndex < 0)
+                if (!IsDenseFlowerDropSourceCell(cell))
                     continue;
 
                 int nearbyFlowers = CountDensePlayerFlowersAround(x, y, cellRadius, radius);
@@ -1564,7 +1572,7 @@ namespace SCoL
                     continue;
 
                 var cell = Grid.Get(x, y);
-                if (!cell.HasPlant || !cell.IsPlayerSeedLineage || cell.FlowerVariantIndex < 0)
+                if (!IsDenseFlowerDropSourceCell(cell))
                     continue;
 
                 Vector3 candidate = Grid.CellCenterWorld(x, y);
@@ -1574,6 +1582,16 @@ namespace SCoL
             }
 
             return count;
+        }
+
+        bool IsDenseFlowerDropSourceCell(CellState cell)
+        {
+            return cell != null &&
+                   cell.HasPlant &&
+                   cell.IsPlayerSeedLineage &&
+                   cell.FlowerVariantIndex >= 0 &&
+                   cell.PlantStage >= PlantStage.MediumTree &&
+                   cell.PlantStage != PlantStage.Burnt;
         }
 
         bool TryFindDenseFlowerDropPoint(int centerX, int centerY, int cellRadius, out Vector3 dropWorld)
