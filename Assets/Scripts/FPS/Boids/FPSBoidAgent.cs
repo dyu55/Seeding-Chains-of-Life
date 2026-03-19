@@ -122,6 +122,11 @@ public class FPSBoidAgent : MonoBehaviour
     static float _plantAttractorWeight = 3f;
     static float _plantAttractorStopDistance = 1.1f;
     static float _plantAttractorFrontOffset = 1.4f;
+    static Transform _fireRepellent;
+    static bool _fireRepellentEnabled;
+    static float _fireRepellentRadius = 8f;
+    static float _fireRepellentWeight = 4f;
+    static float _fireRepellentFrontOffset = 1.2f;
 
     Camera _playerCam;
     float _feedReactionTimer;
@@ -289,9 +294,13 @@ public class FPSBoidAgent : MonoBehaviour
         // Player avoidance / chase
         var cam = _playerCam != null ? _playerCam : Camera.main;
         bool hasPlantAttractor = _plantAttractorEnabled && _plantAttractor != null;
+        bool hasFireRepellent = _fireRepellentEnabled && _fireRepellent != null;
         bool plantAttractorInRange = false;
+        bool fireRepellentInRange = false;
         Vector3 toAttractor = Vector3.zero;
+        Vector3 awayFromFire = Vector3.zero;
         float plantAttractorDistance = float.PositiveInfinity;
+        float fireRepellentDistance = float.PositiveInfinity;
         if (hasPlantAttractor)
         {
             Vector3 targetPoint = _plantAttractor.position;
@@ -305,13 +314,26 @@ public class FPSBoidAgent : MonoBehaviour
             plantAttractorDistance = toAttractor.magnitude;
             plantAttractorInRange = plantAttractorDistance <= Mathf.Max(0.1f, _plantAttractorRadius);
         }
+        if (hasFireRepellent)
+        {
+            Vector3 firePoint = _fireRepellent.position;
+            Vector3 forward = _fireRepellent.forward;
+            forward.y = 0f;
+            if (forward.sqrMagnitude > 0.0001f)
+                firePoint += forward.normalized * Mathf.Max(0f, _fireRepellentFrontOffset);
+
+            awayFromFire = transform.position - firePoint;
+            awayFromFire.y = 0f;
+            fireRepellentDistance = awayFromFire.magnitude;
+            fireRepellentInRange = fireRepellentDistance <= Mathf.Max(0.1f, _fireRepellentRadius);
+        }
         if (cam != null)
         {
             float dToPlayer = Vector3.Distance(transform.position, cam.transform.position);
 
             if (role == BoidRole.Prey)
             {
-                if (!plantAttractorInRange && dToPlayer < playerFleeDistance)
+                if (!plantAttractorInRange && !fireRepellentInRange && dToPlayer < playerFleeDistance)
                 {
                     var away = (transform.position - cam.transform.position);
                     away.y = 0f;
@@ -320,8 +342,15 @@ public class FPSBoidAgent : MonoBehaviour
             }
         }
 
+        if (fireRepellentInRange)
+        {
+            float t = 1f - Mathf.Clamp01(fireRepellentDistance / Mathf.Max(0.1f, _fireRepellentRadius));
+            accel += SteerTowards(awayFromFire) * Mathf.Max(0f, _fireRepellentWeight) * Mathf.Lerp(0.5f, 1.5f, t);
+            _wanderDir = awayFromFire.sqrMagnitude > 0.0001f ? awayFromFire.normalized : _wanderDir;
+            _nextWanderRetargetAt = Time.time + Mathf.Max(0.15f, wanderRetargetSeconds * 0.5f);
+        }
         // Plant lure: when player equips Plant tool, nearby animals follow.
-        if (plantAttractorInRange)
+        else if (plantAttractorInRange)
         {
             float stopDistance = Mathf.Max(0.1f, _plantAttractorStopDistance);
             if (plantAttractorDistance > stopDistance)
@@ -462,6 +491,15 @@ public class FPSBoidAgent : MonoBehaviour
         _plantAttractorWeight = Mathf.Max(0f, weight);
         _plantAttractorStopDistance = Mathf.Max(0.1f, stopDistance);
         _plantAttractorFrontOffset = Mathf.Max(0f, frontOffset);
+    }
+
+    public static void SetFireRepellent(Transform target, bool enabled, float radius, float weight, float frontOffset = 1.2f)
+    {
+        _fireRepellent = target;
+        _fireRepellentEnabled = enabled && target != null;
+        _fireRepellentRadius = Mathf.Max(0.1f, radius);
+        _fireRepellentWeight = Mathf.Max(0f, weight);
+        _fireRepellentFrontOffset = Mathf.Max(0f, frontOffset);
     }
 
     public void FeedWithPlant(float jumpHeight, float reactionDurationSeconds, int jumps = 3)

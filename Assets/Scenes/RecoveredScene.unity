@@ -362,8 +362,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::SCoL.Weather.WeatherSystem
   seasonSource: {fileID: 871881696}
   spring:
-    clear: 0.7
-    rain: 0.3
+    clear: 0.8
+    rain: 0.2
     wind: 0
     snow: 0
   summer:
@@ -662,32 +662,44 @@ MonoBehaviour:
   - seedName: Bean
     variantIndex: 0
     stage1Prefab: {fileID: 919132149155446097, guid: 7065d1943f0af41e497c379fe4d01007, type: 3}
+    stage1PrefabOptions: []
     stage2Prefab: {fileID: 919132149155446097, guid: 1a6c3a555cc414011afa9d39f5650542, type: 3}
+    stage2PrefabOptions: []
     finalFlowerPrefab: {fileID: 919132149155446097, guid: e333d0cc5760f457893063a806cc9083, type: 3}
+    finalFlowerPrefabOptions: []
     stage1ScaleMultiplier: 1
     stage2ScaleMultiplier: 1
     finalFlowerScaleMultiplier: 2
   - seedName: BrownSeed
     variantIndex: 1
     stage1Prefab: {fileID: 919132149155446097, guid: 7065d1943f0af41e497c379fe4d01007, type: 3}
+    stage1PrefabOptions: []
     stage2Prefab: {fileID: 919132149155446097, guid: 1a6c3a555cc414011afa9d39f5650542, type: 3}
+    stage2PrefabOptions: []
     finalFlowerPrefab: {fileID: 919132149155446097, guid: 8569f16ed03a449fb886d67daa79f48c, type: 3}
+    finalFlowerPrefabOptions: []
     stage1ScaleMultiplier: 1
     stage2ScaleMultiplier: 1
     finalFlowerScaleMultiplier: 2
   - seedName: LightBrownSeed
     variantIndex: 2
     stage1Prefab: {fileID: 919132149155446097, guid: 7065d1943f0af41e497c379fe4d01007, type: 3}
+    stage1PrefabOptions: []
     stage2Prefab: {fileID: 919132149155446097, guid: 1a6c3a555cc414011afa9d39f5650542, type: 3}
+    stage2PrefabOptions: []
     finalFlowerPrefab: {fileID: 919132149155446097, guid: 024b3971532654e8c934e11472166c79, type: 3}
+    finalFlowerPrefabOptions: []
     stage1ScaleMultiplier: 1
     stage2ScaleMultiplier: 1
     finalFlowerScaleMultiplier: 2
   - seedName: LongSeed
     variantIndex: 3
     stage1Prefab: {fileID: 919132149155446097, guid: 7065d1943f0af41e497c379fe4d01007, type: 3}
+    stage1PrefabOptions: []
     stage2Prefab: {fileID: 919132149155446097, guid: 1a6c3a555cc414011afa9d39f5650542, type: 3}
+    stage2PrefabOptions: []
     finalFlowerPrefab: {fileID: 919132149155446097, guid: edf3c9fd5ac1d437792380193be6df49, type: 3}
+    finalFlowerPrefabOptions: []
     stage1ScaleMultiplier: 1
     stage2ScaleMultiplier: 1
     finalFlowerScaleMultiplier: 2
@@ -10627,6 +10639,13 @@ MonoBehaviour:
   dayRange01: {x: 0.23, y: 0.77}
   firefliesOnlyAtNight: 1
   disableFirefliesInBadWeather: 1
+  clusterFirefliesAroundHealthyFlowers: 1
+  fireflyClusterSearchRadius: 5.5
+  fireflyClusterMinFlowers: 3
+  fireflyClusterFollowLerp: 2.5
+  fireflyClusterEmissionMultiplier: 1.8
+  fireflyClusterBoxScaleMultiplier: 1.35
+  fireflyClusterOffset: {x: 0, y: 1.2, z: 0}
   fireflyMaxParticles: 140
   fireflyEmissionRate: 25
   fireflyBoxSize: {x: 14, y: 5, z: 14}
@@ -10735,10 +10754,14 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   seeds: 30
+  beanSeed: 0
+  brownSeed: 0
+  lightBrownSeed: 0
+  longSeed: 0
+  seedType1: 0
   seedV1: 0
   seedV2: 0
   seedV3: 0
-  seedType1: 0
   water: 30
   fire: 30
   plants: 30
@@ -17463,10 +17486,15 @@ MonoBehaviour:
   plantFollowWeight: 3
   plantFollowFrontOffset: 1.4
   plantFollowStopDistance: 1.1
+  animalsFleeWhenFireToolSelected: 1
+  fireRepelRadius: 10
+  fireRepelWeight: 5
+  fireRepelFrontOffset: 1.2
   plantFeedConsumesInventory: 1
   feedJumpHeight: 0.35
   feedReactionDuration: 1.2
   feedJumpCount: 3
+  fireDamageToAnimals: 20
   stoneThrowSpeed: 24
   stoneThrowUpwardBias: 0.08
   stoneSpawnForwardOffset: 0.55

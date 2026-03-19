@@ -105,6 +105,14 @@ namespace SCoL.Visualization
         public Color fallbackMediumTreeColor = new Color(0.35f, 0.62f, 0.31f);
         public Color fallbackLargeTreeColor = new Color(0.26f, 0.48f, 0.26f);
         public Color fallbackBurntColor = new Color(0.08f, 0.08f, 0.08f, 1f);
+        [Header("Mature Flower Glow")]
+        public bool glowMatureFlowers = true;
+        public Color matureFlowerGlowColor = new Color(1f, 0.92f, 0.35f, 1f);
+        [Min(0f)] public float matureFlowerGlowRange = 1.75f;
+        [Range(0f, 8f)] public float matureFlowerGlowIntensity = 1.4f;
+        public bool useMatureFlowerHaloQuad = false;
+        [Min(0.01f)] public float matureFlowerHaloSize = 0.55f;
+        [Min(0f)] public float matureFlowerHaloHeight = 0.55f;
 
         struct ActivePlant
         {
@@ -1362,6 +1370,86 @@ namespace SCoL.Visualization
                 go.transform.position += Vector3.up * dy;
         }
 
+        void UpdateMatureFlowerGlow(GameObject go, PlantStage stage)
+        {
+            if (go == null)
+                return;
+
+            bool active = glowMatureFlowers && stage == PlantStage.MediumTree;
+
+            var lightT = go.transform.Find("MatureFlowerGlow");
+            if (lightT == null && active)
+            {
+                var lightGo = new GameObject("MatureFlowerGlow");
+                lightGo.transform.SetParent(go.transform, false);
+                lightT = lightGo.transform;
+                var glowLight = lightGo.AddComponent<Light>();
+                glowLight.type = LightType.Point;
+                glowLight.shadows = LightShadows.None;
+            }
+            if (lightT != null)
+            {
+                lightT.localPosition = Vector3.up * Mathf.Max(0f, matureFlowerHaloHeight);
+                var glowLight = lightT.GetComponent<Light>();
+                if (glowLight != null)
+                {
+                    glowLight.enabled = active;
+                    glowLight.color = matureFlowerGlowColor;
+                    glowLight.range = Mathf.Max(0f, matureFlowerGlowRange);
+                    glowLight.intensity = Mathf.Max(0f, matureFlowerGlowIntensity);
+                }
+            }
+
+            var haloT = go.transform.Find("MatureFlowerHalo");
+            if (haloT != null && !useMatureFlowerHaloQuad)
+            {
+                Destroy(haloT.gameObject);
+                haloT = null;
+            }
+            if (haloT == null && active && useMatureFlowerHaloQuad)
+            {
+                var halo = GameObject.CreatePrimitive(PrimitiveType.Quad);
+                halo.name = "MatureFlowerHalo";
+                halo.transform.SetParent(go.transform, false);
+                var collider = halo.GetComponent<Collider>();
+                if (collider != null)
+                    Destroy(collider);
+                haloT = halo.transform;
+            }
+            if (haloT != null)
+            {
+                haloT.localPosition = Vector3.up * Mathf.Max(0f, matureFlowerHaloHeight);
+                haloT.localRotation = Quaternion.identity;
+                haloT.localScale = Vector3.one * Mathf.Max(0.01f, matureFlowerHaloSize);
+                haloT.gameObject.SetActive(active);
+
+                var renderer = haloT.GetComponent<Renderer>();
+                if (renderer != null)
+                {
+                    if (renderer.sharedMaterial == null)
+                    {
+                        var shader = Shader.Find("Universal Render Pipeline/Unlit");
+                        if (shader == null)
+                            shader = Shader.Find("Unlit/Color");
+                        if (shader != null)
+                            renderer.sharedMaterial = new Material(shader) { name = "MatureFlowerGlowMat" };
+                    }
+                    var mat = renderer.sharedMaterial;
+                    if (mat != null)
+                    {
+                        Color haloColor = matureFlowerGlowColor;
+                        haloColor.a = 0.28f;
+                        if (mat.HasProperty("_BaseColor"))
+                            mat.SetColor("_BaseColor", haloColor);
+                        if (mat.HasProperty("_Color"))
+                            mat.SetColor("_Color", haloColor);
+                    }
+                    renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                    renderer.receiveShadows = false;
+                }
+            }
+        }
+
         public bool TryGetActivePlantGameObject(int x, int y, out GameObject go)
         {
             go = null;
@@ -1457,6 +1545,7 @@ namespace SCoL.Visualization
                 plantGO.transform.localScale = Vector3.one * scale;
                 TryNormalizeFlowerStageHeight(plantGO, stage);
                 SnapBottomToY(plantGO, targetY);
+                UpdateMatureFlowerGlow(plantGO, stage);
 
                 var healthBar = plantGO.GetComponent<SCoLWorldHealthBar>();
                 if (healthBar == null)

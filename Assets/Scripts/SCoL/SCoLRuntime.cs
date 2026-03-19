@@ -93,12 +93,24 @@ namespace SCoL
         [Header("Player Flower Seed Drops")]
         public bool dropSeedPickupsNearDensePlayerFlowers = true;
         [Min(2)] public int densePlayerFlowerThreshold = 3;
-        [Min(1f)] public float densePlayerFlowerRadius = 4.5f;
-        [Min(0.5f)] public float denseFlowerDropCheckSeconds = 2f;
+        [Min(1f)] public float densePlayerFlowerRadius = 3.2f;
+        [Min(0.5f)] public float denseFlowerDropCheckSeconds = 10f;
         [Range(0f, 1f)] public float denseFlowerDropChance = 1f;
         [Min(1)] public int denseFlowerMaxActiveSeedDrops = 12;
-        [Min(0.25f)] public float denseFlowerSeedDropSpacing = 1.6f;
+        [Min(0.25f)] public float denseFlowerSeedDropSpacing = 1.1f;
         [Min(0f)] public float denseFlowerSeedDropHeight = 0.24f;
+        [Min(0f)] public float denseFlowerSeedDropVisibleLift = 0.18f;
+        [Min(0.1f)] public float denseFlowerSeedDropScale = 0.42f;
+        [Min(1f)] public float denseFlowerSeedDropLifetimeSeconds = 30f;
+        [Min(0f)] public float denseFlowerSeedDropBurstHeight = 0.4f;
+        [Range(0, 64)] public int denseFlowerSeedDropBurstCount = 14;
+        [Header("Dense Flower Seed Drop Glow")]
+        public bool denseFlowerSeedDropsGlow = true;
+        public Color denseFlowerSeedDropGlowColor = new Color(0.22f, 0.95f, 0.75f, 1f);
+        [Min(0f)] public float denseFlowerSeedDropGlowRange = 1.8f;
+        [Range(0f, 8f)] public float denseFlowerSeedDropGlowIntensity = 1.8f;
+        [Min(0.01f)] public float denseFlowerSeedDropHaloSize = 0.45f;
+        [Min(0f)] public float denseFlowerSeedDropHaloHeight = 0.18f;
 
         public GridViewMode ViewMode
         {
@@ -127,6 +139,7 @@ namespace SCoL
         private System.Random _rng;
         private WeatherSystem _weatherSystem;
         private SeasonSkyboxController _seasonSkybox;
+        private SpawnPickups _spawnPickups;
         private float _nextSeasonProbeAt;
         private float _windDirectionTimer;
         private Vector2Int _windDirection = new Vector2Int(1, 0);
@@ -1371,6 +1384,8 @@ namespace SCoL
         {
             if (!waterCanAccelerateGrowth)
                 return;
+            if (CurrentSeason == Season.Winter)
+                return;
 
             if (!c.HasPlant || c.PlantStage == PlantStage.Burnt)
                 return;
@@ -1540,16 +1555,16 @@ namespace SCoL
         {
             if (Grid == null || _voxelWorld == null || _voxelWorld.Config == null)
                 return;
-            if (denseFlowerMaxActiveSeedDrops > 0 && CountActiveDenseFlowerSeedDrops() >= denseFlowerMaxActiveSeedDrops)
+            int activeDrops = CountActiveDenseFlowerSeedDrops();
+            if (denseFlowerMaxActiveSeedDrops > 0 && activeDrops >= denseFlowerMaxActiveSeedDrops)
                 return;
 
-            int attempts = 24;
             float radius = Mathf.Max(1f, densePlayerFlowerRadius);
             int cellRadius = Mathf.Max(1, Mathf.CeilToInt(radius / Mathf.Max(0.0001f, Grid.CellSize)));
-            for (int i = 0; i < attempts; i++)
+            var eligibleSources = new List<Vector2Int>(64);
+            for (int y = 0; y < Grid.Height; y++)
+            for (int x = 0; x < Grid.Width; x++)
             {
-                int x = UnityEngine.Random.Range(0, Grid.Width);
-                int y = UnityEngine.Random.Range(0, Grid.Height);
                 var cell = Grid.Get(x, y);
                 if (!IsDenseFlowerDropSourceCell(cell))
                     continue;
@@ -1557,15 +1572,56 @@ namespace SCoL
                 int nearbyFlowers = CountDensePlayerFlowersAround(x, y, cellRadius, radius);
                 if (nearbyFlowers < Mathf.Max(2, densePlayerFlowerThreshold))
                     continue;
-                if (UnityEngine.Random.value > Mathf.Clamp01(denseFlowerDropChance))
-                    return;
-
-                if (TryFindDenseFlowerDropPoint(x, y, cellRadius, out var dropWorld))
-                {
-                    SpawnDenseFlowerSeedPickup(dropWorld, cell.FlowerVariantIndex);
-                    return;
-                }
+                eligibleSources.Add(new Vector2Int(x, y));
             }
+
+            if (eligibleSources.Count == 0)
+                return;
+            if (UnityEngine.Random.value > Mathf.Clamp01(denseFlowerDropChance))
+                return;
+
+            Vector2Int source = eligibleSources[UnityEngine.Random.Range(0, eligibleSources.Count)];
+            var sourceCell = Grid.Get(source.x, source.y);
+            int crowdedCount = CountDensePlayerFlowersAround(source.x, source.y, cellRadius, radius);
+            int dropCount = GetDenseFlowerSeedDropCount(crowdedCount);
+            if (denseFlowerMaxActiveSeedDrops > 0)
+                dropCount = Mathf.Min(dropCount, Mathf.Max(0, denseFlowerMaxActiveSeedDrops - activeDrops));
+            if (dropCount <= 0)
+                return;
+
+            var clusterPoints = new List<Vector3>(16);
+            CollectDenseFlowerClusterWorldPoints(source.x, source.y, cellRadius, radius, clusterPoints);
+            if (clusterPoints.Count == 0)
+                clusterPoints.Add(GetDenseFlowerDropSourceWorld(source.x, source.y));
+
+            var variantPool = new List<int>(8);
+            CollectDenseFlowerClusterVariants(source.x, source.y, cellRadius, radius, variantPool);
+            if (variantPool.Count == 0 && sourceCell != null && sourceCell.FlowerVariantIndex >= 0)
+                variantPool.Add(sourceCell.FlowerVariantIndex);
+
+            Shuffle(clusterPoints);
+            Shuffle(variantPool);
+
+            int spawned = 0;
+            for (int i = 0; i < clusterPoints.Count && spawned < dropCount; i++)
+            {
+                Vector3 dropWorld = clusterPoints[i];
+                if (HasNearbyDenseFlowerSeedPickup(dropWorld, 0.18f))
+                    continue;
+
+                int flowerVariantIndex = variantPool.Count > 0
+                    ? variantPool[spawned % variantPool.Count]
+                    : (sourceCell != null ? sourceCell.FlowerVariantIndex : -1);
+                SpawnDenseFlowerSeedPickup(dropWorld, flowerVariantIndex);
+                spawned++;
+            }
+        }
+
+        int GetDenseFlowerSeedDropCount(int nearbyFlowers)
+        {
+            if (nearbyFlowers >= 10) return 4;
+            if (nearbyFlowers >= 6) return 3;
+            return 2;
         }
 
         int CountDensePlayerFlowersAround(int cx, int cy, int cellRadius, float worldRadius)
@@ -1605,15 +1661,37 @@ namespace SCoL
         bool TryFindDenseFlowerDropPoint(int centerX, int centerY, int cellRadius, out Vector3 dropWorld)
         {
             dropWorld = Grid.CellCenterWorld(centerX, centerY) + Vector3.up * denseFlowerSeedDropHeight;
-            int attempts = Mathf.Max(8, cellRadius * 6);
-            for (int i = 0; i < attempts; i++)
+            float radius = Mathf.Max(1f, densePlayerFlowerRadius);
+            var clusterPoints = new List<Vector3>(16);
+            CollectDenseFlowerClusterWorldPoints(centerX, centerY, cellRadius, radius, clusterPoints);
+            if (clusterPoints.Count == 0)
             {
-                int x = Mathf.Clamp(centerX + UnityEngine.Random.Range(-cellRadius, cellRadius + 1), 0, Grid.Width - 1);
-                int y = Mathf.Clamp(centerY + UnityEngine.Random.Range(-cellRadius, cellRadius + 1), 0, Grid.Height - 1);
-                if (!IsPlantableColumn(x, y))
+                Vector3 fallback = GetDenseFlowerDropSourceWorld(centerX, centerY);
+                if (!HasNearbyDenseFlowerSeedPickup(fallback, denseFlowerSeedDropSpacing))
+                {
+                    dropWorld = fallback;
+                    return true;
+                }
+                return false;
+            }
+
+            for (int i = 0; i < clusterPoints.Count; i++)
+            {
+                Vector3 anchor = clusterPoints[UnityEngine.Random.Range(0, clusterPoints.Count)];
+                if (HasNearbyDenseFlowerSeedPickup(anchor, denseFlowerSeedDropSpacing))
                     continue;
 
-                Vector3 candidate = _voxelWorld.ColumnTopWorld(x, y) + Vector3.up * Mathf.Max(0f, denseFlowerSeedDropHeight);
+                dropWorld = anchor;
+                return true;
+            }
+
+            for (int i = 0; i < clusterPoints.Count * 2; i++)
+            {
+                Vector3 anchor = clusterPoints[UnityEngine.Random.Range(0, clusterPoints.Count)];
+                Vector3 candidate = anchor + new Vector3(
+                    UnityEngine.Random.Range(-0.04f, 0.04f),
+                    0f,
+                    UnityEngine.Random.Range(-0.04f, 0.04f));
                 if (HasNearbyDenseFlowerSeedPickup(candidate, denseFlowerSeedDropSpacing))
                     continue;
 
@@ -1624,13 +1702,100 @@ namespace SCoL
             return false;
         }
 
+        void CollectDenseFlowerClusterWorldPoints(int centerX, int centerY, int cellRadius, float worldRadius, List<Vector3> sink)
+        {
+            sink.Clear();
+            if (Grid == null)
+                return;
+
+            float rSqr = worldRadius * worldRadius;
+            Vector3 center = Grid.CellCenterWorld(centerX, centerY);
+            for (int y = centerY - cellRadius; y <= centerY + cellRadius; y++)
+            for (int x = centerX - cellRadius; x <= centerX + cellRadius; x++)
+            {
+                if (!Grid.InBounds(x, y))
+                    continue;
+
+                var cell = Grid.Get(x, y);
+                if (!IsDenseFlowerDropSourceCell(cell))
+                    continue;
+
+                Vector3 candidateCenter = Grid.CellCenterWorld(x, y);
+                Vector2 d = new Vector2(candidateCenter.x - center.x, candidateCenter.z - center.z);
+                if (d.sqrMagnitude > rSqr)
+                    continue;
+
+                sink.Add(GetDenseFlowerDropSourceWorld(x, y));
+            }
+        }
+
+        void CollectDenseFlowerClusterVariants(int centerX, int centerY, int cellRadius, float worldRadius, List<int> sink)
+        {
+            sink.Clear();
+            if (Grid == null)
+                return;
+
+            float rSqr = worldRadius * worldRadius;
+            Vector3 center = Grid.CellCenterWorld(centerX, centerY);
+            for (int y = centerY - cellRadius; y <= centerY + cellRadius; y++)
+            for (int x = centerX - cellRadius; x <= centerX + cellRadius; x++)
+            {
+                if (!Grid.InBounds(x, y))
+                    continue;
+
+                var cell = Grid.Get(x, y);
+                if (!IsDenseFlowerDropSourceCell(cell))
+                    continue;
+
+                Vector3 candidateCenter = Grid.CellCenterWorld(x, y);
+                Vector2 d = new Vector2(candidateCenter.x - center.x, candidateCenter.z - center.z);
+                if (d.sqrMagnitude > rSqr)
+                    continue;
+
+                if (cell.FlowerVariantIndex >= 0 && !sink.Contains(cell.FlowerVariantIndex))
+                    sink.Add(cell.FlowerVariantIndex);
+            }
+        }
+
+        static void Shuffle<T>(List<T> list)
+        {
+            if (list == null)
+                return;
+
+            for (int i = list.Count - 1; i > 0; i--)
+            {
+                int j = UnityEngine.Random.Range(0, i + 1);
+                (list[i], list[j]) = (list[j], list[i]);
+            }
+        }
+
+        Vector3 GetDenseFlowerDropSourceWorld(int x, int y)
+        {
+            if (_plantRenderer != null && _plantRenderer.TryGetActivePlantGameObject(x, y, out var go) && go != null)
+                return go.transform.position + Vector3.up * Mathf.Max(0f, denseFlowerSeedDropHeight);
+
+            return _voxelWorld.ColumnTopWorld(x, y) + Vector3.up * Mathf.Max(0f, denseFlowerSeedDropHeight);
+        }
+
         void SpawnDenseFlowerSeedPickup(Vector3 worldPos, int flowerVariantIndex)
         {
-            var go = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+            if (_spawnPickups == null || !_spawnPickups.isActiveAndEnabled)
+                _spawnPickups = FindFirstObjectByType<SpawnPickups>();
+
+            GameObject prefab = null;
+            if (_spawnPickups != null && _spawnPickups.seedPickupPrefabs != null && _spawnPickups.seedPickupPrefabs.Length > 0)
+            {
+                int idx = Mathf.Clamp(flowerVariantIndex, 0, _spawnPickups.seedPickupPrefabs.Length - 1);
+                prefab = _spawnPickups.seedPickupPrefabs[idx];
+            }
+
+            var go = prefab != null
+                ? Instantiate(prefab)
+                : GameObject.CreatePrimitive(PrimitiveType.Capsule);
             go.name = $"PlayerFlowerSeedDrop_{flowerVariantIndex}_{Time.frameCount}";
-            go.transform.position = worldPos;
-            go.transform.localScale = new Vector3(0.26f, 0.18f, 0.26f);
-            go.transform.rotation = Quaternion.Euler(0f, UnityEngine.Random.Range(0f, 360f), 90f);
+            go.transform.position = worldPos + Vector3.up * Mathf.Max(0f, denseFlowerSeedDropVisibleLift);
+            go.transform.localScale = Vector3.one * Mathf.Max(0.1f, denseFlowerSeedDropScale);
+            go.transform.rotation = Quaternion.Euler(0f, UnityEngine.Random.Range(0f, 360f), prefab != null ? 0f : 90f);
 
             var rb = go.AddComponent<Rigidbody>();
             rb.useGravity = false;
@@ -1640,8 +1805,100 @@ namespace SCoL
             pickup.type = SCoLItemType.Seed;
             pickup.amount = 1;
             pickup.seedVariantIndex = flowerVariantIndex;
-            pickup.preserveExistingMaterials = false;
+            pickup.preserveExistingMaterials = prefab != null;
             pickup.ApplyVisual();
+            EnsurePickupCollider(go);
+            AddDenseFlowerSeedDropGlow(go);
+            if (denseFlowerSeedDropLifetimeSeconds > 0f)
+                Destroy(go, denseFlowerSeedDropLifetimeSeconds);
+
+            FPSGameFeel.VoxelBurst(
+                go.transform.position + Vector3.up * Mathf.Max(0f, denseFlowerSeedDropBurstHeight),
+                count: Mathf.Max(0, denseFlowerSeedDropBurstCount),
+                spread: 0.65f,
+                life: 0.8f,
+                cubeSize: 0.05f);
+        }
+
+        static void EnsurePickupCollider(GameObject go)
+        {
+            if (go == null)
+                return;
+
+            var cols = go.GetComponentsInChildren<Collider>(includeInactive: true);
+            if (cols != null && cols.Length > 0)
+            {
+                for (int i = 0; i < cols.Length; i++)
+                {
+                    var c = cols[i];
+                    if (c == null)
+                        continue;
+                    c.enabled = true;
+                    c.isTrigger = false;
+                }
+                return;
+            }
+
+            var added = go.AddComponent<BoxCollider>();
+            added.enabled = true;
+            added.isTrigger = false;
+        }
+
+        void AddDenseFlowerSeedDropGlow(GameObject go)
+        {
+            if (!denseFlowerSeedDropsGlow || go == null)
+                return;
+
+            var renderers = go.GetComponentsInChildren<Renderer>(includeInactive: true);
+            for (int i = 0; i < renderers.Length; i++)
+            {
+                var renderer = renderers[i];
+                if (renderer == null)
+                    continue;
+
+                var mats = renderer.materials;
+                bool changed = false;
+                for (int j = 0; j < mats.Length; j++)
+                {
+                    var mat = mats[j];
+                    if (mat == null)
+                        continue;
+
+                    Color glowColor = denseFlowerSeedDropGlowColor;
+                    if (mat.HasProperty("_BaseColor"))
+                    {
+                        Color baseColor = mat.GetColor("_BaseColor");
+                        mat.SetColor("_BaseColor", Color.Lerp(baseColor, glowColor, 0.35f));
+                        changed = true;
+                    }
+                    if (mat.HasProperty("_Color"))
+                    {
+                        Color baseColor = mat.GetColor("_Color");
+                        mat.SetColor("_Color", Color.Lerp(baseColor, glowColor, 0.35f));
+                        changed = true;
+                    }
+                    if (mat.HasProperty("_EmissionColor"))
+                    {
+                        mat.EnableKeyword("_EMISSION");
+                        mat.SetColor("_EmissionColor", glowColor * Mathf.Max(0f, denseFlowerSeedDropGlowIntensity));
+                        changed = true;
+                    }
+                }
+
+                if (changed)
+                    renderer.materials = mats;
+            }
+
+            var lightGo = new GameObject("PollinationGlow");
+            lightGo.transform.SetParent(go.transform, false);
+            lightGo.transform.localPosition = Vector3.up * Mathf.Max(0f, denseFlowerSeedDropHaloHeight);
+
+            var glowLight = lightGo.AddComponent<Light>();
+            glowLight.type = LightType.Point;
+            glowLight.color = denseFlowerSeedDropGlowColor;
+            glowLight.range = Mathf.Max(0f, denseFlowerSeedDropGlowRange);
+            glowLight.intensity = Mathf.Max(0f, denseFlowerSeedDropGlowIntensity);
+            glowLight.shadows = LightShadows.None;
         }
 
         bool HasNearbyDenseFlowerSeedPickup(Vector3 worldPos, float radius)

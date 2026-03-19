@@ -111,6 +111,15 @@ namespace SCoL.Visualization
         [Tooltip("If true, fireflies are disabled in bad weather (Rain/Thunderstorm/Snow).")]
         public bool disableFirefliesInBadWeather = true;
 
+        [Tooltip("If enabled, fireflies gather around dense healthy flower clusters instead of just following the camera.")]
+        public bool clusterFirefliesAroundHealthyFlowers = true;
+        [Min(1f)] public float fireflyClusterSearchRadius = 5.5f;
+        [Min(2)] public int fireflyClusterMinFlowers = 3;
+        [Min(0.1f)] public float fireflyClusterFollowLerp = 2.5f;
+        [Range(0.5f, 4f)] public float fireflyClusterEmissionMultiplier = 1.8f;
+        [Range(0.5f, 3f)] public float fireflyClusterBoxScaleMultiplier = 1.35f;
+        public Vector3 fireflyClusterOffset = new Vector3(0f, 1.2f, 0f);
+
         [Range(0, 1000)] public int fireflyMaxParticles = 150;
         [Range(0f, 200f)] public float fireflyEmissionRate = 12f;
         public Vector3 fireflyBoxSize = new Vector3(18f, 6f, 18f);
@@ -134,11 +143,15 @@ namespace SCoL.Visualization
 
         WeatherPhase _lastPhase;
         bool _hasLast;
+        SCoLRuntime _runtime;
         bool _capturedBaseVolumes;
         Vector3 _rainBoxSizeBase;
         Vector3 _snowBoxSizeBase;
         Vector3 _fireflyBoxSizeBase;
         float _autoScale = 1f;
+        bool _hasFireflyClusterTarget;
+        Vector3 _fireflyClusterTarget;
+        float _fireflyClusterStrength = 1f;
 
         void Reset()
         {
@@ -154,6 +167,8 @@ namespace SCoL.Visualization
                 weatherSystem = FindFirstObjectByType<WeatherSystem>();
             if (voxelWorld == null)
                 voxelWorld = FindFirstObjectByType<VoxelWorld>();
+            if (_runtime == null)
+                _runtime = FindFirstObjectByType<SCoLRuntime>();
 
             CaptureBaseVolumeSettingsIfNeeded();
             RefreshAutoScaleFromWorld();
@@ -173,10 +188,13 @@ namespace SCoL.Visualization
                 weatherSystem = FindFirstObjectByType<WeatherSystem>();
             if (voxelWorld == null)
                 voxelWorld = FindFirstObjectByType<VoxelWorld>();
+            if (_runtime == null)
+                _runtime = FindFirstObjectByType<SCoLRuntime>();
 
             CaptureBaseVolumeSettingsIfNeeded();
             RefreshAutoScaleFromWorld();
             ApplyScaledVolumeSettings();
+            UpdateFireflyClusterTarget(weatherSystem != null ? weatherSystem.CurrentPhase : WeatherPhase.Clear);
 
             // Follow camera/target
             if (followMainCamera)
@@ -203,7 +221,7 @@ namespace SCoL.Visualization
                     if (snowParticleSystem != null)
                         snowParticleSystem.transform.position = p;
 
-                    if (fireflyParticleSystem != null)
+                    if (fireflyParticleSystem != null && (!_hasFireflyClusterTarget || !clusterFirefliesAroundHealthyFlowers))
                         fireflyParticleSystem.transform.position = p;
                 }
             }
@@ -242,8 +260,10 @@ namespace SCoL.Visualization
                 {
                     bool active = ShouldShowFireflies(phase);
                     var em = fireflyParticleSystem.emission;
-                    // Fireflies don't use intensity; keep them stable.
-                    em.rateOverTime = active ? fireflyEmissionRate : 0f;
+                    float rate = fireflyEmissionRate;
+                    if (_hasFireflyClusterTarget && clusterFirefliesAroundHealthyFlowers)
+                        rate *= Mathf.Max(1f, fireflyClusterEmissionMultiplier * Mathf.Max(0.5f, _fireflyClusterStrength));
+                    em.rateOverTime = active ? rate : 0f;
                 }
             }
         }
@@ -289,7 +309,10 @@ namespace SCoL.Visualization
             if (fireflyParticleSystem != null)
             {
                 var shape = fireflyParticleSystem.shape;
-                shape.scale = fireflyScaled;
+                if (_hasFireflyClusterTarget && clusterFirefliesAroundHealthyFlowers)
+                    shape.scale = fireflyScaled * Mathf.Max(0.5f, fireflyClusterBoxScaleMultiplier * Mathf.Max(0.5f, _fireflyClusterStrength));
+                else
+                    shape.scale = fireflyScaled;
             }
         }
 
@@ -497,9 +520,17 @@ namespace SCoL.Visualization
 
         bool ShouldShowFireflies(WeatherPhase phase)
         {
+            if (weatherSystem != null && weatherSystem.seasonSource != null)
+            {
+                var season = weatherSystem.seasonSource.GetCurrentSeason();
+                if (season != SeasonSkyboxController.Season.Spring &&
+                    season != SeasonSkyboxController.Season.Summer)
+                    return false;
+            }
+
             if (disableFirefliesInBadWeather)
             {
-                if (phase == WeatherPhase.Rain || phase == WeatherPhase.Thunderstorm || phase == WeatherPhase.Snow)
+                if (phase == WeatherPhase.Thunderstorm || phase == WeatherPhase.Snow)
                     return false;
             }
 
@@ -515,6 +546,83 @@ namespace SCoL.Visualization
             float t = Mathf.Repeat(dayNightController.timeOfDay01, 1f);
             bool isDay = SeasonSkyboxController.IsWithinWrappedRange(t, dayRange01.x, dayRange01.y);
             return !isDay;
+        }
+
+        void UpdateFireflyClusterTarget(WeatherPhase phase)
+        {
+            _hasFireflyClusterTarget = false;
+            _fireflyClusterStrength = 1f;
+
+            if (!clusterFirefliesAroundHealthyFlowers || fireflyParticleSystem == null || !ShouldShowFireflies(phase))
+                return;
+            if (_runtime == null || _runtime.Grid == null)
+                return;
+
+            int bestCount = 0;
+            Vector3 bestCenter = fireflyParticleSystem.transform.position;
+            float radius = Mathf.Max(1f, fireflyClusterSearchRadius);
+            float radiusSqr = radius * radius;
+            int cellRadius = Mathf.Max(1, Mathf.CeilToInt(radius / Mathf.Max(0.001f, _runtime.Grid.CellSize)));
+
+            for (int y = 0; y < _runtime.Grid.Height; y++)
+            for (int x = 0; x < _runtime.Grid.Width; x++)
+            {
+                var cell = _runtime.Grid.Get(x, y);
+                if (!IsHealthyMatureFlower(cell))
+                    continue;
+
+                Vector3 center = _runtime.Grid.CellCenterWorld(x, y);
+                int count = 0;
+                Vector3 accum = Vector3.zero;
+
+                for (int ny = y - cellRadius; ny <= y + cellRadius; ny++)
+                for (int nx = x - cellRadius; nx <= x + cellRadius; nx++)
+                {
+                    if (!_runtime.Grid.InBounds(nx, ny))
+                        continue;
+
+                    var candidate = _runtime.Grid.Get(nx, ny);
+                    if (!IsHealthyMatureFlower(candidate))
+                        continue;
+
+                    Vector3 p = _runtime.Grid.CellCenterWorld(nx, ny);
+                    Vector3 d = p - center;
+                    d.y = 0f;
+                    if (d.sqrMagnitude > radiusSqr)
+                        continue;
+
+                    count++;
+                    accum += p;
+                }
+
+                if (count >= Mathf.Max(2, fireflyClusterMinFlowers) && count > bestCount)
+                {
+                    bestCount = count;
+                    bestCenter = accum / Mathf.Max(1, count);
+                }
+            }
+
+            if (bestCount < Mathf.Max(2, fireflyClusterMinFlowers))
+                return;
+
+            _hasFireflyClusterTarget = true;
+            _fireflyClusterStrength = Mathf.Clamp(bestCount / (float)Mathf.Max(1, fireflyClusterMinFlowers), 1f, 3f);
+            _fireflyClusterTarget = bestCenter + fireflyClusterOffset;
+
+            Vector3 current = fireflyParticleSystem.transform.position;
+            float t = Mathf.Clamp01(Time.deltaTime * Mathf.Max(0.1f, fireflyClusterFollowLerp));
+            fireflyParticleSystem.transform.position = Vector3.Lerp(current, _fireflyClusterTarget, t);
+        }
+
+        static bool IsHealthyMatureFlower(SCoL.CellState cell)
+        {
+            return cell != null &&
+                   cell.HasPlant &&
+                   cell.IsPlayerSeedLineage &&
+                   cell.FlowerVariantIndex >= 0 &&
+                   cell.PlantStage >= PlantStage.MediumTree &&
+                   cell.PlantStage != PlantStage.Burnt &&
+                   cell.PlantHealth > 0.35f;
         }
 
         static Gradient CreateFireflyBlinkGradient()

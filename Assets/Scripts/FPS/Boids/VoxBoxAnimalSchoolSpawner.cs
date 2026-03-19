@@ -63,6 +63,8 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
     private readonly System.Collections.Generic.List<GameObject> _spawned = new System.Collections.Generic.List<GameObject>(128);
     int _spawnSerial;
     GameObject[] _stoneDropPrefabs;
+    GameObject[] _seedDropPrefabs;
+    GameObject[] _plantDropPrefabs;
 
     IEnumerator Start()
     {
@@ -357,9 +359,9 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
             return;
         }
 
-        SpawnPickupDrop(SCoL.Inventory.SCoLItemType.Plant, Mathf.Max(1, herbivorePlantDropAmount), worldPos);
+        SpawnPickupDrop(SCoL.Inventory.SCoLItemType.Plant, Mathf.Max(1, herbivorePlantDropAmount), worldPos, -1, PickPlantDropPrefab());
         if (Random.value <= herbivoreSeedDropChance)
-            SpawnPickupDrop(SCoL.Inventory.SCoLItemType.Seed, 1, worldPos + new Vector3(0.35f, 0f, -0.18f));
+            SpawnPickupDrop(SCoL.Inventory.SCoLItemType.Seed, 1, worldPos + new Vector3(0.35f, 0f, -0.18f), -1, PickSeedDropPrefab());
     }
 
     void SpawnPickupDrop(SCoL.Inventory.SCoLItemType type, int amount, Vector3 worldPos, int seedVariantIndex = -1, GameObject prefab = null)
@@ -414,6 +416,77 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
             var pick = _stoneDropPrefabs[Random.Range(0, _stoneDropPrefabs.Length)];
             if (pick != null)
                 return pick;
+        }
+
+        return null;
+    }
+
+    GameObject PickSeedDropPrefab()
+    {
+        if (_seedDropPrefabs == null || _seedDropPrefabs.Length == 0)
+        {
+            var pickupSpawner = FindFirstObjectByType<SCoL.Inventory.SpawnPickups>();
+            if (pickupSpawner != null && pickupSpawner.seedPickupPrefabs != null && pickupSpawner.seedPickupPrefabs.Length > 0)
+                _seedDropPrefabs = pickupSpawner.seedPickupPrefabs;
+#if UNITY_EDITOR
+            if (_seedDropPrefabs == null || _seedDropPrefabs.Length == 0)
+            {
+                _seedDropPrefabs = new[]
+                {
+                    AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Models/Modeling/_Incoming/Seeds/bean.fbx"),
+                    AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Models/Modeling/_Incoming/Seeds/brownSeed.fbx"),
+                    AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Models/Modeling/_Incoming/Seeds/lightBrownSeed.fbx"),
+                    AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Models/Modeling/_Incoming/Seeds/longSeed.fbx"),
+                    AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Models/Modeling/_Incoming/seed1/seed1.obj"),
+                    AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Models/Modeling/_Incoming/3stageFlowers/Seed/SeedV1.obj"),
+                    AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Models/Modeling/_Incoming/3stageFlowers/Seed/SeedV2.obj"),
+                    AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Models/Modeling/_Incoming/3stageFlowers/Seed/SeedV3.obj")
+                };
+            }
+#endif
+        }
+
+        return PickAnyPrefab(_seedDropPrefabs);
+    }
+
+    GameObject PickPlantDropPrefab()
+    {
+        if (_plantDropPrefabs == null || _plantDropPrefabs.Length == 0)
+        {
+#if UNITY_EDITOR
+            _plantDropPrefabs = new[]
+            {
+                AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Models/Modeling/_Incoming/blue rose/blue rose.obj"),
+                AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Models/Modeling/_Incoming/blue_flower/blue_flower.obj"),
+                AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Models/Modeling/_Incoming/pink rose/pink rose.obj"),
+                AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Models/Modeling/_Incoming/pink tulip/pink tulip.obj"),
+                AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Models/Modeling/_Incoming/red rose/red rose.obj"),
+                AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Models/Modeling/_Incoming/white daisy/white daisy.obj"),
+                AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Models/Modeling/_Incoming/white tulip closed/white tulip closed.obj"),
+                AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Models/Modeling/_Incoming/multi flowers/multi flowers.obj")
+            };
+#endif
+        }
+
+        return PickAnyPrefab(_plantDropPrefabs);
+    }
+
+    static GameObject PickAnyPrefab(GameObject[] prefabs)
+    {
+        if (prefabs == null || prefabs.Length == 0)
+            return null;
+
+        for (int i = 0; i < 8; i++)
+        {
+            var pick = prefabs[Random.Range(0, prefabs.Length)];
+            if (pick != null)
+                return pick;
+        }
+
+        for (int i = 0; i < prefabs.Length; i++)
+        {
+            if (prefabs[i] != null)
+                return prefabs[i];
         }
 
         return null;

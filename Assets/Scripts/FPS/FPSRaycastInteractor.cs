@@ -131,10 +131,15 @@ public class FPSRaycastInteractor : MonoBehaviour
     [Min(0f)] public float plantFollowWeight = 3f;
     [Min(0f)] public float plantFollowFrontOffset = 1.4f;
     [Min(0.1f)] public float plantFollowStopDistance = 1.1f;
+    public bool animalsFleeWhenFireToolSelected = true;
+    [Min(0.1f)] public float fireRepelRadius = 10f;
+    [Min(0f)] public float fireRepelWeight = 5f;
+    [Min(0f)] public float fireRepelFrontOffset = 1.2f;
     public bool plantFeedConsumesInventory = true;
     [Min(0.05f)] public float feedJumpHeight = 0.35f;
     [Min(0.2f)] public float feedReactionDuration = 1.2f;
     [Min(1)] public int feedJumpCount = 3;
+    [Min(0f)] public float fireDamageToAnimals = 20f;
 
     [Header("Stone Throw (RMB)")]
     [Min(0.1f)] public float stoneThrowSpeed = 24f;
@@ -565,10 +570,16 @@ public class FPSRaycastInteractor : MonoBehaviour
                     bool targetingPlant = TryResolveWaterApplicationTarget(hit, out Vector3 waterPoint, out Vector3 waterNormal);
                     bool targetedCAPlant = TryResolveCAPlantCellFromWorld(hit.point, out int waterCellX, out int waterCellY);
                     var targetedLegacyPlant = hit.collider != null ? hit.collider.GetComponentInParent<FPSSeedGrowth>() : null;
+                    bool winterPlantTarget = IsWinterSeasonActive() && (targetedCAPlant || targetedLegacyPlant != null);
 
                     // Non-plant targets still require an upward-facing ground surface.
                     if (!targetingPlant && hit.normal.y < 0.35f)
                         return;
+                    if (winterPlantTarget)
+                    {
+                        if (logHits) Debug.Log("[FPSRaycastInteractor] Water growth disabled during Winter.");
+                        return;
+                    }
 
                     if (!_inventory.TryConsume(SCoL.Inventory.SCoLItemType.Water, 1))
                     {
@@ -615,19 +626,27 @@ public class FPSRaycastInteractor : MonoBehaviour
 
                 case ApplyTool.Fire:
                 {
+                    var animal = hit.collider != null ? hit.collider.GetComponentInParent<FPSBoidAgent>() : null;
                     bool targetingPlant =
                         (hit.collider != null && hit.collider.GetComponentInParent<FPSSeedGrowth>() != null) ||
                         (hit.collider != null && IsHarvestableHierarchy(hit.collider.transform)) ||
                         TryResolveCAPlantCellFromWorld(hit.point, out _, out _);
 
                     // Allow fire on plants even if surface normal is not upward.
-                    if (!targetingPlant && hit.normal.y < 0.35f)
+                    if (animal == null && !targetingPlant && hit.normal.y < 0.35f)
                         return;
 
                     if (!_inventory.TryConsume(SCoL.Inventory.SCoLItemType.Fire, 1))
                     {
                         if (logHits) Debug.Log("[FPSRaycastInteractor] No fire to place");
                         return;
+                    }
+
+                    if (animal != null && fireDamageToAnimals > 0f)
+                    {
+                        var health = animal.GetComponent<SCoL.Combat.SCoLCombatHealth>();
+                        if (health != null)
+                            health.ApplyDamage(fireDamageToAnimals);
                     }
 
                     TryBurnTintTarget(hit);
@@ -1144,6 +1163,14 @@ public class FPSRaycastInteractor : MonoBehaviour
             plantFollowWeight,
             plantFollowStopDistance,
             plantFollowFrontOffset
+        );
+        bool fireEnabled = animalsFleeWhenFireToolSelected && currentTool == ApplyTool.Fire;
+        FPSBoidAgent.SetFireRepellent(
+            fireEnabled ? cameraSource.transform : null,
+            fireEnabled,
+            fireRepelRadius,
+            fireRepelWeight,
+            fireRepelFrontOffset
         );
     }
 
