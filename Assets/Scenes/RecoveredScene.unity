@@ -259,11 +259,16 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SCoL.Inventory.SpawnPickups
   seedCount: 70
+  waterCount: 50
   fireCount: 70
+  stoneCount: 24
   seedPickupPrefab: {fileID: 0}
   firePickupPrefab: {fileID: 0}
+  waterPickupPrefab: {fileID: 0}
   seedPickupPrefabs: []
+  waterPickupPrefabs: []
   firePickupPrefabs: []
+  stonePickupPrefabs: []
   seedVariantTextures: []
   useSeedShapeVariants: 1
   scatterAcrossGrid: 1
@@ -384,7 +389,7 @@ MonoBehaviour:
   thunderDurationRange: {x: 4, y: 5}
   snowDurationRange: {x: 12, y: 20}
   phaseStickiness: 1.25
-  thunderAfterConsecutiveRainSegments: 1
+  thunderAfterConsecutiveRainSegments: 2
   thunderGuaranteedWhenQueued: 1
   thunderTriggerProbability: 0.8
   enableWind: 1
@@ -447,6 +452,7 @@ MonoBehaviour:
   animalCount: 18
   enforceMinimumAnimalCount: 1
   minimumAnimalCount: 24
+  wolfCount: 4
   spawnOnStart: 1
   maxSpawnAttemptsPerAnimal: 8
   groundOffset: 0.02
@@ -469,6 +475,13 @@ MonoBehaviour:
   eatHoldSeconds: 2
   eatAction: 1
   logSpawnInfo: 0
+  maintainPopulationByRespawning: 1
+  respawnDelaySeconds: 4.5
+  enableDeathFeedback: 1
+  enableDeathDrops: 1
+  wolfStoneDropAmount: 2
+  herbivorePlantDropAmount: 1
+  herbivoreSeedDropChance: 0.4
 --- !u!4 &571384967
 Transform:
   m_ObjectHideFlags: 0
@@ -5488,7 +5501,7 @@ MonoBehaviour:
   winterNight: {fileID: 2100000, guid: ebd52a9852ac546f89b3f3f87dae3b71, type: 2}
   mode: 2
   manualSeason: 0
-  cycleSeconds: 40
+  cycleSeconds: 120
   dayNightController: {fileID: 1270282486}
   dayRange01: {x: 0.25, y: 0.75}
   systemDayStartHour: 7
@@ -10602,6 +10615,7 @@ MonoBehaviour:
   water: 30
   fire: 30
   plants: 30
+  stones: 0
   applyMinimumStarterInventoryOnAwake: 1
   starterSeeds: 10
   starterRoseglowSeeds: 100
@@ -10610,10 +10624,12 @@ MonoBehaviour:
   starterWater: 10
   starterFire: 10
   starterPlants: 10
+  starterStones: 50
   discoveredSeed: 1
   discoveredWater: 1
   discoveredFire: 1
   discoveredPlant: 1
+  discoveredStone: 0
 --- !u!1 &980379203
 GameObject:
   m_ObjectHideFlags: 0
@@ -11022,7 +11038,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::SCoL.Visualization.DayNightLightingController
   timeOfDay01: 0.5
   advanceTime: 1
-  cycleDurationSeconds: 20
+  cycleDurationSeconds: 40
   setTimeOnStart: 0
   startTime01: 0.5
   dayHours: 18
@@ -11248,6 +11264,10 @@ MonoBehaviour:
   extinguishFireClip: {fileID: 8300000, guid: 465a35a327b1540239257deb69dd6657, type: 3}
   plantSeedClip: {fileID: 8300000, guid: c9b24be035df24ab89efb6119066ec7d, type: 3}
   destroySeedClip: {fileID: 8300000, guid: 9ed9a8caab8644f5b93163471193fbbe, type: 3}
+  waterFillClip: {fileID: 8300000, guid: 2031026b8d3074960a0e18285e08413a, type: 3}
+  waterDropClip: {fileID: 8300000, guid: 2e7a124802392450384daf101af246fe, type: 3}
+  toggleSwitchClip: {fileID: 8300000, guid: a3c0e79ae6a06477aa6d62a9f7192744, type: 3}
+  pickupItemClip: {fileID: 8300000, guid: f8df6c447df3f4f8abb52514eb022636, type: 3}
   interactionSfxVolume: 1
   enableThunderFlash: 1
   lightningFlashDuration: 0.287
@@ -17284,6 +17304,13 @@ MonoBehaviour:
   firePlaceAnimationClips: []
   firePlaceV1AnimationClips: []
   firePlaceV2AnimationClips: []
+  waterPlacePrefabs: []
+  waterPlacePrefabScale: 0.9
+  waterPlacePrefabSizeMultiplier: 3.5
+  waterPlaceSpawnHeight: 0.45
+  waterPlaceTargetHeight: 2.8
+  autoPlayWaterModelAnimation: 1
+  waterPlaceAnimationClips: []
   useImportedPlantStageModels: 1
   sproutStagePrefab: {fileID: 0}
   smallStagePrefab: {fileID: 0}
@@ -17301,10 +17328,20 @@ MonoBehaviour:
   animalsFollowWhenPlantToolSelected: 1
   plantFollowRadius: 8
   plantFollowWeight: 3
+  plantFollowFrontOffset: 1.4
+  plantFollowStopDistance: 1.1
   plantFeedConsumesInventory: 1
   feedJumpHeight: 0.35
   feedReactionDuration: 1.2
   feedJumpCount: 3
+  stoneThrowSpeed: 24
+  stoneThrowUpwardBias: 0.08
+  stoneSpawnForwardOffset: 0.55
+  stoneSpawnVerticalOffset: 0.1
+  stoneProjectileScale: 0.32
+  stoneProjectileLifetime: 6
+  stoneDamage: 10
+  stoneProjectilePrefabs: []
   plantDestroyClicksRequired: 4
   plantDestroyClickWindowSeconds: 2
   fireLoopAudioSource: {fileID: 9000000008}
@@ -17316,6 +17353,13 @@ MonoBehaviour:
   collectPickupsOnRightClick: 1
   collectWaterFromRegionOnRightClick: 1
   waterCollectAmount: 1
+  showHeldWaterCan: 1
+  heldWaterCanPrefab: {fileID: 0}
+  heldWaterCanLocalPosition: {x: 0.32, y: -0.28, z: 0.62}
+  heldWaterCanLocalEuler: {x: 12, y: -24, z: -12}
+  heldWaterCanScale: 0.42
+  heldWaterCanTint: {r: 0.24, g: 0.68, b: 0.96, a: 1}
+  heldWaterCanEmission: 0.18
   pickPlantsOnPrimaryClick: 1
   plantPickupAmount: 1
 --- !u!114 &9000000007
