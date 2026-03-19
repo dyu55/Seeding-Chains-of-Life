@@ -680,13 +680,9 @@ namespace SCoL.Visualization
             _sb.Append("<size=24><color=#7FD390><b>Seeds</b></color> ");
             _sb.Append(_inventory.seeds);
             _sb.AppendLine("</size>");
-            _sb.Append("<color=#F4DFA2><b>Rose</b></color> ");
-            _sb.Append(_inventory.GetSeedTypeCount(0));
-            _sb.Append("    <color=#E8B96A><b>Amber</b></color> ");
-            _sb.AppendLine(_inventory.GetSeedTypeCount(1).ToString());
-            _sb.Append("<color=#B8C3FF><b>Moon</b></color> ");
-            _sb.Append(_inventory.GetSeedTypeCount(2));
-            _sb.Append("    <color=#7FD390><b>Held</b></color> ");
+            _sb.Append("<color=#F4DFA2><b>Types</b></color> ");
+            _sb.AppendLine(_inventory.GetSeedTypeSummary());
+            _sb.Append("<color=#7FD390><b>Held</b></color> ");
             _sb.AppendLine(_inventory.GetSeedTypeDisplayName(selected));
             _sb.Append("<color=#67C8FF><b>Water</b></color> ");
             _sb.Append(_inventory.water);

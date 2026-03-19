@@ -441,14 +441,14 @@ namespace SCoL.Inventory
             if ((seedPickupPrefabs == null || seedPickupPrefabs.Length == 0) && seedPickupPrefab == null)
             {
                 seedPickupPrefabs = LoadPrefabArray(
+                    "Assets/Models/Modeling/_Incoming/Seeds/bean.fbx",
+                    "Assets/Models/Modeling/_Incoming/Seeds/brownSeed.fbx",
+                    "Assets/Models/Modeling/_Incoming/Seeds/lightBrownSeed.fbx",
+                    "Assets/Models/Modeling/_Incoming/Seeds/longSeed.fbx",
                     "Assets/Models/Modeling/_Incoming/seed1/seed1.obj",
                     "Assets/Models/Modeling/_Incoming/3stageFlowers/Seed/SeedV1.obj",
                     "Assets/Models/Modeling/_Incoming/3stageFlowers/Seed/SeedV2.obj",
-                    "Assets/Models/Modeling/_Incoming/3stageFlowers/Seed/SeedV3.obj",
-                    "Assets/Models/Modeling/_Incoming/Seeds/lightBrownSeed.fbx",
-                    "Assets/Models/Modeling/_Incoming/Seeds/brownSeed.fbx",
-                    "Assets/Models/Modeling/_Incoming/Seeds/bean.fbx",
-                    "Assets/Models/Modeling/_Incoming/Seeds/longSeed.fbx"
+                    "Assets/Models/Modeling/_Incoming/3stageFlowers/Seed/SeedV3.obj"
                 );
             }
 
@@ -505,21 +505,16 @@ namespace SCoL.Inventory
                 ? prefab.name.ToLowerInvariant()
                 : string.Empty;
 
-            // Requested mappings:
-            // bean -> 0, brownSeed -> 1, lightBrownSeed -> 2, longSeed -> 3.
-            // Keep older SeedV* names mapped for compatibility.
-            if (n.Contains("seedv1")) return 0;
-            if (n.Contains("seedv2")) return 1;
-            if (n.Contains("seedv3")) return 2;
-            if (n.Contains("seed1")) return 3;
-
-            // Explicit mappings for imported Seeds folder names.
             if (n.Contains("bean")) return 0;
             if (n.Contains("brownseed") && !n.Contains("lightbrownseed")) return 1;
             if (n.Contains("lightbrownseed") || n.Contains("light_brownseed") || n.Contains("lightbrown_seed")) return 2;
             if (n.Contains("longseed") || n.Contains("long_seed")) return 3;
+            if (n.Contains("seed1")) return 4;
+            if (n.Contains("seedv1")) return 5;
+            if (n.Contains("seedv2")) return 6;
+            if (n.Contains("seedv3")) return 7;
 
-            return Mathf.Abs(fallbackSeed) % 4;
+            return Mathf.Abs(fallbackSeed) % 8;
         }
 
         private void SnapBottomToGround(GameObject go, Vector3 aroundPos)

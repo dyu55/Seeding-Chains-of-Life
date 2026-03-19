@@ -26,7 +26,8 @@ namespace SCoL.Visualization
             WaterFill,
             WaterDrop,
             ToggleSwitch,
-            PickupItem
+            PickupItem,
+            ThrowStone
         }
 
         static DayNightLightingController _instance;
@@ -122,6 +123,7 @@ namespace SCoL.Visualization
         public AudioClip waterDropClip;
         public AudioClip toggleSwitchClip;
         public AudioClip pickupItemClip;
+        public AudioClip throwStoneClip;
         [Range(0f, 1f)] public float interactionSfxVolume = 1f;
 
         [Header("Thunderstorm Lightning Flash (optional)")]
@@ -147,16 +149,16 @@ namespace SCoL.Visualization
 
         [Header("Brightness Tuning")]
         [Tooltip("Global brightness multiplier applied to sun/ambient/reflections.")]
-        [Range(0.5f, 2.0f)] public float globalBrightnessBoost = 1.2f;
+        [Range(0.5f, 2.0f)] public float globalBrightnessBoost = 1.45f;
 
         [Tooltip("Minimum ambient intensity during daytime to avoid overly dark visuals.")]
-        [Min(0f)] public float daytimeAmbientFloor = 0.42f;
+        [Min(0f)] public float daytimeAmbientFloor = 0.58f;
 
         [Tooltip("Minimum directional light intensity when the sun is above horizon.")]
-        [Min(0f)] public float daytimeSunFloor = 0.95f;
+        [Min(0f)] public float daytimeSunFloor = 1.15f;
 
         [Tooltip("Global multiplier for fog density; lower values brighten distant view.")]
-        [Range(0.2f, 2.0f)] public float fogDensityGlobalScale = 0.82f;
+        [Range(0.2f, 2.0f)] public float fogDensityGlobalScale = 0.62f;
 
         [Header("Performance")]
         [Tooltip("If enabled, calls DynamicGI.UpdateEnvironment() at a throttled interval.")]
@@ -232,6 +234,7 @@ namespace SCoL.Visualization
                 InteractionSfx.WaterDrop => waterDropClip,
                 InteractionSfx.ToggleSwitch => toggleSwitchClip,
                 InteractionSfx.PickupItem => pickupItemClip,
+                InteractionSfx.ThrowStone => throwStoneClip,
                 _ => null
             };
             if (clip == null) return;
@@ -296,6 +299,8 @@ namespace SCoL.Visualization
                 toggleSwitchClip = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Sounds/toggleswitch.mp3");
             if (pickupItemClip == null)
                 pickupItemClip = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Sounds/pickupitem.mp3");
+            if (throwStoneClip == null)
+                throwStoneClip = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Sounds/throwstone.mp3");
 
             if (!isActiveAndEnabled) return;
             // Apply in edit mode too (nice for tuning curves/gradients)

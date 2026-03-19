@@ -29,6 +29,8 @@ namespace SCoL
         [Header("Rendering (Optional)")]
         [Tooltip("Render CA plant states using PlantVoxelRenderer (VoxBox prefabs / fallbacks).")]
         public bool enablePlantVoxelRenderer = true;
+        [Tooltip("Optional scene PlantVoxelRenderer to reuse instead of creating a runtime fallback.")]
+        public PlantVoxelRenderer plantVoxelRendererOverride;
 
         [Header("Initial Ecology")]
         [Tooltip("Seed an initial set of plants so cellular automata has a starting population.")]
@@ -258,7 +260,13 @@ namespace SCoL
             // Default OFF: keep the scene clean so you can populate it with imported models.
             if (enablePlantVoxelRenderer)
             {
-                _plantRenderer = FindFirstObjectByType<PlantVoxelRenderer>();
+                _plantRenderer = plantVoxelRendererOverride;
+                if (_plantRenderer == null)
+                {
+                    var renderers = FindObjectsByType<PlantVoxelRenderer>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+                    if (renderers != null && renderers.Length > 0)
+                        _plantRenderer = renderers[0];
+                }
                 if (_plantRenderer == null)
                 {
                     var pgo = new GameObject("PlantVoxelRenderer");

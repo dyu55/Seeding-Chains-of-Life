@@ -626,6 +626,133 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &693421561
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 693421563}
+  - component: {fileID: 693421562}
+  m_Layer: 0
+  m_Name: PlantRender
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &693421562
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 693421561}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 83436c81bda584a11bc481734a1acb08, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SCoL.Visualization.PlantVoxelRenderer
+  runtime: {fileID: 0}
+  voxelWorld: {fileID: 0}
+  useInspectorSeedGrowthProfiles: 1
+  seedGrowthProfiles:
+  - seedName: Bean
+    variantIndex: 0
+    stage1Prefab: {fileID: 919132149155446097, guid: 7065d1943f0af41e497c379fe4d01007, type: 3}
+    stage2Prefab: {fileID: 919132149155446097, guid: 1a6c3a555cc414011afa9d39f5650542, type: 3}
+    finalFlowerPrefab: {fileID: 919132149155446097, guid: e333d0cc5760f457893063a806cc9083, type: 3}
+    stage1ScaleMultiplier: 1
+    stage2ScaleMultiplier: 1
+    finalFlowerScaleMultiplier: 2
+  - seedName: BrownSeed
+    variantIndex: 1
+    stage1Prefab: {fileID: 919132149155446097, guid: 7065d1943f0af41e497c379fe4d01007, type: 3}
+    stage2Prefab: {fileID: 919132149155446097, guid: 1a6c3a555cc414011afa9d39f5650542, type: 3}
+    finalFlowerPrefab: {fileID: 919132149155446097, guid: 8569f16ed03a449fb886d67daa79f48c, type: 3}
+    stage1ScaleMultiplier: 1
+    stage2ScaleMultiplier: 1
+    finalFlowerScaleMultiplier: 2
+  - seedName: LightBrownSeed
+    variantIndex: 2
+    stage1Prefab: {fileID: 919132149155446097, guid: 7065d1943f0af41e497c379fe4d01007, type: 3}
+    stage2Prefab: {fileID: 919132149155446097, guid: 1a6c3a555cc414011afa9d39f5650542, type: 3}
+    finalFlowerPrefab: {fileID: 919132149155446097, guid: 024b3971532654e8c934e11472166c79, type: 3}
+    stage1ScaleMultiplier: 1
+    stage2ScaleMultiplier: 1
+    finalFlowerScaleMultiplier: 2
+  - seedName: LongSeed
+    variantIndex: 3
+    stage1Prefab: {fileID: 919132149155446097, guid: 7065d1943f0af41e497c379fe4d01007, type: 3}
+    stage2Prefab: {fileID: 919132149155446097, guid: 1a6c3a555cc414011afa9d39f5650542, type: 3}
+    finalFlowerPrefab: {fileID: 919132149155446097, guid: edf3c9fd5ac1d437792380193be6df49, type: 3}
+    stage1ScaleMultiplier: 1
+    stage2ScaleMultiplier: 1
+    finalFlowerScaleMultiplier: 2
+  smallPlantPrefabs:
+  - {fileID: 919132149155446097, guid: 7065d1943f0af41e497c379fe4d01007, type: 3}
+  - {fileID: 919132149155446097, guid: 7065d1943f0af41e497c379fe4d01007, type: 3}
+  - {fileID: 919132149155446097, guid: 7065d1943f0af41e497c379fe4d01007, type: 3}
+  - {fileID: 919132149155446097, guid: 7065d1943f0af41e497c379fe4d01007, type: 3}
+  smallTreePrefabs:
+  - {fileID: 919132149155446097, guid: 1a6c3a555cc414011afa9d39f5650542, type: 3}
+  - {fileID: 919132149155446097, guid: 1a6c3a555cc414011afa9d39f5650542, type: 3}
+  - {fileID: 919132149155446097, guid: 1a6c3a555cc414011afa9d39f5650542, type: 3}
+  - {fileID: 919132149155446097, guid: 1a6c3a555cc414011afa9d39f5650542, type: 3}
+  mediumTreePrefabs:
+  - {fileID: 919132149155446097, guid: e333d0cc5760f457893063a806cc9083, type: 3}
+  - {fileID: 919132149155446097, guid: 8569f16ed03a449fb886d67daa79f48c, type: 3}
+  - {fileID: 919132149155446097, guid: 024b3971532654e8c934e11472166c79, type: 3}
+  - {fileID: 919132149155446097, guid: edf3c9fd5ac1d437792380193be6df49, type: 3}
+  largeTreePrefabs: []
+  enableManualFlowerVariantSelection: 1
+  selectedFlowerVariantIndex: 0
+  defaultToFirstCuratedFlower: 1
+  addMinecraftSunflowerVariant: 0
+  sunflowerTextureAssetPath: Assets/Models/Modeling/_Incoming/Flowers/Sunflower/Sunflower_BE7.png
+  sunflowerPlaneSize: {x: 2.7, y: 4.8}
+  sunflowerBottomYOffset: 0
+  sunflowerRemoveBlackBackground: 1
+  sunflowerBlackCutoff: 0.2
+  sunflowerBlackSoftness: 0.08
+  sunflowerBackgroundTolerance: 0.18
+  smallPlantScaleRange: {x: 0.28, y: 0.45}
+  smallTreeScaleRange: {x: 0.85, y: 1.1}
+  mediumTreeScaleRange: {x: 1.1, y: 1.35}
+  largeTreeScaleRange: {x: 1.35, y: 1.7}
+  burntScaleRange: {x: 0.2, y: 0.3}
+  smallPlantBaseScaleMultiplier: 0.5
+  wateredSmallPlantScaleBonus: 0.1
+  smallPlantYOffset: 0
+  treeYOffset: 0
+  enforceFlowerStageHeightProgression: 1
+  stage1TargetHeight: 1.8
+  stage2TargetHeight: 2.88
+  stage3TargetHeight: 4.08
+  stageHeightScaleClampMin: 0.35
+  stageHeightScaleClampMax: 2.8
+  fallbackSmallPlantColor: {r: 0.35, g: 0.88, b: 0.42, a: 1}
+  fallbackSmallTreeColor: {r: 0.44, g: 0.74, b: 0.36, a: 1}
+  fallbackMediumTreeColor: {r: 0.35, g: 0.62, b: 0.31, a: 1}
+  fallbackLargeTreeColor: {r: 0.26, g: 0.48, b: 0.26, a: 1}
+  fallbackBurntColor: {r: 0.08, g: 0.08, b: 0.08, a: 1}
+--- !u!4 &693421563
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 693421561}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -29.36227, y: -41.81824, z: -1.01174}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &825973265
 GameObject:
   m_ObjectHideFlags: 0
@@ -11268,6 +11395,7 @@ MonoBehaviour:
   waterDropClip: {fileID: 8300000, guid: 2e7a124802392450384daf101af246fe, type: 3}
   toggleSwitchClip: {fileID: 8300000, guid: a3c0e79ae6a06477aa6d62a9f7192744, type: 3}
   pickupItemClip: {fileID: 8300000, guid: f8df6c447df3f4f8abb52514eb022636, type: 3}
+  throwStoneClip: {fileID: 8300000, guid: b1eef3c322b5547c29a3f102d836514b, type: 3}
   interactionSfxVolume: 1
   enableThunderFlash: 1
   lightningFlashDuration: 0.287
@@ -17294,7 +17422,7 @@ MonoBehaviour:
   suppressTempSpreadVisualsOnLowPoly: 0
   spreadVisualInnerRadius: 0.2
   spreadVisualEdgeSoftness: 0.3
-  waterSpreadVisualScale: 1.15
+  waterSpreadVisualScale: 0.458
   fireSpreadVisualScale: 1
   spreadVisualLift: 0.02
   firePlacePrefabs: []
@@ -17305,10 +17433,15 @@ MonoBehaviour:
   firePlaceV1AnimationClips: []
   firePlaceV2AnimationClips: []
   waterPlacePrefabs: []
-  waterPlacePrefabScale: 0.9
-  waterPlacePrefabSizeMultiplier: 3.5
-  waterPlaceSpawnHeight: 0.45
-  waterPlaceTargetHeight: 2.8
+  waterPlacePrefabScale: 0.1
+  waterPlacePrefabSizeMultiplier: 0.01
+  waterPlaceSpawnHeight: 1.38
+  waterPlacePositionOffset: {x: 0, y: 0.55, z: 0}
+  waterPlaceEulerOffset: {x: 0, y: 0, z: 0}
+  waterPlaceScaleMultiplier: {x: 1, y: 0.58, z: 1}
+  waterPlaceTargetHeight: 0.86
+  waterEffectLifetimeSeconds: 0.18
+  waterAnimationSpeed: 2.25
   autoPlayWaterModelAnimation: 1
   waterPlaceAnimationClips: []
   useImportedPlantStageModels: 1
@@ -17353,13 +17486,29 @@ MonoBehaviour:
   collectPickupsOnRightClick: 1
   collectWaterFromRegionOnRightClick: 1
   waterCollectAmount: 1
-  showHeldWaterCan: 1
+  showHeldToolVisuals: 1
   heldWaterCanPrefab: {fileID: 0}
   heldWaterCanLocalPosition: {x: 0.32, y: -0.28, z: 0.62}
   heldWaterCanLocalEuler: {x: 12, y: -24, z: -12}
   heldWaterCanScale: 0.42
   heldWaterCanTint: {r: 0.24, g: 0.68, b: 0.96, a: 1}
   heldWaterCanEmission: 0.18
+  heldFirePrefab: {fileID: 0}
+  heldFireLocalPosition: {x: 0.34, y: -0.3, z: 0.58}
+  heldFireLocalEuler: {x: 18, y: -32, z: -18}
+  heldFireScale: 0.34
+  heldSeedPrefab: {fileID: 0}
+  heldSeedLocalPosition: {x: 0.31, y: -0.31, z: 0.56}
+  heldSeedLocalEuler: {x: 14, y: -18, z: -12}
+  heldSeedScale: 0.26
+  heldPlantPrefab: {fileID: 0}
+  heldPlantLocalPosition: {x: 0.3, y: -0.3, z: 0.56}
+  heldPlantLocalEuler: {x: 10, y: -12, z: -8}
+  heldPlantScale: 0.28
+  heldStonePrefab: {fileID: 0}
+  heldStoneLocalPosition: {x: 0.34, y: -0.34, z: 0.56}
+  heldStoneLocalEuler: {x: 8, y: -16, z: -10}
+  heldStoneScale: 0.24
   pickPlantsOnPrimaryClick: 1
   plantPickupAmount: 1
 --- !u!114 &9000000007
@@ -17509,3 +17658,4 @@ SceneRoots:
   - {fileID: 571384967}
   - {fileID: 627328408}
   - {fileID: 149690701}
+  - {fileID: 693421563}

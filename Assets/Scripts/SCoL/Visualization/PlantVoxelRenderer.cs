@@ -23,10 +23,20 @@ namespace SCoL.Visualization
             [Min(0)] public int variantIndex = 0;
             [Tooltip("Stage 1 visual (sprout/flower stage 1).")]
             public GameObject stage1Prefab;
+            [Tooltip("Optional stage 1 alternatives. One is chosen deterministically per planted cell.")]
+            public GameObject[] stage1PrefabOptions;
             [Tooltip("Stage 2 visual (sprout/flower stage 2).")]
             public GameObject stage2Prefab;
+            [Tooltip("Optional stage 2 alternatives. One is chosen deterministically per planted cell.")]
+            public GameObject[] stage2PrefabOptions;
             [Tooltip("Final flower result for this seed.")]
             public GameObject finalFlowerPrefab;
+            [Tooltip("Optional final flower alternatives. One is chosen deterministically per planted cell.")]
+            public GameObject[] finalFlowerPrefabOptions;
+            [Header("Stage Scale Multipliers")]
+            [Min(0.05f)] public float stage1ScaleMultiplier = 1f;
+            [Min(0.05f)] public float stage2ScaleMultiplier = 1f;
+            [Min(0.05f)] public float finalFlowerScaleMultiplier = 1.7f;
         }
 
         public SCoLRuntime runtime;
@@ -101,6 +111,7 @@ namespace SCoL.Visualization
             public GameObject go;
             public PlantStage stage;
             public int variant;
+            public int prefabId;
         }
 
         private readonly Dictionary<int, ActivePlant> _active = new();
@@ -142,6 +153,10 @@ namespace SCoL.Visualization
                 new SeedGrowthProfile { seedName = "BrownSeed", variantIndex = 1 },
                 new SeedGrowthProfile { seedName = "LightBrownSeed", variantIndex = 2 },
                 new SeedGrowthProfile { seedName = "LongSeed", variantIndex = 3 },
+                new SeedGrowthProfile { seedName = "Seed1", variantIndex = 4 },
+                new SeedGrowthProfile { seedName = "SeedV1", variantIndex = 5 },
+                new SeedGrowthProfile { seedName = "SeedV2", variantIndex = 6 },
+                new SeedGrowthProfile { seedName = "SeedV3", variantIndex = 7 },
             };
         }
 
@@ -159,7 +174,9 @@ namespace SCoL.Visualization
                     continue;
 
                 maxVariant = Mathf.Max(maxVariant, p.variantIndex);
-                if (p.stage1Prefab != null || p.stage2Prefab != null || p.finalFlowerPrefab != null)
+                if (GetPrimaryProfilePrefab(p, PlantStage.SmallPlant) != null ||
+                    GetPrimaryProfilePrefab(p, PlantStage.SmallTree) != null ||
+                    GetPrimaryProfilePrefab(p, PlantStage.MediumTree) != null)
                     hasAnyPrefab = true;
             }
 
@@ -177,9 +194,12 @@ namespace SCoL.Visualization
                 if (p == null || p.variantIndex < 0 || p.variantIndex >= len)
                     continue;
 
-                if (p.stage1Prefab != null) stage1[p.variantIndex] = p.stage1Prefab;
-                if (p.stage2Prefab != null) stage2[p.variantIndex] = p.stage2Prefab;
-                if (p.finalFlowerPrefab != null) stage3[p.variantIndex] = p.finalFlowerPrefab;
+                var stage1Prefab = GetPrimaryProfilePrefab(p, PlantStage.SmallPlant);
+                var stage2Prefab = GetPrimaryProfilePrefab(p, PlantStage.SmallTree);
+                var stage3Prefab = GetPrimaryProfilePrefab(p, PlantStage.MediumTree);
+                if (stage1Prefab != null) stage1[p.variantIndex] = stage1Prefab;
+                if (stage2Prefab != null) stage2[p.variantIndex] = stage2Prefab;
+                if (stage3Prefab != null) stage3[p.variantIndex] = stage3Prefab;
             }
 
             smallPlantPrefabs = stage1;
@@ -280,45 +300,100 @@ namespace SCoL.Visualization
 #if UNITY_EDITOR
         private bool TryAssignLatestImportedFlowerModels()
         {
-            var stage1 = AssetDatabase.LoadAssetAtPath<GameObject>(
+            var flowerStage1 = AssetDatabase.LoadAssetAtPath<GameObject>(
                 "Assets/Models/Modeling/_Incoming/flower stage 1.obj/flower stage 1.obj");
-            var stage2 = AssetDatabase.LoadAssetAtPath<GameObject>(
+            var flowerStage2 = AssetDatabase.LoadAssetAtPath<GameObject>(
                 "Assets/Models/Modeling/_Incoming/flower stage 2.obj/flower stage 2.obj");
-            var finalFlowers = LoadPrefabs(
-                "Assets/Models/Modeling/_Incoming/blue rose/blue rose.obj",
-                "Assets/Models/Modeling/_Incoming/blue tulip/blue tulip.obj",
-                "Assets/Models/Modeling/_Incoming/blue yellow flower/blue yellow flower.obj",
-                "Assets/Models/Modeling/_Incoming/blue_flower/blue_flower.obj",
-                "Assets/Models/Modeling/_Incoming/multi flowers/multi flowers.obj",
-                "Assets/Models/Modeling/_Incoming/pink rose/pink rose.obj",
-                "Assets/Models/Modeling/_Incoming/pink tulip/pink tulip.obj",
-                "Assets/Models/Modeling/_Incoming/purple tulip open/purple tulip open.obj",
-                "Assets/Models/Modeling/_Incoming/red rose/red rose.obj",
-                "Assets/Models/Modeling/_Incoming/red tulip open/red tulip open.obj",
-                "Assets/Models/Modeling/_Incoming/white daisy/white daisy.obj",
+            var beanBlueFlower = AssetDatabase.LoadAssetAtPath<GameObject>(
+                "Assets/Models/Modeling/_Incoming/blue_flower/blue_flower.obj");
+            var beanBlueYellowFlower = AssetDatabase.LoadAssetAtPath<GameObject>(
+                "Assets/Models/Modeling/_Incoming/blue yellow flower/blue yellow flower.obj");
+            var beanBlueRose = AssetDatabase.LoadAssetAtPath<GameObject>(
+                "Assets/Models/Modeling/_Incoming/blue rose/blue rose.obj");
+            var blueTulip = AssetDatabase.LoadAssetAtPath<GameObject>(
+                "Assets/Models/Modeling/_Incoming/blue tulip/blue tulip.obj");
+            var whiteDaisy = AssetDatabase.LoadAssetAtPath<GameObject>(
+                "Assets/Models/Modeling/_Incoming/white daisy/white daisy.obj");
+            var whiteTulipClosed = AssetDatabase.LoadAssetAtPath<GameObject>(
                 "Assets/Models/Modeling/_Incoming/white tulip closed/white tulip closed.obj");
+            var pinkRose = AssetDatabase.LoadAssetAtPath<GameObject>(
+                "Assets/Models/Modeling/_Incoming/pink rose/pink rose.obj");
+            var pinkTulip = AssetDatabase.LoadAssetAtPath<GameObject>(
+                "Assets/Models/Modeling/_Incoming/pink tulip/pink tulip.obj");
+            var redRose = AssetDatabase.LoadAssetAtPath<GameObject>(
+                "Assets/Models/Modeling/_Incoming/red rose/red rose.obj");
+            var purpleTulipOpen = AssetDatabase.LoadAssetAtPath<GameObject>(
+                "Assets/Models/Modeling/_Incoming/purple tulip open/purple tulip open.obj");
+            var redTulipOpen = AssetDatabase.LoadAssetAtPath<GameObject>(
+                "Assets/Models/Modeling/_Incoming/red tulip open/red tulip open.obj");
+            var seedV1Sprout = AssetDatabase.LoadAssetAtPath<GameObject>(
+                "Assets/Models/Modeling/_Incoming/3stageFlowers/Sprout/SeedV1Sprout.obj");
+            var seedV2Sprout = AssetDatabase.LoadAssetAtPath<GameObject>(
+                "Assets/Models/Modeling/_Incoming/3stageFlowers/Sprout/SeedV2Sprout.obj");
+            var seedV3Sprout = AssetDatabase.LoadAssetAtPath<GameObject>(
+                "Assets/Models/Modeling/_Incoming/3stageFlowers/Sprout/SeedV3Sprout.obj");
+            var sproutV1 = AssetDatabase.LoadAssetAtPath<GameObject>(
+                "Assets/Models/Modeling/_Incoming/3stageFlowers/Sprout/SproutV1.obj");
+            var sproutV2 = AssetDatabase.LoadAssetAtPath<GameObject>(
+                "Assets/Models/Modeling/_Incoming/3stageFlowers/Sprout/SproutV2.obj");
+            var sproutV3 = AssetDatabase.LoadAssetAtPath<GameObject>(
+                "Assets/Models/Modeling/_Incoming/3stageFlowers/Sprout/SproutV3.obj");
+            var flowerV1 = AssetDatabase.LoadAssetAtPath<GameObject>(
+                "Assets/Models/Modeling/_Incoming/3stageFlowers/Flowers/FlowerV1.obj");
+            var flowerV2 = AssetDatabase.LoadAssetAtPath<GameObject>(
+                "Assets/Models/Modeling/_Incoming/3stageFlowers/Flowers/FlowerV2.obj");
+            var flowerV3 = AssetDatabase.LoadAssetAtPath<GameObject>(
+                "Assets/Models/Modeling/_Incoming/3stageFlowers/Flowers/FlowerV3.obj");
 
-            if (stage1 == null || stage2 == null || finalFlowers == null || finalFlowers.Length == 0)
+            if (flowerStage1 == null || flowerStage2 == null ||
+                beanBlueFlower == null || beanBlueYellowFlower == null || beanBlueRose == null ||
+                blueTulip == null || whiteDaisy == null || whiteTulipClosed == null || pinkRose == null ||
+                pinkTulip == null || redRose == null || purpleTulipOpen == null || redTulipOpen == null ||
+                seedV1Sprout == null || seedV2Sprout == null || seedV3Sprout == null ||
+                sproutV1 == null || sproutV2 == null || sproutV3 == null ||
+                flowerV1 == null || flowerV2 == null || flowerV3 == null)
                 return false;
 
-            smallPlantPrefabs = BuildRepeatedPrefabArray(stage1, finalFlowers.Length);
-            smallTreePrefabs = BuildRepeatedPrefabArray(stage2, finalFlowers.Length);
-            mediumTreePrefabs = finalFlowers;
             useInspectorSeedGrowthProfiles = true;
-
-            seedGrowthProfiles = new SeedGrowthProfile[finalFlowers.Length];
-            for (int i = 0; i < finalFlowers.Length; i++)
+            var previous = new Dictionary<int, SeedGrowthProfile>();
+            if (seedGrowthProfiles != null)
             {
-                var finalFlower = finalFlowers[i];
-                seedGrowthProfiles[i] = new SeedGrowthProfile
+                for (int i = 0; i < seedGrowthProfiles.Length; i++)
                 {
-                    seedName = finalFlower != null ? ToDisplayName(finalFlower.name) : $"Flower {i + 1}",
-                    variantIndex = i,
+                    var p = seedGrowthProfiles[i];
+                    if (p != null && p.variantIndex >= 0)
+                        previous[p.variantIndex] = p;
+                }
+            }
+
+            SeedGrowthProfile MakeProfile(int variantIndex, string seedName, GameObject stage1, GameObject stage2, GameObject finalFlower, GameObject[] finalOptions = null)
+            {
+                previous.TryGetValue(variantIndex, out var existing);
+                return new SeedGrowthProfile
+                {
+                    seedName = seedName,
+                    variantIndex = variantIndex,
                     stage1Prefab = stage1,
                     stage2Prefab = stage2,
-                    finalFlowerPrefab = finalFlower
+                    finalFlowerPrefab = finalFlower,
+                    finalFlowerPrefabOptions = finalOptions,
+                    stage1ScaleMultiplier = existing != null ? existing.stage1ScaleMultiplier : 1f,
+                    stage2ScaleMultiplier = existing != null ? existing.stage2ScaleMultiplier : 1f,
+                    finalFlowerScaleMultiplier = existing != null ? existing.finalFlowerScaleMultiplier : 1.7f
                 };
             }
+
+            seedGrowthProfiles = new[]
+            {
+                MakeProfile(0, "Bean", flowerStage1, flowerStage2, beanBlueFlower, new[] { beanBlueFlower, beanBlueYellowFlower, beanBlueRose }),
+                MakeProfile(1, "BrownSeed", flowerStage1, flowerStage2, blueTulip),
+                MakeProfile(2, "LightBrownSeed", flowerStage1, flowerStage2, whiteDaisy, new[] { whiteDaisy, whiteTulipClosed, pinkRose }),
+                MakeProfile(3, "LongSeed", flowerStage1, flowerStage2, pinkTulip),
+                MakeProfile(4, "Seed1", flowerStage1, flowerStage2, redRose, new[] { redRose, purpleTulipOpen, redTulipOpen }),
+                MakeProfile(5, "SeedV1", seedV1Sprout, sproutV1, flowerV1),
+                MakeProfile(6, "SeedV2", seedV2Sprout, sproutV2, flowerV2),
+                MakeProfile(7, "SeedV3", seedV3Sprout, sproutV2, flowerV3),
+            };
 
             return true;
         }
@@ -694,6 +769,10 @@ namespace SCoL.Visualization
 
         public GameObject GetSelectedFlowerVariantPrefab(PlantStage stage)
         {
+            var profiled = ResolveProfilePrefab(stage, selectedFlowerVariantIndex, selectedFlowerVariantIndex);
+            if (profiled != null)
+                return profiled;
+
             var prefabs = PrefabsFor(stage);
             if (prefabs == null || prefabs.Length == 0)
                 return null;
@@ -956,6 +1035,85 @@ namespace SCoL.Visualization
             return false;
         }
 
+        private static GameObject[] GetProfilePrefabOptions(SeedGrowthProfile profile, PlantStage stage)
+        {
+            if (profile == null)
+                return null;
+
+            return stage switch
+            {
+                PlantStage.SmallPlant => profile.stage1PrefabOptions,
+                PlantStage.SmallTree => profile.stage2PrefabOptions,
+                PlantStage.MediumTree => profile.finalFlowerPrefabOptions,
+                _ => null
+            };
+        }
+
+        private static GameObject GetPrimaryProfilePrefab(SeedGrowthProfile profile, PlantStage stage)
+        {
+            if (profile == null)
+                return null;
+
+            var options = GetProfilePrefabOptions(profile, stage);
+            if (options != null)
+            {
+                for (int i = 0; i < options.Length; i++)
+                {
+                    if (options[i] != null)
+                        return options[i];
+                }
+            }
+
+            return stage switch
+            {
+                PlantStage.SmallPlant => profile.stage1Prefab,
+                PlantStage.SmallTree => profile.stage2Prefab,
+                PlantStage.MediumTree => profile.finalFlowerPrefab,
+                _ => null
+            };
+        }
+
+        private SeedGrowthProfile GetSeedGrowthProfile(int variantIndex)
+        {
+            if (!useInspectorSeedGrowthProfiles || seedGrowthProfiles == null || variantIndex < 0)
+                return null;
+
+            for (int i = 0; i < seedGrowthProfiles.Length; i++)
+            {
+                var profile = seedGrowthProfiles[i];
+                if (profile != null && profile.variantIndex == variantIndex)
+                    return profile;
+            }
+
+            return null;
+        }
+
+        private GameObject ResolveProfilePrefab(PlantStage stage, int variantIndex, int cellIndex)
+        {
+            var profile = GetSeedGrowthProfile(variantIndex);
+            if (profile == null)
+                return null;
+
+            var options = GetProfilePrefabOptions(profile, stage);
+            if (options != null)
+            {
+                var valid = new List<GameObject>(options.Length);
+                for (int i = 0; i < options.Length; i++)
+                {
+                    if (options[i] != null)
+                        valid.Add(options[i]);
+                }
+
+                if (valid.Count > 0)
+                {
+                    int pick = PositiveHash(cellIndex * 48611 + variantIndex * 92821 + (int)stage * 1511) % valid.Count;
+                    return valid[pick];
+                }
+            }
+
+            return GetPrimaryProfilePrefab(profile, stage);
+        }
+
         private static int PositiveHash(int value)
         {
             unchecked
@@ -1022,7 +1180,31 @@ namespace SCoL.Visualization
                 float baseSmall = Mathf.Lerp(smallPlantScaleRange.x, smallPlantScaleRange.y, t) * Mathf.Max(0.01f, smallPlantBaseScaleMultiplier);
                 scale = baseSmall * 1.45f;
             }
+            scale *= GetVariantStageScaleMultiplier(stage, variant);
             return scale;
+        }
+
+        private float GetVariantStageScaleMultiplier(PlantStage stage, int variant)
+        {
+            if (seedGrowthProfiles == null || seedGrowthProfiles.Length == 0 || variant < 0)
+                return 1f;
+
+            for (int i = 0; i < seedGrowthProfiles.Length; i++)
+            {
+                var profile = seedGrowthProfiles[i];
+                if (profile == null || profile.variantIndex != variant)
+                    continue;
+
+                return stage switch
+                {
+                    PlantStage.SmallPlant => Mathf.Max(0.05f, profile.stage1ScaleMultiplier),
+                    PlantStage.SmallTree => Mathf.Max(0.05f, profile.stage2ScaleMultiplier),
+                    PlantStage.MediumTree => Mathf.Max(0.05f, profile.finalFlowerScaleMultiplier),
+                    _ => 1f
+                };
+            }
+
+            return 1f;
         }
 
         private float YOffsetFor(PlantStage stage)
@@ -1030,9 +1212,9 @@ namespace SCoL.Visualization
             return (stage == PlantStage.SmallPlant || stage == PlantStage.Burnt) ? smallPlantYOffset : treeYOffset;
         }
 
-        private string PoolKey(PlantStage stage, int variant)
+        private string PoolKey(PlantStage stage, int variant, int prefabId = 0)
         {
-            return ((int)stage).ToString() + ":" + variant.ToString();
+            return ((int)stage).ToString() + ":" + variant.ToString() + ":" + prefabId.ToString();
         }
 
         private GameObject CreateFallback(PlantStage stage)
@@ -1067,9 +1249,10 @@ namespace SCoL.Visualization
             }
         }
 
-        private GameObject Rent(PlantStage stage, int variant)
+        private GameObject Rent(PlantStage stage, int variant, GameObject explicitPrefab)
         {
-            string key = PoolKey(stage, variant);
+            int prefabId = explicitPrefab != null ? explicitPrefab.GetInstanceID() : 0;
+            string key = PoolKey(stage, variant, prefabId);
 
             if (_pool.TryGetValue(key, out var stack) && stack.Count > 0)
             {
@@ -1082,7 +1265,11 @@ namespace SCoL.Visualization
             }
 
             GameObject go = null;
-            if (variant >= 0)
+            if (explicitPrefab != null)
+            {
+                go = Instantiate(explicitPrefab, transform);
+            }
+            else if (variant >= 0)
             {
                 var prefabs = PrefabsFor(stage);
                 if (prefabs != null && variant < prefabs.Length)
@@ -1110,7 +1297,7 @@ namespace SCoL.Visualization
         {
             if (entry.go == null) return;
 
-            string key = PoolKey(entry.stage, entry.variant);
+            string key = PoolKey(entry.stage, entry.variant, entry.prefabId);
             if (!_pool.TryGetValue(key, out var stack))
             {
                 stack = new Stack<GameObject>();
@@ -1223,21 +1410,24 @@ namespace SCoL.Visualization
 
                 int idx = y * w + x;
                 int variant = PickPrefabIndex(stage, idx, cell);
+                var resolvedPrefab = ResolveProfilePrefab(stage, variant, idx);
+                int resolvedPrefabId = resolvedPrefab != null ? resolvedPrefab.GetInstanceID() : 0;
                 stale.Remove(idx);
 
-                if (!_active.TryGetValue(idx, out var active) || active.go == null || active.stage != stage || active.variant != variant)
+                if (!_active.TryGetValue(idx, out var active) || active.go == null || active.stage != stage || active.variant != variant || active.prefabId != resolvedPrefabId)
                 {
                     if (_active.TryGetValue(idx, out var old))
                         Return(old);
 
-                    var go = Rent(stage, variant);
+                    var go = Rent(stage, variant, resolvedPrefab);
                     go.name = $"Plant_{stage}_{x}_{y}";
 
                     active = new ActivePlant
                     {
                         go = go,
                         stage = stage,
-                        variant = variant
+                        variant = variant,
+                        prefabId = resolvedPrefabId
                     };
                     _active[idx] = active;
                 }

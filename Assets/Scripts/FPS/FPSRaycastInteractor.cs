@@ -89,7 +89,13 @@ public class FPSRaycastInteractor : MonoBehaviour
     public GameObject[] waterPlacePrefabs;
     [Range(0.1f, 3f)] public float waterPlacePrefabScale = 0.9f;
     [Range(0.01f, 80f)] public float waterPlacePrefabSizeMultiplier = 0.12f;
-    [Min(0f)] public float waterPlaceSpawnHeight = 0.18f;
+    [Min(0f)] public float waterPlaceSpawnHeight = 0.55f;
+    [Tooltip("Additional local/world offset applied to spawned water effects.")]
+    public Vector3 waterPlacePositionOffset = new Vector3(0f, 0.55f, 0f);
+    [Tooltip("Additional Euler rotation applied after the default downward-facing rotation.")]
+    public Vector3 waterPlaceEulerOffset = Vector3.zero;
+    [Tooltip("Per-axis scale multiplier applied after fit-to-height and size multiplier.")]
+    public Vector3 waterPlaceScaleMultiplier = Vector3.one;
     [Min(0.01f)] public float waterPlaceTargetHeight = 0.02f;
     [Min(0.05f)] public float waterEffectLifetimeSeconds = 0.18f;
     [Range(0.1f, 4f)] public float waterAnimationSpeed = 2.25f;
@@ -1537,7 +1543,7 @@ public class FPSRaycastInteractor : MonoBehaviour
             return TryCycleSeedFlowerVariant();
 
         int current = GetSelectedSeedVariantIndex();
-        int variantCount = 4;
+        int variantCount = _inventory.GetSeedTypeVariantCount();
         for (int step = 1; step <= variantCount; step++)
         {
             int candidate = (current + step) % variantCount;
@@ -1685,6 +1691,7 @@ public class FPSRaycastInteractor : MonoBehaviour
         projectile.damage = stoneDamage;
 
         IgnorePlayerCollisions(go);
+        DayNightLightingController.PlayInteractionSfx(DayNightLightingController.InteractionSfx.ThrowStone);
 
         FPSGameFeel.Shake(0.02f, 0.04f);
     }
@@ -1934,11 +1941,17 @@ public class FPSRaycastInteractor : MonoBehaviour
         else if (waterPrefab != null)
         {
             float scale = Mathf.Max(0.1f, waterPlacePrefabScale * blockScale);
-            go.transform.position = surfacePos + Vector3.up * Mathf.Max(0f, waterPlaceSpawnHeight);
-            go.transform.rotation = Quaternion.Euler(180f, Random.Range(0f, 360f), 0f);
+            Vector3 waterOffset = waterPlacePositionOffset;
+            waterOffset.y += Mathf.Max(0f, waterPlaceSpawnHeight);
+            go.transform.position = surfacePos + waterOffset;
+            go.transform.rotation = Quaternion.Euler(180f, Random.Range(0f, 360f), 0f) * Quaternion.Euler(waterPlaceEulerOffset);
             go.transform.localScale = go.transform.localScale * scale;
             FitEffectToTargetHeight(go, Mathf.Max(0.1f, waterPlaceTargetHeight));
             go.transform.localScale *= Mathf.Max(1f, waterPlacePrefabSizeMultiplier);
+            go.transform.localScale = Vector3.Scale(go.transform.localScale, new Vector3(
+                Mathf.Max(0.01f, waterPlaceScaleMultiplier.x),
+                Mathf.Max(0.01f, waterPlaceScaleMultiplier.y),
+                Mathf.Max(0.01f, waterPlaceScaleMultiplier.z)));
             TryPlayModelAnimation(go, effectPrefabName, waterTargets: true);
         }
         else if (useSoftDecalSpreadVisuals)

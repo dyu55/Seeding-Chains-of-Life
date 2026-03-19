@@ -11,10 +11,14 @@ namespace SCoL.Inventory
     {
         public int seeds = 0;
         [Header("Seed Types")]
+        public int beanSeed = 0;
+        public int brownSeed = 0;
+        public int lightBrownSeed = 0;
+        public int longSeed = 0;
+        public int seedType1 = 0; // "seed1" special lineage
         public int seedV1 = 0;
         public int seedV2 = 0;
         public int seedV3 = 0;
-        public int seedType1 = 0; // "seed1" special lineage
         public int water = 0;
         public int fire = 0;
         public int plants = 0;
@@ -66,12 +70,21 @@ namespace SCoL.Inventory
         {
             return variantIndex switch
             {
-                0 => seedV1,
-                1 => seedV2,
-                2 => seedV3,
-                3 => seedType1,
+                0 => beanSeed,
+                1 => brownSeed,
+                2 => lightBrownSeed,
+                3 => longSeed,
+                4 => seedType1,
+                5 => seedV1,
+                6 => seedV2,
+                7 => seedV3,
                 _ => 0
             };
+        }
+
+        public int GetSeedTypeVariantCount()
+        {
+            return 8;
         }
 
         public void AddSeedType(int variantIndex, int amount = 1)
@@ -80,10 +93,14 @@ namespace SCoL.Inventory
 
             switch (variantIndex)
             {
-                case 0: seedV1 += amount; break;
-                case 1: seedV2 += amount; break;
-                case 2: seedV3 += amount; break;
-                case 3: seedType1 += amount; break;
+                case 0: beanSeed += amount; break;
+                case 1: brownSeed += amount; break;
+                case 2: lightBrownSeed += amount; break;
+                case 3: longSeed += amount; break;
+                case 4: seedType1 += amount; break;
+                case 5: seedV1 += amount; break;
+                case 6: seedV2 += amount; break;
+                case 7: seedV3 += amount; break;
                 default:
                     Add(SCoLItemType.Seed, amount);
                     return;
@@ -101,21 +118,37 @@ namespace SCoL.Inventory
             {
                 case 0:
                 {
-                    if (seedV1 < amount) return false;
-                    seedV1 -= amount;
+                    if (beanSeed < amount) return false;
+                    beanSeed -= amount;
                     break;
                 }
                 case 1:
+                    if (brownSeed < amount) return false;
+                    brownSeed -= amount;
+                    break;
+                case 2:
+                    if (lightBrownSeed < amount) return false;
+                    lightBrownSeed -= amount;
+                    break;
+                case 3:
+                    if (longSeed < amount) return false;
+                    longSeed -= amount;
+                    break;
+                case 4:
+                    if (seedType1 < amount) return false;
+                    seedType1 -= amount;
+                    break;
+                case 5:
+                    if (seedV1 < amount) return false;
+                    seedV1 -= amount;
+                    break;
+                case 6:
                     if (seedV2 < amount) return false;
                     seedV2 -= amount;
                     break;
-                case 2:
+                case 7:
                     if (seedV3 < amount) return false;
                     seedV3 -= amount;
-                    break;
-                case 3:
-                    if (seedType1 < amount) return false;
-                    seedType1 -= amount;
                     break;
                 default:
                     return TryConsume(SCoLItemType.Seed, amount);
@@ -133,13 +166,17 @@ namespace SCoL.Inventory
                 1 => "BrownSeed",
                 2 => "LightBrownSeed",
                 3 => "LongSeed",
+                4 => "Seed1",
+                5 => "SeedV1",
+                6 => "SeedV2",
+                7 => "SeedV3",
                 _ => "Seed"
             };
         }
 
         public string GetSeedTypeSummary()
         {
-            return $"Bean:{GetSeedTypeCount(0)} BrownSeed:{GetSeedTypeCount(1)} LightBrownSeed:{GetSeedTypeCount(2)} LongSeed:{GetSeedTypeCount(3)}";
+            return $"Bean:{GetSeedTypeCount(0)} BrownSeed:{GetSeedTypeCount(1)} LightBrownSeed:{GetSeedTypeCount(2)} LongSeed:{GetSeedTypeCount(3)} Seed1:{GetSeedTypeCount(4)} SeedV1:{GetSeedTypeCount(5)} SeedV2:{GetSeedTypeCount(6)} SeedV3:{GetSeedTypeCount(7)}";
         }
 
         public void Add(SCoLItemType type, int amount = 1)
@@ -265,7 +302,7 @@ namespace SCoL.Inventory
 
         private void SyncDiscoveryFromCounts()
         {
-            seeds = Mathf.Max(seeds, seedV1 + seedV2 + seedV3 + seedType1);
+            seeds = Mathf.Max(seeds, beanSeed + brownSeed + lightBrownSeed + longSeed + seedType1 + seedV1 + seedV2 + seedV3);
             if (seeds > 0) discoveredSeed = true;
             if (water > 0) discoveredWater = true;
             if (fire > 0) discoveredFire = true;
@@ -283,23 +320,33 @@ namespace SCoL.Inventory
             plants = Mathf.Max(plants, starterPlants);
             stones = Mathf.Max(stones, starterStones);
 
+            beanSeed = Mathf.Max(beanSeed, 25);
+            brownSeed = Mathf.Max(brownSeed, 25);
+            lightBrownSeed = Mathf.Max(lightBrownSeed, 25);
+            longSeed = Mathf.Max(longSeed, 25);
+            seedType1 = Mathf.Max(seedType1, 25);
             seedV1 = Mathf.Max(seedV1, starterRoseglowSeeds);
             seedV2 = Mathf.Max(seedV2, starterAmberbloomSeeds);
             seedV3 = Mathf.Max(seedV3, starterMoonpetalSeeds);
 
-            int totalSeedVariants = seedV1 + seedV2 + seedV3 + seedType1;
+            int totalSeedVariants = beanSeed + brownSeed + lightBrownSeed + longSeed + seedType1 + seedV1 + seedV2 + seedV3;
             int seedDeficit = Mathf.Max(0, starterSeeds - totalSeedVariants);
             for (int i = 0; i < seedDeficit; i++)
             {
-                switch (i % 3)
+                switch (i % 8)
                 {
-                    case 0: seedV1++; break;
-                    case 1: seedV2++; break;
+                    case 0: beanSeed++; break;
+                    case 1: brownSeed++; break;
+                    case 2: lightBrownSeed++; break;
+                    case 3: longSeed++; break;
+                    case 4: seedType1++; break;
+                    case 5: seedV1++; break;
+                    case 6: seedV2++; break;
                     default: seedV3++; break;
                 }
             }
 
-            seeds = Mathf.Max(seeds, seedV1 + seedV2 + seedV3 + seedType1, starterSeeds);
+            seeds = Mathf.Max(seeds, beanSeed + brownSeed + lightBrownSeed + longSeed + seedType1 + seedV1 + seedV2 + seedV3, starterSeeds);
         }
     }
 }
