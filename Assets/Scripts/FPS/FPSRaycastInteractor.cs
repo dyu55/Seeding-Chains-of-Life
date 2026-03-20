@@ -4,6 +4,7 @@ using SCoL.Visualization;
 using SCoL.Weather;
 using SCoL.Inventory;
 using SCoL.Combat;
+using SCoL.Settlement;
 using SCoL.Voxels;
 using UnityEngine.Animations;
 using UnityEngine.Playables;
@@ -220,6 +221,7 @@ public class FPSRaycastInteractor : MonoBehaviour
     VoxelWorld _voxelWorld;
     SCoLCombatHealth _playerCombatHealth;
     SpawnPickups _spawnPickups;
+    SCoLSettlementManager _settlementManager;
     GameObject _heldToolInstance;
     GameObject _heldToolSourcePrefab;
     struct PlantDestroyClickState
@@ -262,6 +264,7 @@ public class FPSRaycastInteractor : MonoBehaviour
         }
         _runtime = FindFirstObjectByType<SCoLRuntime>();
         _plantRenderer = FindFirstObjectByType<PlantVoxelRenderer>();
+        _settlementManager = FindFirstObjectByType<SCoLSettlementManager>();
         EnsurePlayerCombatHealth();
         EnsureStoneProjectilePrefabs();
 
@@ -438,6 +441,8 @@ public class FPSRaycastInteractor : MonoBehaviour
     void Update()
     {
         if (cameraSource == null) return;
+        if (_settlementManager == null)
+            _settlementManager = FindFirstObjectByType<SCoLSettlementManager>();
         HandleToolSwitchInput();
         UpdateHeldToolVisual();
         UpdatePlantAttractor();
@@ -456,6 +461,9 @@ public class FPSRaycastInteractor : MonoBehaviour
 
                 if (_inventory != null)
                 {
+                    if (TryHandleSettlementPrimary(hit))
+                        return;
+
                     // LMB priority #1: collect world pickups (seed/torch/etc).
                     if (collectPickupsOnRightClick && TryCollectPickupAtHit(hit))
                         return;
@@ -481,6 +489,10 @@ public class FPSRaycastInteractor : MonoBehaviour
             if (_inventory == null)
                 _inventory = FindFirstObjectByType<SCoL.Inventory.SCoLInventory>();
             if (_inventory == null)
+                return;
+
+            if (Physics.Raycast(ray, out var closeHit, maxDistance, hitMask, QueryTriggerInteraction.Ignore) &&
+                TryHandleSettlementSecondary(closeHit))
                 return;
 
             if (currentTool == ApplyTool.Stone)
@@ -694,6 +706,84 @@ public class FPSRaycastInteractor : MonoBehaviour
                 case ApplyTool.Stone:
                     break;
             }
+        }
+    }
+
+    bool TryHandleSettlementPrimary(RaycastHit hit)
+    {
+        var interactable = hit.collider != null ? hit.collider.GetComponentInParent<SCoLSettlementInteractable>() : null;
+        if (interactable == null)
+            return false;
+
+        if (_settlementManager == null)
+            _settlementManager = interactable.manager != null ? interactable.manager : FindFirstObjectByType<SCoLSettlementManager>();
+        if (_settlementManager == null)
+            return false;
+
+        switch (interactable.kind)
+        {
+            case SCoLSettlementInteractableKind.Centerpiece:
+            {
+                bool activated = _settlementManager.TryActivate(out string message);
+                if (logHits && !string.IsNullOrEmpty(message))
+                    Debug.Log($"[FPSRaycastInteractor] {message}");
+                DayNightLightingController.PlayInteractionSfx(DayNightLightingController.InteractionSfx.ToggleSwitch);
+                if (activated)
+                {
+                    FPSGameFeel.VoxelBurst(hit.point, count: 12, spread: 1.15f, life: 0.8f, cubeSize: 0.06f);
+                    FPSGameFeel.Shake(0.04f, 0.08f);
+                }
+                return true;
+            }
+            case SCoLSettlementInteractableKind.Storage:
+            {
+                bool stored = _settlementManager.TryDepositCurrentTool(_inventory, currentTool, GetSelectedSeedVariantIndex(), out string message);
+                if (logHits && !string.IsNullOrEmpty(message))
+                    Debug.Log($"[FPSRaycastInteractor] {message}");
+                DayNightLightingController.PlayInteractionSfx(stored
+                    ? DayNightLightingController.InteractionSfx.PickupItem
+                    : DayNightLightingController.InteractionSfx.ToggleSwitch);
+                if (stored)
+                    FPSGameFeel.Shake(0.02f, 0.04f);
+                return true;
+            }
+            case SCoLSettlementInteractableKind.Barrier:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    bool TryHandleSettlementSecondary(RaycastHit hit)
+    {
+        var interactable = hit.collider != null ? hit.collider.GetComponentInParent<SCoLSettlementInteractable>() : null;
+        if (interactable == null)
+            return false;
+
+        if (_settlementManager == null)
+            _settlementManager = interactable.manager != null ? interactable.manager : FindFirstObjectByType<SCoLSettlementManager>();
+        if (_settlementManager == null)
+            return false;
+
+        switch (interactable.kind)
+        {
+            case SCoLSettlementInteractableKind.Storage:
+            {
+                bool withdrew = _settlementManager.TryWithdrawCurrentTool(_inventory, currentTool, GetSelectedSeedVariantIndex(), out string message);
+                if (logHits && !string.IsNullOrEmpty(message))
+                    Debug.Log($"[FPSRaycastInteractor] {message}");
+                DayNightLightingController.PlayInteractionSfx(withdrew
+                    ? DayNightLightingController.InteractionSfx.PickupItem
+                    : DayNightLightingController.InteractionSfx.ToggleSwitch);
+                if (withdrew)
+                    FPSGameFeel.Shake(0.02f, 0.04f);
+                return true;
+            }
+            case SCoLSettlementInteractableKind.Centerpiece:
+            case SCoLSettlementInteractableKind.Barrier:
+                return true;
+            default:
+                return false;
         }
     }
 

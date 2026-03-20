@@ -1,6 +1,7 @@
 using UnityEngine;
 using SCoL;
 using SCoL.Inventory;
+using SCoL.Settlement;
 using SCoL.Visualization;
 using SCoL.XR;
 using SCoL.Interaction;
@@ -13,7 +14,10 @@ public enum FPSAimTargetKind
     LegacyPlant = 3,
     CAPlant = 4,
     Animal = 5,
-    Grabbable = 6
+    Grabbable = 6,
+    SettlementCenterpiece = 7,
+    SettlementStorage = 8,
+    SettlementBarrier = 9
 }
 
 public struct FPSAimTargetInfo
@@ -25,6 +29,7 @@ public struct FPSAimTargetInfo
     public FPSSeedGrowth legacyPlant;
     public FPSBoidAgent animal;
     public SCoLGrabbable grabbable;
+    public SCoLSettlementInteractable settlementInteractable;
     public int cellX;
     public int cellY;
 
@@ -37,7 +42,10 @@ public struct FPSAimTargetInfo
                 || kind == FPSAimTargetKind.LegacyPlant
                 || kind == FPSAimTargetKind.CAPlant
                 || kind == FPSAimTargetKind.Animal
-                || kind == FPSAimTargetKind.Grabbable;
+                || kind == FPSAimTargetKind.Grabbable
+                || kind == FPSAimTargetKind.SettlementCenterpiece
+                || kind == FPSAimTargetKind.SettlementStorage
+                || kind == FPSAimTargetKind.SettlementBarrier;
         }
     }
 }
@@ -69,6 +77,21 @@ public static class FPSAimTargeting
 
             if (t != null)
             {
+                var settlementInteractable = t.GetComponentInParent<SCoLSettlementInteractable>();
+                if (settlementInteractable != null)
+                {
+                    info.settlementInteractable = settlementInteractable;
+                    info.root = settlementInteractable.transform;
+                    info.kind = settlementInteractable.kind switch
+                    {
+                        SCoLSettlementInteractableKind.Centerpiece => FPSAimTargetKind.SettlementCenterpiece,
+                        SCoLSettlementInteractableKind.Storage => FPSAimTargetKind.SettlementStorage,
+                        SCoLSettlementInteractableKind.Barrier => FPSAimTargetKind.SettlementBarrier,
+                        _ => FPSAimTargetKind.None
+                    };
+                    return true;
+                }
+
                 var pickup = t.GetComponentInParent<SCoLPickup>();
                 if (pickup != null)
                 {

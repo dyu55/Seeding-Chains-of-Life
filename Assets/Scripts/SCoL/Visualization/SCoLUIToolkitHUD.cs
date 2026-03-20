@@ -4,6 +4,7 @@ using UnityEngine.UI;
 using SCoL.Inventory;
 using SCoL.Combat;
 using SCoL.InputLayer;
+using SCoL.Settlement;
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
@@ -81,6 +82,7 @@ namespace SCoL.Visualization
         private SCoLPlayerHealth _playerHealth;
         private SCoLPlayerRespawn _playerRespawn;
         private SCoLCombatHealth _playerCombatHealth;
+        private SCoLSettlementManager _settlementManager;
 
         private float _nextUpdateAt;
         private float _displayHealth = -1f;
@@ -118,6 +120,7 @@ namespace SCoL.Visualization
             _inventory = FindFirstObjectByType<SCoLInventory>();
             _plantRenderer = FindFirstObjectByType<PlantVoxelRenderer>();
             _fpsInteractor = FindFirstObjectByType<FPSRaycastInteractor>();
+            _settlementManager = FindFirstObjectByType<SCoLSettlementManager>();
             EnsurePlayerHealth();
             EnsurePlayerRespawn();
             DisableLegacyHudObjects();
@@ -149,6 +152,7 @@ namespace SCoL.Visualization
             if (_inventory == null) _inventory = FindFirstObjectByType<SCoLInventory>();
             if (_plantRenderer == null) _plantRenderer = FindFirstObjectByType<PlantVoxelRenderer>();
             if (_fpsInteractor == null) _fpsInteractor = FindFirstObjectByType<FPSRaycastInteractor>();
+            if (_settlementManager == null) _settlementManager = FindFirstObjectByType<SCoLSettlementManager>();
             EnsurePlayerHealth();
             EnsurePlayerRespawn();
             EnsurePlayerCombatHealth();
@@ -662,6 +666,14 @@ namespace SCoL.Visualization
                 }
             }
 
+            if (_settlementManager != null)
+            {
+                _sb.Append("<color=#67C8FF><b>Zone</b></color> ");
+                _sb.AppendLine(_settlementManager.StatusLine.ToUpperInvariant());
+                _sb.Append("<color=#8BE39E><b>Goal</b></color> ");
+                _sb.AppendLine(_settlementManager.GoalLine);
+            }
+
             SetText(_statusLabel, _sb.ToString());
         }
 
@@ -692,6 +704,12 @@ namespace SCoL.Visualization
             _sb.Append(_inventory.plants);
             _sb.Append("    <color=#D2D5DE><b>Stone</b></color> ");
             _sb.Append(_inventory.stones);
+            if (_settlementManager != null)
+            {
+                _sb.AppendLine();
+                _sb.Append("<color=#F4DFA2><b>Storage</b></color> ");
+                _sb.Append(_settlementManager.StorageSummary);
+            }
             SetText(_inventoryLabel, _sb.ToString());
         }
 
@@ -881,6 +899,37 @@ namespace SCoL.Visualization
                             : plantTool
                             ? $"{GetSecondaryPromptRich()} Feed animal"
                             : GetAnimalPromptDetail();
+                        break;
+                    }
+                    case FPSAimTargetKind.SettlementCenterpiece:
+                    {
+                        title = "Settlement Core";
+                        if (_settlementManager != null && !_settlementManager.IsActivated)
+                            detail = $"{GetPrimaryPromptRich(HudAccentGreen)} Activate safe zone";
+                        else if (_settlementManager != null)
+                            detail = $"Level {_settlementManager.CurrentLevel}  /  {_settlementManager.GoalLine}";
+                        else
+                            detail = "Settlement anchor";
+                        break;
+                    }
+                    case FPSAimTargetKind.SettlementStorage:
+                    {
+                        title = "Supply Crate";
+                        string toolLabel = _settlementManager != null
+                            ? _settlementManager.GetCurrentToolStorageHint(_fpsInteractor, _inventory)
+                            : "supplies";
+                        string summary = _settlementManager != null ? _settlementManager.StorageSummary : "Storage offline";
+                        detail = _settlementManager != null && !_settlementManager.IsActivated
+                            ? "Offline until the settlement core is activated."
+                            : $"{GetPrimaryPromptRich(HudAccentGreen)} Deposit {toolLabel}\n{GetSecondaryPromptRich(HudAccentCool)} Withdraw {toolLabel}\n{summary}";
+                        break;
+                    }
+                    case FPSAimTargetKind.SettlementBarrier:
+                    {
+                        title = "Settlement Fence";
+                        detail = _settlementManager != null && _settlementManager.IsActivated
+                            ? "Home perimeter. Wolves slow down and avoid this zone."
+                            : "Barrier shell. Activate the core to power the safe zone.";
                         break;
                     }
                 }

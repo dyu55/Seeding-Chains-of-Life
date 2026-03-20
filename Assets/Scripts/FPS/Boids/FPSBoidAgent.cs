@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using SCoL.Voxels;
 using SCoL;
 using SCoL.Combat;
+using SCoL.Settlement;
 
 /// <summary>
 /// T11: Craig Reynolds boids core agent.
@@ -387,6 +388,22 @@ public class FPSBoidAgent : MonoBehaviour
             accel += SteerTowards(_wanderDir) * Mathf.Max(0f, wanderWeight);
         }
 
+        var settlement = SCoLSettlementManager.Instance;
+        if (settlement != null && settlement.IsActivated && role == BoidRole.Predator)
+        {
+            float avoidRadius = settlement.SafeZoneRadius + Mathf.Max(0.5f, settlement.SlowZonePadding);
+            float distToSettlement = settlement.DistanceToCenterXZ(transform.position);
+            if (distToSettlement < avoidRadius)
+            {
+                Vector3 away = settlement.GetSafeZoneRepelDirection(transform.position);
+                float t = 1f - Mathf.Clamp01((distToSettlement - settlement.SafeZoneRadius) / Mathf.Max(0.1f, avoidRadius - settlement.SafeZoneRadius));
+                accel += SteerTowards(away) * Mathf.Lerp(1.5f, 5.5f, Mathf.Clamp01(t));
+
+                if (distToSettlement <= settlement.SafeZoneRadius * 1.02f)
+                    velocity = Vector3.Lerp(velocity, Vector3.zero, Mathf.Clamp01(4f * Time.deltaTime));
+            }
+        }
+
         // Predator/prey dynamics (simple)
         if (role == BoidRole.Predator)
         {
@@ -518,6 +535,9 @@ public class FPSBoidAgent : MonoBehaviour
             return;
         if (!TryGetCombatTarget(out var target) || target == null || target.IsDead)
             return;
+        var settlement = SCoLSettlementManager.Instance;
+        if (settlement != null && settlement.IsProtectedCombatTarget(target.transform))
+            return;
 
         float range = Mathf.Max(0.1f, attackRange);
         Vector3 a = transform.position;
@@ -563,6 +583,9 @@ public class FPSBoidAgent : MonoBehaviour
                 (canAttackPlayer && candidate.Faction == SCoLCombatFaction.Player) ||
                 (canAttackOtherAnimals && candidate.Faction == SCoLCombatFaction.Animal);
             if (!validFaction)
+                continue;
+            var settlement = SCoLSettlementManager.Instance;
+            if (settlement != null && settlement.IsProtectedCombatTarget(candidate.transform))
                 continue;
 
             float dist = Vector3.Distance(candidate.transform.position, myPos);
