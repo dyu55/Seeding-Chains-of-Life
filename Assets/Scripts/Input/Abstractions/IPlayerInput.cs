@@ -15,6 +15,7 @@ namespace SCoL.InputLayer
         bool SprintHeld { get; }
         bool PrimaryPressedThisFrame { get; }
         bool SecondaryPressedThisFrame { get; }
+        bool DropPressedThisFrame { get; }
         bool ToolNextPressedThisFrame { get; }
         bool ToolPrevPressedThisFrame { get; }
         bool PausePressedThisFrame { get; }

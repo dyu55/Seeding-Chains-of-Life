@@ -25,6 +25,11 @@ namespace SCoL.Interaction
             return GameplayInputFacade.Player != null && GameplayInputFacade.Player.SecondaryPressedThisFrame;
         }
 
+        public static bool DropPressed()
+        {
+            return GameplayInputFacade.Player != null && GameplayInputFacade.Player.DropPressedThisFrame;
+        }
+
         public static bool ToolNextPressed()
         {
             return GameplayInputFacade.Player != null && GameplayInputFacade.Player.ToolNextPressedThisFrame;

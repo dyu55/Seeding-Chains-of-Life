@@ -1808,6 +1808,7 @@ namespace SCoL
             pickup.preserveExistingMaterials = prefab != null;
             pickup.ApplyVisual();
             EnsurePickupCollider(go);
+            SnapPickupToGround(go, worldPos);
             AddDenseFlowerSeedDropGlow(go);
             if (denseFlowerSeedDropLifetimeSeconds > 0f)
                 Destroy(go, denseFlowerSeedDropLifetimeSeconds);
@@ -1842,6 +1843,118 @@ namespace SCoL
             var added = go.AddComponent<BoxCollider>();
             added.enabled = true;
             added.isTrigger = false;
+        }
+
+        void SnapPickupToGround(GameObject go, Vector3 aroundPos)
+        {
+            if (go == null || !TryGetPickupBottomY(go, out float bottomY))
+                return;
+
+            float groundY = aroundPos.y;
+            Vector3 terrainSample = aroundPos + Vector3.up * 8f;
+            if (_voxelWorld != null &&
+                _voxelWorld.TryGetTerrainSurfaceYAtWorld(terrainSample, out float terrainY, includeWaterSurface: false))
+            {
+                groundY = terrainY;
+            }
+            else
+            {
+                var hits = Physics.RaycastAll(
+                    aroundPos + Vector3.up * 12f,
+                    Vector3.down,
+                    40f,
+                    ~0,
+                    QueryTriggerInteraction.Ignore);
+                bool found = false;
+                float lowestY = float.PositiveInfinity;
+                for (int i = 0; i < hits.Length; i++)
+                {
+                    var hit = hits[i];
+                    if (!IsValidPickupGroundHit(go, hit.collider))
+                        continue;
+
+                    if (hit.point.y < lowestY)
+                    {
+                        lowestY = hit.point.y;
+                        found = true;
+                    }
+                }
+
+                if (found)
+                    groundY = lowestY;
+            }
+
+            float dy = (groundY + 0.01f) - bottomY;
+            if (!Mathf.Approximately(dy, 0f))
+                go.transform.position += Vector3.up * dy;
+        }
+
+        static bool TryGetPickupBottomY(GameObject go, out float bottomY)
+        {
+            bottomY = 0f;
+            if (go == null)
+                return false;
+
+            var renderers = go.GetComponentsInChildren<Renderer>(includeInactive: true);
+            bool has = false;
+            Bounds bounds = default;
+            for (int i = 0; i < renderers.Length; i++)
+            {
+                var renderer = renderers[i];
+                if (renderer == null)
+                    continue;
+
+                if (!has)
+                {
+                    bounds = renderer.bounds;
+                    has = true;
+                }
+                else
+                {
+                    bounds.Encapsulate(renderer.bounds);
+                }
+            }
+
+            if (!has)
+            {
+                var colliders = go.GetComponentsInChildren<Collider>(includeInactive: true);
+                for (int i = 0; i < colliders.Length; i++)
+                {
+                    var collider = colliders[i];
+                    if (collider == null)
+                        continue;
+
+                    if (!has)
+                    {
+                        bounds = collider.bounds;
+                        has = true;
+                    }
+                    else
+                    {
+                        bounds.Encapsulate(collider.bounds);
+                    }
+                }
+            }
+
+            if (!has)
+                return false;
+
+            bottomY = bounds.min.y;
+            return true;
+        }
+
+        static bool IsValidPickupGroundHit(GameObject go, Collider collider)
+        {
+            if (go == null || collider == null || !collider.enabled || collider.isTrigger)
+                return false;
+
+            if (collider.transform.IsChildOf(go.transform))
+                return false;
+
+            if (collider.GetComponentInParent<SCoLPickup>() != null)
+                return false;
+
+            return true;
         }
 
         void AddDenseFlowerSeedDropGlow(GameObject go)

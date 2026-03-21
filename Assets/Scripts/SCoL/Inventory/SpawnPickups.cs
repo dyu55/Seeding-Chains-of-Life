@@ -176,8 +176,8 @@ namespace SCoL.Inventory
                     if (seedTex != null) p.seedTexture = seedTex;
                 }
                 p.ApplyVisual();
-
                 EnsureCollider(go);
+                SnapBottomToGround(go, pos);
                 spawned++;
             }
 
@@ -343,6 +343,7 @@ namespace SCoL.Inventory
             }
             p.ApplyVisual();
             EnsureCollider(go);
+            SnapBottomToGround(go, pos);
         }
 
         private static GameObject PickVariantPrefab(GameObject[] variants, int variantIndex)
@@ -526,15 +527,63 @@ namespace SCoL.Inventory
                 return;
 
             float targetGroundY = aroundPos.y;
-            Vector3 probeOrigin = new Vector3(aroundPos.x, aroundPos.y + Mathf.Max(0.1f, groundSnapProbeHeight), aroundPos.z);
-            float probeDist = Mathf.Max(0.5f, groundSnapProbeDistance);
-            if (Physics.Raycast(probeOrigin, Vector3.down, out var hit, probeDist, ~0, QueryTriggerInteraction.Ignore))
-                targetGroundY = hit.point.y;
+            if (!TryResolveGroundY(go, aroundPos, out targetGroundY))
+                targetGroundY = aroundPos.y;
 
             float targetBottom = targetGroundY + Mathf.Max(0f, groundClearance);
             float dy = targetBottom - bottomY;
             if (!Mathf.Approximately(dy, 0f))
                 go.transform.position += Vector3.up * dy;
+        }
+
+        private bool TryResolveGroundY(GameObject go, Vector3 aroundPos, out float groundY)
+        {
+            groundY = aroundPos.y;
+
+            Vector3 terrainSample = aroundPos + Vector3.up * Mathf.Max(0.1f, groundSnapProbeHeight);
+            if (_voxelWorld != null &&
+                _voxelWorld.TryGetTerrainSurfaceYAtWorld(terrainSample, out float terrainY, includeWaterSurface: false))
+            {
+                groundY = terrainY;
+                return true;
+            }
+
+            Vector3 probeOrigin = new Vector3(aroundPos.x, aroundPos.y + Mathf.Max(0.1f, groundSnapProbeHeight), aroundPos.z);
+            float probeDist = Mathf.Max(0.5f, groundSnapProbeDistance);
+            var hits = Physics.RaycastAll(probeOrigin, Vector3.down, probeDist, ~0, QueryTriggerInteraction.Ignore);
+            bool found = false;
+            float lowestY = float.PositiveInfinity;
+            for (int i = 0; i < hits.Length; i++)
+            {
+                var hit = hits[i];
+                if (!IsValidGroundHit(go, hit.collider))
+                    continue;
+
+                if (hit.point.y < lowestY)
+                {
+                    lowestY = hit.point.y;
+                    found = true;
+                }
+            }
+
+            if (found)
+                groundY = lowestY;
+
+            return found;
+        }
+
+        private static bool IsValidGroundHit(GameObject go, Collider collider)
+        {
+            if (go == null || collider == null || !collider.enabled || collider.isTrigger)
+                return false;
+
+            if (collider.transform.IsChildOf(go.transform))
+                return false;
+
+            if (collider.GetComponentInParent<SCoLPickup>() != null)
+                return false;
+
+            return true;
         }
 
         private static bool TryGetBottomY(GameObject go, out float bottomY)

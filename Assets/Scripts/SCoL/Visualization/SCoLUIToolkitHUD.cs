@@ -868,12 +868,12 @@ namespace SCoL.Visualization
                         if (pickup != null && _inventory != null)
                         {
                             title = _inventory.GetItemDisplayName(pickup.type, true);
-                            detail = $"{_inventory.GetItemDescription(pickup.type, true)}\n{GetPrimaryPromptRich()} Collect";
+                            detail = $"{_inventory.GetItemDescription(pickup.type, true)}\n{GetPrimaryPromptRich()} Pick up";
                         }
                         else
                         {
                             title = "Unknown item";
-                            detail = $"You have not discovered this item yet.\n{GetPrimaryPromptRich()} Collect";
+                            detail = $"You have not discovered this item yet.\n{GetPrimaryPromptRich()} Pick up";
                         }
                         break;
                     }
@@ -884,9 +884,14 @@ namespace SCoL.Visualization
                     case FPSAimTargetKind.LegacyPlant:
                     case FPSAimTargetKind.CAPlant:
                     {
-                        int required = _fpsInteractor != null ? Mathf.Max(1, _fpsInteractor.plantDestroyClicksRequired) : 4;
                         title = ResolvePlantHoverName(target);
-                        detail = $"{GetSecondaryPromptRich()} Destroy x{required}";
+                        string pickLine = $"{GetPrimaryPromptRich(HudAccentGreen)} Pick plant";
+                        if (_fpsInteractor != null && _fpsInteractor.currentTool == FPSRaycastInteractor.ApplyTool.Water)
+                            detail = $"{pickLine}\n{GetSecondaryPromptRich(HudAccentCool)} Water plant";
+                        else if (_fpsInteractor != null && _fpsInteractor.currentTool == FPSRaycastInteractor.ApplyTool.Fire)
+                            detail = $"{pickLine}\n{GetSecondaryPromptRich(new Color(1f, 0.56f, 0.38f, 0.98f))} Start fire";
+                        else
+                            detail = pickLine;
                         break;
                     }
                     case FPSAimTargetKind.Animal:
@@ -895,9 +900,9 @@ namespace SCoL.Visualization
                         bool plantTool = _fpsInteractor != null && _fpsInteractor.currentTool == FPSRaycastInteractor.ApplyTool.Plant;
                         bool stoneTool = _fpsInteractor != null && _fpsInteractor.currentTool == FPSRaycastInteractor.ApplyTool.Stone;
                         detail = stoneTool
-                            ? $"{GetSecondaryPromptRich()} Throw stone"
+                            ? $"{GetSecondaryPromptRich()} Use tool: throw stone"
                             : plantTool
-                            ? $"{GetSecondaryPromptRich()} Feed animal"
+                            ? $"{GetSecondaryPromptRich()} Use tool: feed animal"
                             : GetAnimalPromptDetail();
                         break;
                     }
@@ -905,7 +910,7 @@ namespace SCoL.Visualization
                     {
                         title = "Settlement Core";
                         if (_settlementManager != null && !_settlementManager.IsActivated)
-                            detail = $"{GetPrimaryPromptRich(HudAccentGreen)} Activate safe zone";
+                            detail = $"{GetSecondaryPromptRich(HudAccentGreen)} Activate safe zone";
                         else if (_settlementManager != null)
                             detail = $"Level {_settlementManager.CurrentLevel}  /  {_settlementManager.GoalLine}";
                         else
@@ -921,7 +926,7 @@ namespace SCoL.Visualization
                         string summary = _settlementManager != null ? _settlementManager.StorageSummary : "Storage offline";
                         detail = _settlementManager != null && !_settlementManager.IsActivated
                             ? "Offline until the settlement core is activated."
-                            : $"{GetPrimaryPromptRich(HudAccentGreen)} Deposit {toolLabel}\n{GetSecondaryPromptRich(HudAccentCool)} Withdraw {toolLabel}\n{summary}";
+                            : $"{GetPrimaryPromptRich(HudAccentCool)} Withdraw {toolLabel}\n{GetDropPromptRich(HudAccentGreen)} Store {toolLabel}\n{summary}";
                         break;
                     }
                     case FPSAimTargetKind.SettlementBarrier:
@@ -1002,20 +1007,18 @@ namespace SCoL.Visualization
                     int count = _inventory != null && _fpsInteractor != null
                         ? _inventory.GetSeedTypeCount(_fpsInteractor.GetSelectedSeedVariantIndex())
                         : 0;
-                    if (UseGamepadPrompts())
-                        return $"{GetSecondaryPromptRich(HudAccentWarm)} Plant {flowerName}   {GetToolSwitchPromptRich()} Switch Tool   Stock {count}";
-                    return $"{GetSecondaryPromptRich(HudAccentWarm)} Plant {flowerName}   <color=#F1D598><b>1</b></color> Cycle   Stock {count}";
+                    return $"{GetSecondaryPromptRich(HudAccentWarm)} Use: plant {flowerName}   {GetDropPromptRich(HudAccentGreen)} Drop seed   Stock {count}";
                 }
                 case FPSRaycastInteractor.ApplyTool.Water:
-                    return $"{GetSecondaryPromptRich(HudAccentCool)} Hydrate plants or fill at lake";
+                    return $"{GetPrimaryPromptRich(HudAccentCool)} Pick up: fill at pond   {GetSecondaryPromptRich(HudAccentCool)} Use: water ground";
                 case FPSRaycastInteractor.ApplyTool.Fire:
-                    return $"{GetSecondaryPromptRich(new Color(1f, 0.56f, 0.38f, 0.98f))} Ignite targets and nearby tiles";
+                    return $"{GetSecondaryPromptRich(new Color(1f, 0.56f, 0.38f, 0.98f))} Use: start fire   {GetDropPromptRich(HudAccentGreen)} Drop branch";
                 case FPSRaycastInteractor.ApplyTool.Plant:
-                    return $"{GetSecondaryPromptRich(HudAccentGreen)} Feed animals and attract them";
+                    return $"{GetPrimaryPromptRich(HudAccentGreen)} Pick plant   {GetSecondaryPromptRich(HudAccentGreen)} Use: feed animal   {GetDropPromptRich(HudAccentGreen)} Drop plant";
                 case FPSRaycastInteractor.ApplyTool.Stone:
-                    return $"{GetSecondaryPromptRich(new Color(0.82f, 0.84f, 0.92f, 0.98f))} Throw stone projectiles";
+                    return $"{GetSecondaryPromptRich(new Color(0.82f, 0.84f, 0.92f, 0.98f))} Use: throw stone   {GetDropPromptRich(HudAccentGreen)} Drop stone";
                 default:
-                    return UseGamepadPrompts() ? $"{GetToolSwitchPromptRich()} Switch tools." : "Press 1-5 to switch tools.";
+                    return $"{GetToolSwitchPromptRich()} Switch tools.";
             }
         }
 
@@ -1040,18 +1043,26 @@ namespace SCoL.Visualization
             return $"<color=#{ColorUtility.ToHtmlStringRGB(color)}><b>{label}</b></color>";
         }
 
+        private string GetDropPromptRich() => GetDropPromptRich(HudAccentGreen);
+
+        private string GetDropPromptRich(Color color)
+        {
+            string label = UseGamepadPrompts() ? "X" : "Q";
+            return $"<color=#{ColorUtility.ToHtmlStringRGB(color)}><b>{label}</b></color>";
+        }
+
         private string GetToolSwitchPromptRich()
         {
             if (!UseGamepadPrompts())
-                return "<color=#F1D598><b>1-5</b></color>";
+                return "<color=#F1D598><b>Wheel</b></color> or <color=#F1D598><b>1-5</b></color>";
             return "<color=#F1D598><b>LB/RB</b></color> or <color=#F1D598><b>D-PAD</b></color>";
         }
 
         private string GetAnimalPromptDetail()
         {
             if (UseGamepadPrompts())
-                return $"Use {GetToolSwitchPromptRich()} to pick Plant or Stone";
-            return "Press <color=#F1D598><b>4</b></color> to feed or <color=#F1D598><b>5</b></color> to throw stone";
+                return $"Use {GetToolSwitchPromptRich()} to pick Plant or Stone, then {GetSecondaryPromptRich()} use it";
+            return $"Use {GetToolSwitchPromptRich()} to pick Plant or Stone, then {GetSecondaryPromptRich()} use it";
         }
 
         private string GetRespawnPromptDetail()

@@ -46,6 +46,7 @@ namespace SCoL.InputLayer
         private InputAction _sprint;
         private InputAction _primary;
         private InputAction _secondary;
+        private InputAction _drop;
         private InputAction _toolNext;
         private InputAction _toolPrev;
         private InputAction _pause;
@@ -58,6 +59,7 @@ namespace SCoL.InputLayer
         private InputAction _jumpSupplemental;
         private InputAction _primarySupplemental;
         private InputAction _secondarySupplemental;
+        private InputAction _dropSupplemental;
         private InputAction _toolNextSupplemental;
         private InputAction _toolPrevSupplemental;
         private InputAction _pauseSupplemental;
@@ -84,6 +86,7 @@ namespace SCoL.InputLayer
         public bool SprintHeld => IsPressed(_sprint);
         public bool PrimaryPressedThisFrame => WasPressedAny(_primary, _primarySupplemental);
         public bool SecondaryPressedThisFrame => WasPressedAny(_secondary, _secondarySupplemental);
+        public bool DropPressedThisFrame => WasPressedAny(_drop, _dropSupplemental);
         public bool ToolNextPressedThisFrame => WasPressedAny(_toolNext, _toolNextSupplemental);
         public bool ToolPrevPressedThisFrame => WasPressedAny(_toolPrev, _toolPrevSupplemental);
         public bool PausePressedThisFrame => WasPressedAny(_pause, _pauseSupplemental);
@@ -179,6 +182,7 @@ namespace SCoL.InputLayer
             _sprint = FindAction(map, "Sprint");
             _primary = FindAction(map, "Primary", "Attack", "Fire");
             _secondary = FindAction(map, "Secondary", "Interact", "AltFire");
+            _drop = FindAction(map, "Drop", "Discard");
             _toolNext = FindAction(map, "ToolNext", "Next");
             _toolPrev = FindAction(map, "ToolPrev", "Previous", "Prev");
             _pause = FindAction(map, "Pause", "Menu", "Cancel");
@@ -265,15 +269,21 @@ namespace SCoL.InputLayer
             _secondary.AddBinding("<Mouse>/rightButton");
             _secondary.AddBinding("<Gamepad>/leftTrigger");
 
+            _drop = _runtimeFallbackMap.AddAction("Drop", InputActionType.Button);
+            _drop.AddBinding("<Keyboard>/q");
+            _drop.AddBinding("<Gamepad>/buttonWest");
+
             _toolNext = _runtimeFallbackMap.AddAction("ToolNext", InputActionType.Button);
             _toolNext.AddBinding("<Mouse>/scroll/up");
             _toolNext.AddBinding("<Gamepad>/rightShoulder");
             _toolNext.AddBinding("<Gamepad>/dpad/right");
+            _toolNext.AddBinding("<Gamepad>/dpad/up");
 
             _toolPrev = _runtimeFallbackMap.AddAction("ToolPrev", InputActionType.Button);
             _toolPrev.AddBinding("<Mouse>/scroll/down");
             _toolPrev.AddBinding("<Gamepad>/leftShoulder");
             _toolPrev.AddBinding("<Gamepad>/dpad/left");
+            _toolPrev.AddBinding("<Gamepad>/dpad/down");
 
             _pause = _runtimeFallbackMap.AddAction("Pause", InputActionType.Button);
             _pause.AddBinding("<Keyboard>/escape");
@@ -294,9 +304,10 @@ namespace SCoL.InputLayer
 
             _primarySupplemental = CreateSupplementalAction("PrimarySupplemental", "<Mouse>/leftButton", "<Gamepad>/rightTrigger");
             _secondarySupplemental = CreateSupplementalAction("SecondarySupplemental", "<Mouse>/rightButton", "<Gamepad>/leftTrigger");
+            _dropSupplemental = CreateSupplementalAction("DropSupplemental", "<Keyboard>/q", "<Gamepad>/buttonWest");
             _jumpSupplemental = CreateSupplementalAction("JumpSupplemental", "<Keyboard>/space", "<Gamepad>/buttonSouth");
-            _toolNextSupplemental = CreateSupplementalAction("ToolNextSupplemental", "<Mouse>/scroll/up", "<Gamepad>/rightShoulder", "<Gamepad>/dpad/right");
-            _toolPrevSupplemental = CreateSupplementalAction("ToolPrevSupplemental", "<Mouse>/scroll/down", "<Gamepad>/leftShoulder", "<Gamepad>/dpad/left");
+            _toolNextSupplemental = CreateSupplementalAction("ToolNextSupplemental", "<Mouse>/scroll/up", "<Gamepad>/rightShoulder", "<Gamepad>/dpad/right", "<Gamepad>/dpad/up");
+            _toolPrevSupplemental = CreateSupplementalAction("ToolPrevSupplemental", "<Mouse>/scroll/down", "<Gamepad>/leftShoulder", "<Gamepad>/dpad/left", "<Gamepad>/dpad/down");
             _pauseSupplemental = CreateSupplementalAction("PauseSupplemental", "<Keyboard>/escape", "<Gamepad>/startButton");
             if (_tool1 == null)
                 _tool1Supplemental = CreateSupplementalAction("Tool1", "<Keyboard>/1");
@@ -332,6 +343,7 @@ namespace SCoL.InputLayer
             _jumpSupplemental = null;
             _primarySupplemental = null;
             _secondarySupplemental = null;
+            _dropSupplemental = null;
             _toolNextSupplemental = null;
             _toolPrevSupplemental = null;
             _pauseSupplemental = null;
@@ -408,6 +420,7 @@ namespace SCoL.InputLayer
             InputDevice device;
             if (TryGetTriggeredDevice(_primary, out device) ||
                 TryGetTriggeredDevice(_secondary, out device) ||
+                TryGetTriggeredDevice(_drop, out device) ||
                 TryGetTriggeredDevice(_jump, out device) ||
                 TryGetTriggeredDevice(_sprint, out device) ||
                 TryGetTriggeredDevice(_toolNext, out device) ||
@@ -421,6 +434,7 @@ namespace SCoL.InputLayer
                 TryGetTriggeredDevice(_respawn, out device) ||
                 TryGetTriggeredDevice(_primarySupplemental, out device) ||
                 TryGetTriggeredDevice(_secondarySupplemental, out device) ||
+                TryGetTriggeredDevice(_dropSupplemental, out device) ||
                 TryGetTriggeredDevice(_jumpSupplemental, out device) ||
                 TryGetTriggeredDevice(_toolNextSupplemental, out device) ||
                 TryGetTriggeredDevice(_toolPrevSupplemental, out device) ||

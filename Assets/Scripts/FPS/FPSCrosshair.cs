@@ -110,7 +110,7 @@ public class FPSCrosshair : MonoBehaviour
                     : "Unknown item");
                 detail = (_inventory != null
                     ? _inventory.GetItemDescription(type, unknownIfUndiscovered: true)
-                    : "You have not discovered this item yet.") + $"  [{GetPrimaryPromptLabel()} collect]";
+                    : "You have not discovered this item yet.") + $"  [{GetPrimaryPromptLabel()} pick up]";
                 break;
             }
 
@@ -124,9 +124,10 @@ public class FPSCrosshair : MonoBehaviour
             case FPSAimTargetKind.LegacyPlant:
             case FPSAimTargetKind.CAPlant:
             {
-                int required = _interactor != null ? Mathf.Max(1, _interactor.plantDestroyClicksRequired) : 4;
                 title = target.kind == FPSAimTargetKind.LegacyPlant ? "Plant" : $"Plant Cell {target.cellX},{target.cellY}";
-                detail = $"{GetSecondaryPromptLabel()} x{required} destroy";
+                detail = _interactor != null && _interactor.currentTool == FPSRaycastInteractor.ApplyTool.Water
+                    ? $"{GetPrimaryPromptLabel()} pick plant  /  {GetSecondaryPromptLabel()} water"
+                    : $"{GetPrimaryPromptLabel()} pick plant";
                 break;
             }
 
@@ -136,10 +137,10 @@ public class FPSCrosshair : MonoBehaviour
                 bool stoneTool = _interactor != null && _interactor.currentTool == FPSRaycastInteractor.ApplyTool.Stone;
                 title = target.animal != null ? "Animal: " + target.animal.name : "Animal";
                 detail = stoneTool
-                    ? $"{GetSecondaryPromptLabel()} throw stone"
+                    ? $"{GetSecondaryPromptLabel()} use tool: throw stone"
                     : (plantTool
-                        ? $"{GetSecondaryPromptLabel()} feed animal"
-                        : (UseGamepadPrompts() ? "Use LB/RB to pick Plant or Stone" : "Press 4 to feed or 5 to throw stone"));
+                        ? $"{GetSecondaryPromptLabel()} use tool: feed animal"
+                        : $"Use {GetToolSwitchPromptLabel()} to pick Plant or Stone");
                 break;
             }
 
@@ -149,12 +150,12 @@ public class FPSCrosshair : MonoBehaviour
                 if (p != null && _inventory != null)
                 {
                     title = "Item: " + _inventory.GetItemDisplayName(p.type, unknownIfUndiscovered: true);
-                    detail = _inventory.GetItemDescription(p.type, unknownIfUndiscovered: true) + $"  [{GetPrimaryPromptLabel()} collect]";
+                    detail = _inventory.GetItemDescription(p.type, unknownIfUndiscovered: true) + $"  [{GetPrimaryPromptLabel()} pick up]";
                 }
                 else
                 {
                     title = "Item: Unknown item";
-                    detail = $"You have not discovered this item yet.  [{GetPrimaryPromptLabel()} collect]";
+                    detail = $"You have not discovered this item yet.  [{GetPrimaryPromptLabel()} pick up]";
                 }
                 break;
             }
@@ -181,23 +182,23 @@ public class FPSCrosshair : MonoBehaviour
         {
             case FPSRaycastInteractor.ApplyTool.Seed:
                 itemType = SCoLItemType.Seed;
-                actionHint = $"{GetSecondaryPromptLabel()} plant";
+                actionHint = $"{GetSecondaryPromptLabel()} plant  /  {GetDropPromptLabel()} drop";
                 break;
             case FPSRaycastInteractor.ApplyTool.Water:
                 itemType = SCoLItemType.Water;
-                actionHint = $"{GetSecondaryPromptLabel()} water / lake collect";
+                actionHint = $"{GetPrimaryPromptLabel()} fill at pond  /  {GetSecondaryPromptLabel()} water";
                 break;
             case FPSRaycastInteractor.ApplyTool.Fire:
                 itemType = SCoLItemType.Fire;
-                actionHint = $"{GetSecondaryPromptLabel()} ignite";
+                actionHint = $"{GetSecondaryPromptLabel()} ignite  /  {GetDropPromptLabel()} drop";
                 break;
             case FPSRaycastInteractor.ApplyTool.Plant:
                 itemType = SCoLItemType.Plant;
-                actionHint = $"{GetSecondaryPromptLabel()} feed animal";
+                actionHint = $"{GetPrimaryPromptLabel()} pick plant  /  {GetSecondaryPromptLabel()} feed animal";
                 break;
             case FPSRaycastInteractor.ApplyTool.Stone:
                 itemType = SCoLItemType.Stone;
-                actionHint = $"{GetSecondaryPromptLabel()} throw stone";
+                actionHint = $"{GetSecondaryPromptLabel()} throw stone  /  {GetDropPromptLabel()} drop";
                 break;
             default:
                 return false;
@@ -215,6 +216,8 @@ public class FPSCrosshair : MonoBehaviour
 
     string GetPrimaryPromptLabel() => UseGamepadPrompts() ? "RT" : "LMB";
     string GetSecondaryPromptLabel() => UseGamepadPrompts() ? "LT" : "RMB";
+    string GetDropPromptLabel() => UseGamepadPrompts() ? "X" : "Q";
+    string GetToolSwitchPromptLabel() => UseGamepadPrompts() ? "LB/RB or D-Pad" : "Wheel or 1-5";
 
     void SetTargetInfo(string title, string detail)
     {

@@ -46,7 +46,7 @@ public class FPSRaycastInteractor : MonoBehaviour
     [Header("Debug")]
     public bool logHits = true;
 
-    [Header("Apply Tool (RMB)")]
+    [Header("Use Tool")]
     public ApplyTool currentTool = ApplyTool.Water;
     [Min(1)] public int spreadLayers = 3;
     [Min(0.1f)] public float spreadLayerIntervalSeconds = 1f;
@@ -166,10 +166,16 @@ public class FPSRaycastInteractor : MonoBehaviour
     [Range(0f, 1f)] public float thunderTargetIgniteChance = 0.12f;
     [Min(0.05f)] public float thunderTargetCheckIntervalSeconds = 0.35f;
 
-    [Header("Primary Collect (LMB)")]
+    [Header("Pickup Action")]
     public bool collectPickupsOnRightClick = true;
     public bool collectWaterFromRegionOnRightClick = true;
     [Min(1)] public int waterCollectAmount = 1;
+
+    [Header("Drop Action")]
+    public bool waterToolCanBeDropped = false;
+    [Min(0.5f)] public float dropForwardDistance = 1.8f;
+    [Min(0f)] public float dropVerticalOffset = 0.18f;
+    [Min(0f)] public float dropGroundClearance = 0.01f;
 
     [Header("Held Tool Visuals")]
     public bool showHeldToolVisuals = true;
@@ -448,7 +454,7 @@ public class FPSRaycastInteractor : MonoBehaviour
         UpdatePlantAttractor();
         TryIgniteTargetedPlantDuringThunder();
 
-        // Primary: non-destructive interaction only
+        // Primary: pick up / fill / uproot
         if (SCoL.Interaction.SCoLInteractionInput.PrimaryPressed())
         {
             if (!SCoL.Interaction.SCoLInteractionInput.TryGetAimRay(cameraSource, out var ray))
@@ -464,12 +470,15 @@ public class FPSRaycastInteractor : MonoBehaviour
                     if (TryHandleSettlementPrimary(hit))
                         return;
 
-                    // LMB priority #1: collect world pickups (seed/torch/etc).
                     if (collectPickupsOnRightClick && TryCollectPickupAtHit(hit))
                         return;
 
-                    // LMB priority #2: collect water from region, but not when frozen.
-                    if (collectWaterFromRegionOnRightClick && TryCollectWaterFromRegionAtHit(hit))
+                    if (currentTool == ApplyTool.Water &&
+                        collectWaterFromRegionOnRightClick &&
+                        TryCollectWaterFromRegionAtHit(hit))
+                        return;
+
+                    if (pickPlantsOnPrimaryClick && TryPickupPlantAtHit(hit))
                         return;
                 }
             }
@@ -480,7 +489,7 @@ public class FPSRaycastInteractor : MonoBehaviour
             }
         }
 
-        // Secondary: apply selected tool (RMB)
+        // Secondary: use active tool
         if (SCoL.Interaction.SCoLInteractionInput.SecondaryPressed())
         {
             if (!SCoL.Interaction.SCoLInteractionInput.TryGetAimRay(cameraSource, out var ray))
@@ -502,20 +511,6 @@ public class FPSRaycastInteractor : MonoBehaviour
             }
 
             if (!Physics.Raycast(ray, out var hit, 50f, hitMask, QueryTriggerInteraction.Ignore))
-                return;
-
-            // Allow collecting pickups with RMB too (useful for laptop/trackpad workflows).
-            if (collectPickupsOnRightClick && TryCollectPickupAtHit(hit))
-                return;
-
-            if (currentTool == ApplyTool.Water && collectWaterFromRegionOnRightClick && TryCollectWaterFromRegionAtHit(hit))
-                return;
-
-            // Water and fire tools should apply to hovered plants directly instead of being hijacked
-            // by the generic repeated-RMB plant destroy flow.
-            if (currentTool != ApplyTool.Water &&
-                currentTool != ApplyTool.Fire &&
-                TryHandlePlantDestroyClick(hit))
                 return;
 
             switch (currentTool)
@@ -579,6 +574,12 @@ public class FPSRaycastInteractor : MonoBehaviour
 
                 case ApplyTool.Water:
                 {
+                    if (CanCollectWaterFromRegionAtHit(hit))
+                    {
+                        if (logHits) Debug.Log("[FPSRaycastInteractor] Use pickup action to fill the watering can at ponds.");
+                        return;
+                    }
+
                     bool targetingPlant = TryResolveWaterApplicationTarget(hit, out Vector3 waterPoint, out Vector3 waterNormal);
                     bool targetedCAPlant = TryResolveCAPlantCellFromWorld(hit.point, out int waterCellX, out int waterCellY);
                     var targetedLegacyPlant = hit.collider != null ? hit.collider.GetComponentInParent<FPSSeedGrowth>() : null;
@@ -707,9 +708,54 @@ public class FPSRaycastInteractor : MonoBehaviour
                     break;
             }
         }
+
+        // Third action: put down / store current item
+        if (SCoL.Interaction.SCoLInteractionInput.DropPressed())
+        {
+            if (!SCoL.Interaction.SCoLInteractionInput.TryGetAimRay(cameraSource, out var ray))
+                return;
+
+            if (_inventory == null)
+                _inventory = FindFirstObjectByType<SCoL.Inventory.SCoLInventory>();
+            if (_inventory == null)
+                return;
+
+            if (TryDropActiveItem(ray))
+                return;
+        }
     }
 
     bool TryHandleSettlementPrimary(RaycastHit hit)
+    {
+        var interactable = hit.collider != null ? hit.collider.GetComponentInParent<SCoLSettlementInteractable>() : null;
+        if (interactable == null)
+            return false;
+
+        if (_settlementManager == null)
+            _settlementManager = interactable.manager != null ? interactable.manager : FindFirstObjectByType<SCoLSettlementManager>();
+        if (_settlementManager == null)
+            return false;
+
+        switch (interactable.kind)
+        {
+            case SCoLSettlementInteractableKind.Storage:
+            {
+                bool withdrew = _settlementManager.TryWithdrawCurrentTool(_inventory, currentTool, GetSelectedSeedVariantIndex(), out string message);
+                if (logHits && !string.IsNullOrEmpty(message))
+                    Debug.Log($"[FPSRaycastInteractor] {message}");
+                DayNightLightingController.PlayInteractionSfx(withdrew
+                    ? DayNightLightingController.InteractionSfx.PickupItem
+                    : DayNightLightingController.InteractionSfx.ToggleSwitch);
+                if (withdrew)
+                    FPSGameFeel.Shake(0.02f, 0.04f);
+                return true;
+            }
+            default:
+                return false;
+        }
+    }
+
+    bool TryHandleSettlementSecondary(RaycastHit hit)
     {
         var interactable = hit.collider != null ? hit.collider.GetComponentInParent<SCoLSettlementInteractable>() : null;
         if (interactable == null)
@@ -735,29 +781,15 @@ public class FPSRaycastInteractor : MonoBehaviour
                 }
                 return true;
             }
-            case SCoLSettlementInteractableKind.Storage:
-            {
-                bool stored = _settlementManager.TryDepositCurrentTool(_inventory, currentTool, GetSelectedSeedVariantIndex(), out string message);
-                if (logHits && !string.IsNullOrEmpty(message))
-                    Debug.Log($"[FPSRaycastInteractor] {message}");
-                DayNightLightingController.PlayInteractionSfx(stored
-                    ? DayNightLightingController.InteractionSfx.PickupItem
-                    : DayNightLightingController.InteractionSfx.ToggleSwitch);
-                if (stored)
-                    FPSGameFeel.Shake(0.02f, 0.04f);
-                return true;
-            }
-            case SCoLSettlementInteractableKind.Barrier:
-                return true;
             default:
                 return false;
         }
     }
 
-    bool TryHandleSettlementSecondary(RaycastHit hit)
+    bool TryHandleSettlementDrop(RaycastHit hit)
     {
         var interactable = hit.collider != null ? hit.collider.GetComponentInParent<SCoLSettlementInteractable>() : null;
-        if (interactable == null)
+        if (interactable == null || interactable.kind != SCoLSettlementInteractableKind.Storage)
             return false;
 
         if (_settlementManager == null)
@@ -765,26 +797,282 @@ public class FPSRaycastInteractor : MonoBehaviour
         if (_settlementManager == null)
             return false;
 
-        switch (interactable.kind)
+        bool stored = _settlementManager.TryDepositCurrentTool(_inventory, currentTool, GetSelectedSeedVariantIndex(), out string message);
+        if (logHits && !string.IsNullOrEmpty(message))
+            Debug.Log($"[FPSRaycastInteractor] {message}");
+        DayNightLightingController.PlayInteractionSfx(stored
+            ? DayNightLightingController.InteractionSfx.PickupItem
+            : DayNightLightingController.InteractionSfx.ToggleSwitch);
+        if (stored)
+            FPSGameFeel.Shake(0.02f, 0.04f);
+        return true;
+    }
+
+    bool TryDropActiveItem(Ray aimRay)
+    {
+        if (_inventory == null)
+            return false;
+
+        if (Physics.Raycast(aimRay, out var hit, maxDistance, hitMask, QueryTriggerInteraction.Ignore) &&
+            TryHandleSettlementDrop(hit))
+            return true;
+
+        if (currentTool == ApplyTool.Water && !waterToolCanBeDropped)
         {
-            case SCoLSettlementInteractableKind.Storage:
-            {
-                bool withdrew = _settlementManager.TryWithdrawCurrentTool(_inventory, currentTool, GetSelectedSeedVariantIndex(), out string message);
-                if (logHits && !string.IsNullOrEmpty(message))
-                    Debug.Log($"[FPSRaycastInteractor] {message}");
-                DayNightLightingController.PlayInteractionSfx(withdrew
-                    ? DayNightLightingController.InteractionSfx.PickupItem
-                    : DayNightLightingController.InteractionSfx.ToggleSwitch);
-                if (withdrew)
-                    FPSGameFeel.Shake(0.02f, 0.04f);
-                return true;
-            }
-            case SCoLSettlementInteractableKind.Centerpiece:
-            case SCoLSettlementInteractableKind.Barrier:
-                return true;
+            if (logHits) Debug.Log("[FPSRaycastInteractor] Watering can is not droppable.");
+            return false;
+        }
+
+        Vector3 dropPoint = ResolveDropPoint(aimRay);
+        GameObject prefab = null;
+        SCoLItemType type;
+        int seedVariantIndex = -1;
+        bool consumed;
+
+        switch (currentTool)
+        {
+            case ApplyTool.Seed:
+                seedVariantIndex = GetSelectedSeedVariantIndex();
+                consumed = _inventory.TryConsumeSeedType(seedVariantIndex, 1);
+                if (!consumed)
+                {
+                    if (logHits) Debug.Log("[FPSRaycastInteractor] No selected seeds to drop.");
+                    return false;
+                }
+                type = SCoLItemType.Seed;
+                prefab = ResolveHeldSeedPrefab();
+                break;
+            case ApplyTool.Fire:
+                consumed = _inventory.TryConsume(SCoLItemType.Fire, 1);
+                if (!consumed)
+                {
+                    if (logHits) Debug.Log("[FPSRaycastInteractor] No branches to drop.");
+                    return false;
+                }
+                type = SCoLItemType.Fire;
+                prefab = ResolveHeldFirePrefab();
+                break;
+            case ApplyTool.Plant:
+                consumed = _inventory.TryConsume(SCoLItemType.Plant, 1);
+                if (!consumed)
+                {
+                    if (logHits) Debug.Log("[FPSRaycastInteractor] No plants to drop.");
+                    return false;
+                }
+                type = SCoLItemType.Plant;
+                prefab = ResolveHeldPlantPrefab();
+                break;
+            case ApplyTool.Stone:
+                consumed = _inventory.TryConsume(SCoLItemType.Stone, 1);
+                if (!consumed)
+                {
+                    if (logHits) Debug.Log("[FPSRaycastInteractor] No stones to drop.");
+                    return false;
+                }
+                type = SCoLItemType.Stone;
+                prefab = ResolveHeldStonePrefab();
+                break;
             default:
                 return false;
         }
+
+        SpawnDroppedPickup(type, dropPoint, prefab, seedVariantIndex);
+        DayNightLightingController.PlayInteractionSfx(DayNightLightingController.InteractionSfx.ToggleSwitch);
+        return true;
+    }
+
+    Vector3 ResolveDropPoint(Ray aimRay)
+    {
+        if (Physics.Raycast(aimRay, out var hit, maxDistance, hitMask, QueryTriggerInteraction.Ignore))
+            return hit.point;
+
+        Vector3 fallbackOrigin = cameraSource != null ? cameraSource.transform.position : transform.position;
+        Vector3 fallbackForward = cameraSource != null ? cameraSource.transform.forward : transform.forward;
+        return fallbackOrigin + fallbackForward * Mathf.Max(0.5f, dropForwardDistance) + Vector3.up * dropVerticalOffset;
+    }
+
+    void SpawnDroppedPickup(SCoLItemType type, Vector3 worldPos, GameObject prefab, int seedVariantIndex = -1)
+    {
+        GameObject go = prefab != null
+            ? Instantiate(prefab, worldPos + Vector3.up * Mathf.Max(0f, dropVerticalOffset), Quaternion.Euler(0f, Random.Range(0f, 360f), 0f))
+            : GameObject.CreatePrimitive(type == SCoLItemType.Seed || type == SCoLItemType.Stone ? PrimitiveType.Sphere : PrimitiveType.Capsule);
+
+        go.name = $"Dropped_{type}";
+        if (prefab == null)
+        {
+            go.transform.position = worldPos + Vector3.up * Mathf.Max(0f, dropVerticalOffset);
+            go.transform.localScale = type switch
+            {
+                SCoLItemType.Seed => new Vector3(0.18f, 0.18f, 0.18f),
+                SCoLItemType.Stone => new Vector3(0.22f, 0.22f, 0.22f),
+                SCoLItemType.Plant => new Vector3(0.24f, 0.28f, 0.24f),
+                _ => new Vector3(0.24f, 0.18f, 0.24f)
+            };
+        }
+        else if (type == SCoLItemType.Plant)
+        {
+            go.transform.localScale = go.transform.localScale * 0.38f;
+        }
+
+        SetLayerRecursive(go, 0);
+        EnsureDropCollider(go);
+
+        var rb = go.GetComponent<Rigidbody>();
+        if (rb == null)
+            rb = go.AddComponent<Rigidbody>();
+        rb.useGravity = false;
+        rb.isKinematic = true;
+
+        var pickup = go.GetComponent<SCoLPickup>();
+        if (pickup == null)
+            pickup = go.AddComponent<SCoLPickup>();
+        pickup.type = type;
+        pickup.amount = 1;
+        pickup.seedVariantIndex = seedVariantIndex;
+        pickup.preserveExistingMaterials = prefab != null;
+        pickup.ApplyVisual();
+
+        SnapDroppedPickupToGround(go, worldPos);
+
+        if (logHits)
+            Debug.Log($"[FPSRaycastInteractor] Dropped {type}.");
+    }
+
+    void EnsureDropCollider(GameObject go)
+    {
+        if (go == null)
+            return;
+
+        var colliders = go.GetComponentsInChildren<Collider>(includeInactive: true);
+        if (colliders == null || colliders.Length == 0)
+        {
+            var box = go.AddComponent<BoxCollider>();
+            box.enabled = true;
+            box.isTrigger = false;
+            return;
+        }
+
+        for (int i = 0; i < colliders.Length; i++)
+        {
+            if (colliders[i] == null)
+                continue;
+            colliders[i].enabled = true;
+            colliders[i].isTrigger = false;
+        }
+    }
+
+    void SnapDroppedPickupToGround(GameObject go, Vector3 aroundPos)
+    {
+        if (go == null || !TryGetDropBottomY(go, out float bottomY))
+            return;
+
+        float groundY = aroundPos.y;
+        Vector3 terrainSample = aroundPos + Vector3.up * Mathf.Max(4f, surfaceProbeHeight);
+        if (_voxelWorld == null || !_voxelWorld.isActiveAndEnabled)
+            _voxelWorld = FindFirstObjectByType<VoxelWorld>();
+        if (_voxelWorld != null &&
+            _voxelWorld.TryGetTerrainSurfaceYAtWorld(terrainSample, out float terrainY, includeWaterSurface: false))
+        {
+            groundY = terrainY;
+        }
+        else
+        {
+            var hits = Physics.RaycastAll(
+                aroundPos + Vector3.up * Mathf.Max(8f, surfaceProbeHeight),
+                Vector3.down,
+                Mathf.Max(20f, surfaceProbeHeight * 3f),
+                ~0,
+                QueryTriggerInteraction.Ignore);
+            bool found = false;
+            float lowestY = float.PositiveInfinity;
+            for (int i = 0; i < hits.Length; i++)
+            {
+                var probeHit = hits[i];
+                if (!IsValidDropGroundHit(go, probeHit.collider))
+                    continue;
+
+                if (probeHit.point.y < lowestY)
+                {
+                    lowestY = probeHit.point.y;
+                    found = true;
+                }
+            }
+
+            if (found)
+                groundY = lowestY;
+        }
+
+        float dy = (groundY + Mathf.Max(0f, dropGroundClearance)) - bottomY;
+        if (!Mathf.Approximately(dy, 0f))
+            go.transform.position += Vector3.up * dy;
+    }
+
+    static bool TryGetDropBottomY(GameObject go, out float bottomY)
+    {
+        bottomY = 0f;
+        if (go == null)
+            return false;
+
+        bool hasBounds = false;
+        Bounds bounds = default;
+        var renderers = go.GetComponentsInChildren<Renderer>(includeInactive: true);
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            var renderer = renderers[i];
+            if (renderer == null)
+                continue;
+
+            if (!hasBounds)
+            {
+                bounds = renderer.bounds;
+                hasBounds = true;
+            }
+            else
+            {
+                bounds.Encapsulate(renderer.bounds);
+            }
+        }
+
+        if (!hasBounds)
+        {
+            var colliders = go.GetComponentsInChildren<Collider>(includeInactive: true);
+            for (int i = 0; i < colliders.Length; i++)
+            {
+                var collider = colliders[i];
+                if (collider == null)
+                    continue;
+
+                if (!hasBounds)
+                {
+                    bounds = collider.bounds;
+                    hasBounds = true;
+                }
+                else
+                {
+                    bounds.Encapsulate(collider.bounds);
+                }
+            }
+        }
+
+        if (!hasBounds)
+            return false;
+
+        bottomY = bounds.min.y;
+        return true;
+    }
+
+    static bool IsValidDropGroundHit(GameObject go, Collider collider)
+    {
+        if (go == null || collider == null || !collider.enabled || collider.isTrigger)
+            return false;
+
+        if (collider.transform.IsChildOf(go.transform))
+            return false;
+
+        if (collider.GetComponentInParent<SCoLPickup>() != null)
+            return false;
+
+        return true;
     }
 
     bool TryCollectPickupAtHit(RaycastHit hit)
@@ -822,7 +1110,18 @@ public class FPSRaycastInteractor : MonoBehaviour
     {
         if (_inventory == null)
             return false;
+        if (!CanCollectWaterFromRegionAtHit(hit))
+            return false;
 
+        int amount = Mathf.Max(1, waterCollectAmount);
+        _inventory.Add(SCoLItemType.Water, amount);
+        DayNightLightingController.PlayInteractionSfx(DayNightLightingController.InteractionSfx.WaterFill);
+        if (logHits) Debug.Log($"[FPSRaycastInteractor] Collected water from region: +{amount}");
+        return true;
+    }
+
+    bool CanCollectWaterFromRegionAtHit(RaycastHit hit)
+    {
         if (_voxelWorld == null || !_voxelWorld.isActiveAndEnabled)
             _voxelWorld = FindFirstObjectByType<VoxelWorld>();
         if (_voxelWorld == null)
@@ -837,10 +1136,6 @@ public class FPSRaycastInteractor : MonoBehaviour
             return false;
         }
 
-        int amount = Mathf.Max(1, waterCollectAmount);
-        _inventory.Add(SCoLItemType.Water, amount);
-        DayNightLightingController.PlayInteractionSfx(DayNightLightingController.InteractionSfx.WaterFill);
-        if (logHits) Debug.Log($"[FPSRaycastInteractor] Collected water from region: +{amount}");
         return true;
     }
 
