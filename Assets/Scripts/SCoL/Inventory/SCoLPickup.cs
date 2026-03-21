@@ -26,6 +26,14 @@ namespace SCoL.Inventory
         public Texture2D stoneTexture;
         [Tooltip("When true and no explicit texture is assigned for this type, keeps prefab-authored materials unchanged.")]
         public bool preserveExistingMaterials = true;
+        [Header("Auto Plant")]
+        public bool autoPlantIfUncollected = false;
+        [Min(0f)] public float autoPlantDelaySeconds = 0f;
+        [Min(0.1f)] public float autoPlantRetrySeconds = 1f;
+
+        float _autoPlantAtTime;
+        float _nextAutoPlantAttemptAt;
+        SCoLRuntime _runtime;
 
         private void Reset()
         {
@@ -35,6 +43,42 @@ namespace SCoL.Inventory
         private void OnEnable()
         {
             ApplyVisual();
+            ArmAutoPlantTimer();
+        }
+
+        private void Awake()
+        {
+            ArmAutoPlantTimer();
+        }
+
+        private void Update()
+        {
+            if (!autoPlantIfUncollected || type != SCoLItemType.Seed || autoPlantDelaySeconds <= 0f)
+                return;
+            if (Time.time < _autoPlantAtTime || Time.time < _nextAutoPlantAttemptAt)
+                return;
+
+            if (_runtime == null)
+                _runtime = FindFirstObjectByType<SCoLRuntime>();
+            if (_runtime == null)
+            {
+                _nextAutoPlantAttemptAt = Time.time + Mathf.Max(0.1f, autoPlantRetrySeconds);
+                return;
+            }
+
+            if (_runtime.TryAutoPlantDroppedSeedAt(transform.position, seedVariantIndex))
+            {
+                Destroy(gameObject);
+                return;
+            }
+
+            _nextAutoPlantAttemptAt = Time.time + Mathf.Max(0.1f, autoPlantRetrySeconds);
+        }
+
+        void ArmAutoPlantTimer()
+        {
+            _autoPlantAtTime = Time.time + Mathf.Max(0f, autoPlantDelaySeconds);
+            _nextAutoPlantAttemptAt = _autoPlantAtTime;
         }
 
         public void ApplyVisual()

@@ -36,6 +36,13 @@ namespace SCoL
         [Tooltip("Seed an initial set of plants so cellular automata has a starting population.")]
         public bool seedInitialPlants = true;
         [Range(0f, 0.10f)] public float initialPlantDensity = 0.02f;
+        [Header("Initial Flower Clusters")]
+        public bool seedInitialFlowerClusters = true;
+        [Min(1)] public int initialFlowerClusterCount = 8;
+        [Min(2)] public int initialFlowerClusterMinFlowers = 4;
+        [Min(2)] public int initialFlowerClusterMaxFlowers = 7;
+        [Min(0.5f)] public float initialFlowerClusterRadius = 2.4f;
+        public bool initialFlowerClustersCountAsLineage = true;
 
         [Header("Tree Growth")]
         [Tooltip("Multiplier for promotions into tree stages. 0.33 means about 2/3 fewer new trees.")]
@@ -94,16 +101,28 @@ namespace SCoL
         public bool dropSeedPickupsNearDensePlayerFlowers = true;
         [Min(2)] public int densePlayerFlowerThreshold = 3;
         [Min(1f)] public float densePlayerFlowerRadius = 3.2f;
-        [Min(0.5f)] public float denseFlowerDropCheckSeconds = 10f;
+        [Min(0.5f)] public float denseFlowerDropCheckSeconds = 6f;
         [Range(0f, 1f)] public float denseFlowerDropChance = 1f;
-        [Min(1)] public int denseFlowerMaxActiveSeedDrops = 12;
-        [Min(0.25f)] public float denseFlowerSeedDropSpacing = 1.1f;
+        [Min(1)] public int denseFlowerMaxActiveSeedDrops = 48;
+        [Min(0.25f)] public float denseFlowerSeedDropSpacing = 2.6f;
         [Min(0f)] public float denseFlowerSeedDropHeight = 0.24f;
         [Min(0f)] public float denseFlowerSeedDropVisibleLift = 0.18f;
         [Min(0.1f)] public float denseFlowerSeedDropScale = 0.42f;
         [Min(1f)] public float denseFlowerSeedDropLifetimeSeconds = 30f;
+        [Min(1f)] public float denseFlowerSeedSelfPlantDelaySeconds = 12f;
+        [Min(0.25f)] public float denseFlowerSeedSelfPlantRetrySeconds = 1f;
         [Min(0f)] public float denseFlowerSeedDropBurstHeight = 0.4f;
         [Range(0, 64)] public int denseFlowerSeedDropBurstCount = 14;
+        [Min(2)] public int denseFlowerSeedDropMinCount = 4;
+        [Min(2)] public int denseFlowerSeedDropMaxCount = 20;
+        [Min(1)] public int calmPollinationMinRadiusCells = 3;
+        [Min(1)] public int calmPollinationSearchRadiusCells = 12;
+        [Min(1)] public int windPollinationMinRadiusCells = 10;
+        [Min(1)] public int windPollinationSearchRadiusCells = 28;
+        [Header("Wind Pollination Spread")]
+        [Min(0f)] public float windPollinationDistanceMin = 3f;
+        [Min(0f)] public float windPollinationDistanceMax = 7f;
+        [Min(0f)] public float windPollinationLateralJitter = 1.1f;
         [Header("Dense Flower Seed Drop Glow")]
         public bool denseFlowerSeedDropsGlow = true;
         public Color denseFlowerSeedDropGlowColor = new Color(0.22f, 0.95f, 0.75f, 1f);
@@ -258,6 +277,8 @@ namespace SCoL
             bool allowInitialPlants = seedInitialPlants && !(onlyPlayerSeededLineageCA && disableInitialPlantsWhenLineageOnly);
             if (allowInitialPlants)
                 SeedInitialPlants();
+            if (seedInitialFlowerClusters)
+                SeedInitialFlowerClusters();
 
             // Snap XR rig to ground after voxel world exists.
             StartCoroutine(SnapRigToGroundNextFrame());
@@ -1004,6 +1025,29 @@ namespace SCoL
         {
             PlaceSeedAt(world, -1);
         }
+
+        public bool CanPlaceSeedAtWorld(Vector3 world)
+        {
+            if (IsWinterSeasonActive())
+                return false;
+            if (!TryWorldToCell(world, out int x, out int y))
+                return false;
+            if (!IsPlantableColumn(x, y))
+                return false;
+
+            var c = Grid.Get(x, y);
+            return c != null && (c.PlantStage == PlantStage.Empty || c.PlantStage == PlantStage.Burnt);
+        }
+
+        public bool TryAutoPlantDroppedSeedAt(Vector3 world, int flowerVariantIndex)
+        {
+            if (!CanPlaceSeedAtWorld(world))
+                return false;
+
+            PlaceSeedAt(world, flowerVariantIndex);
+            return true;
+        }
+
         public bool TryDestroyPlantAtCell(int x, int y)
         {
             if (Grid == null || !Grid.InBounds(x, y))
@@ -1599,13 +1643,15 @@ namespace SCoL
             if (variantPool.Count == 0 && sourceCell != null && sourceCell.FlowerVariantIndex >= 0)
                 variantPool.Add(sourceCell.FlowerVariantIndex);
 
-            Shuffle(clusterPoints);
             Shuffle(variantPool);
+            var dropCells = new List<Vector2Int>(64);
+            CollectPollinationDropCells(source.x, source.y, crowdedCount, dropCells);
 
             int spawned = 0;
-            for (int i = 0; i < clusterPoints.Count && spawned < dropCount; i++)
+            for (int i = 0; i < dropCells.Count && spawned < dropCount; i++)
             {
-                Vector3 dropWorld = clusterPoints[i];
+                Vector2Int cellPos = dropCells[i];
+                Vector3 dropWorld = _voxelWorld.ColumnTopWorld(cellPos.x, cellPos.y) + Vector3.up * Mathf.Max(0f, denseFlowerSeedDropHeight);
                 if (HasNearbyDenseFlowerSeedPickup(dropWorld, 0.18f))
                     continue;
 
@@ -1619,9 +1665,10 @@ namespace SCoL
 
         int GetDenseFlowerSeedDropCount(int nearbyFlowers)
         {
-            if (nearbyFlowers >= 10) return 4;
-            if (nearbyFlowers >= 6) return 3;
-            return 2;
+            int minCount = Mathf.Max(2, denseFlowerSeedDropMinCount);
+            int maxCount = Mathf.Max(minCount, denseFlowerSeedDropMaxCount);
+            float t = Mathf.InverseLerp(Mathf.Max(2, densePlayerFlowerThreshold), 14f, nearbyFlowers);
+            return Mathf.RoundToInt(Mathf.Lerp(minCount, maxCount, t));
         }
 
         int CountDensePlayerFlowersAround(int cx, int cy, int cellRadius, float worldRadius)
@@ -1777,6 +1824,149 @@ namespace SCoL
             return _voxelWorld.ColumnTopWorld(x, y) + Vector3.up * Mathf.Max(0f, denseFlowerSeedDropHeight);
         }
 
+        bool TryResolvePollinationDropWorld(Vector3 flowerAnchorWorld, int crowdedCount, out Vector3 dropWorld)
+        {
+            if (TryResolveOpenPlantableDropWorld(ApplyWindToPollinationTarget(flowerAnchorWorld, crowdedCount), CurrentWeather == WeatherType.Wind ? 4 : 2, out dropWorld))
+                return true;
+            return TryResolveOpenPlantableDropWorld(flowerAnchorWorld, 2, out dropWorld);
+        }
+
+        void CollectPollinationDropCells(int centerX, int centerY, int crowdedCount, List<Vector2Int> sink)
+        {
+            sink.Clear();
+            if (Grid == null || _voxelWorld == null)
+                return;
+
+            bool windy = CurrentWeather == WeatherType.Wind;
+            int searchRadius = windy ? Mathf.Max(1, windPollinationSearchRadiusCells) : Mathf.Max(1, calmPollinationSearchRadiusCells);
+            int minRadius = windy ? Mathf.Max(0, windPollinationMinRadiusCells) : Mathf.Max(0, calmPollinationMinRadiusCells);
+            Vector2 wind = new Vector2(_windDirection.x, _windDirection.y);
+            if (wind.sqrMagnitude > 0.001f)
+                wind.Normalize();
+            Vector2 lateral = new Vector2(-wind.y, wind.x);
+
+            var weighted = new List<(Vector2Int cell, float weight)>(128);
+            for (int y = centerY - searchRadius; y <= centerY + searchRadius; y++)
+            for (int x = centerX - searchRadius; x <= centerX + searchRadius; x++)
+            {
+                if (!Grid.InBounds(x, y))
+                    continue;
+                if (!CanPlaceSeedAtCell(x, y))
+                    continue;
+
+                int dx = x - centerX;
+                int dy = y - centerY;
+                float dist = Mathf.Sqrt(dx * dx + dy * dy);
+                if (dist > searchRadius)
+                    continue;
+                if (dist < minRadius)
+                    continue;
+
+                float weight;
+                if (windy)
+                {
+                    Vector2 dir = dist > 0.001f ? new Vector2(dx, dy).normalized : wind;
+                    float forward = wind.sqrMagnitude > 0.001f ? Mathf.Max(0f, Vector2.Dot(dir, wind)) : 0.5f;
+                    float sidewaysPenalty = wind.sqrMagnitude > 0.001f ? Mathf.Abs(Vector2.Dot(dir, lateral)) : 0f;
+                    float outward = Mathf.InverseLerp(minRadius, searchRadius, dist);
+                    weight = forward * 5.5f + outward * 2.5f - sidewaysPenalty * 0.45f;
+                }
+                else
+                {
+                    float outward = Mathf.InverseLerp(minRadius, searchRadius, dist);
+                    weight = outward * 3.5f;
+                }
+
+                weighted.Add((new Vector2Int(x, y), weight + UnityEngine.Random.Range(0f, 0.15f)));
+            }
+
+            weighted.Sort((a, b) => b.weight.CompareTo(a.weight));
+            for (int i = 0; i < weighted.Count; i++)
+            {
+                var candidate = weighted[i].cell;
+                if (IsTooCloseToChosenPollinationCell(candidate, sink))
+                    continue;
+                sink.Add(candidate);
+            }
+        }
+
+        bool IsTooCloseToChosenPollinationCell(Vector2Int candidate, List<Vector2Int> chosen)
+        {
+            if (chosen == null)
+                return false;
+
+            float minSpacing = Mathf.Max(1f, denseFlowerSeedDropSpacing);
+            float minSpacingSqr = minSpacing * minSpacing;
+            for (int i = 0; i < chosen.Count; i++)
+            {
+                Vector2Int other = chosen[i];
+                float dx = candidate.x - other.x;
+                float dy = candidate.y - other.y;
+                if (dx * dx + dy * dy < minSpacingSqr)
+                    return true;
+            }
+
+            return false;
+        }
+
+        Vector3 ApplyWindToPollinationTarget(Vector3 flowerAnchorWorld, int crowdedCount)
+        {
+            if (CurrentWeather != WeatherType.Wind)
+                return flowerAnchorWorld;
+
+            Vector2 wind = new Vector2(_windDirection.x, _windDirection.y);
+            if (wind.sqrMagnitude <= 0.001f)
+                return flowerAnchorWorld;
+
+            wind.Normalize();
+            Vector2 lateral = new Vector2(-wind.y, wind.x);
+            float t = Mathf.InverseLerp(Mathf.Max(2, densePlayerFlowerThreshold), 10f, crowdedCount);
+            float forwardDistance = Mathf.Lerp(windPollinationDistanceMin, windPollinationDistanceMax, t) * Mathf.Max(0.5f, Grid.CellSize);
+            float sideDistance = UnityEngine.Random.Range(-windPollinationLateralJitter, windPollinationLateralJitter) * Mathf.Max(0.5f, Grid.CellSize);
+
+            return flowerAnchorWorld
+                   + new Vector3(wind.x, 0f, wind.y) * forwardDistance
+                   + new Vector3(lateral.x, 0f, lateral.y) * sideDistance;
+        }
+
+        bool TryResolveOpenPlantableDropWorld(Vector3 desiredWorld, int searchRadiusCells, out Vector3 dropWorld)
+        {
+            dropWorld = desiredWorld;
+            if (!TryWorldToCell(desiredWorld, out int cx, out int cy))
+                return false;
+
+            int maxRadius = Mathf.Max(0, searchRadiusCells);
+            for (int radius = 0; radius <= maxRadius; radius++)
+            {
+                for (int y = cy - radius; y <= cy + radius; y++)
+                for (int x = cx - radius; x <= cx + radius; x++)
+                {
+                    if (!Grid.InBounds(x, y))
+                        continue;
+                    if (Mathf.Abs(x - cx) != radius && Mathf.Abs(y - cy) != radius)
+                        continue;
+                    if (!CanPlaceSeedAtCell(x, y))
+                        continue;
+
+                    dropWorld = _voxelWorld.ColumnTopWorld(x, y) + Vector3.up * Mathf.Max(0f, denseFlowerSeedDropHeight);
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        bool CanPlaceSeedAtCell(int x, int y)
+        {
+            if (Grid == null || !Grid.InBounds(x, y))
+                return false;
+            if (!IsPlantableColumn(x, y))
+                return false;
+
+            var c = Grid.Get(x, y);
+            return c != null && (c.PlantStage == PlantStage.Empty || c.PlantStage == PlantStage.Burnt);
+        }
+
         void SpawnDenseFlowerSeedPickup(Vector3 worldPos, int flowerVariantIndex)
         {
             if (_spawnPickups == null || !_spawnPickups.isActiveAndEnabled)
@@ -1806,6 +1996,9 @@ namespace SCoL
             pickup.amount = 1;
             pickup.seedVariantIndex = flowerVariantIndex;
             pickup.preserveExistingMaterials = prefab != null;
+            pickup.autoPlantIfUncollected = true;
+            pickup.autoPlantDelaySeconds = denseFlowerSeedSelfPlantDelaySeconds;
+            pickup.autoPlantRetrySeconds = denseFlowerSeedSelfPlantRetrySeconds;
             pickup.ApplyVisual();
             EnsurePickupCollider(go);
             SnapPickupToGround(go, worldPos);
@@ -2323,6 +2516,98 @@ namespace SCoL
                     }
                 }
             }
+        }
+
+        private void SeedInitialFlowerClusters()
+        {
+            if (Grid == null || _voxelWorld == null)
+                return;
+
+            int clusterCount = Mathf.Max(1, initialFlowerClusterCount);
+            int minFlowers = Mathf.Max(2, initialFlowerClusterMinFlowers);
+            int maxFlowers = Mathf.Max(minFlowers, initialFlowerClusterMaxFlowers);
+            int variantCount = 8;
+
+            for (int cluster = 0; cluster < clusterCount; cluster++)
+            {
+                if (!TryFindInitialFlowerClusterCenter(out int centerX, out int centerY))
+                    continue;
+
+                int flowerVariant = _rng != null ? _rng.Next(0, variantCount) : UnityEngine.Random.Range(0, variantCount);
+                int targetFlowers = _rng != null ? _rng.Next(minFlowers, maxFlowers + 1) : UnityEngine.Random.Range(minFlowers, maxFlowers + 1);
+                int radiusCells = Mathf.Max(1, Mathf.CeilToInt(initialFlowerClusterRadius / Mathf.Max(0.01f, Grid.CellSize)));
+
+                var candidates = new List<Vector2Int>(32);
+                for (int y = centerY - radiusCells; y <= centerY + radiusCells; y++)
+                for (int x = centerX - radiusCells; x <= centerX + radiusCells; x++)
+                {
+                    if (!Grid.InBounds(x, y))
+                        continue;
+
+                    Vector3 center = Grid.CellCenterWorld(centerX, centerY);
+                    Vector3 candidate = Grid.CellCenterWorld(x, y);
+                    Vector2 d = new Vector2(candidate.x - center.x, candidate.z - center.z);
+                    if (d.sqrMagnitude > initialFlowerClusterRadius * initialFlowerClusterRadius)
+                        continue;
+                    if (!CanUseCellForInitialFlower(x, y))
+                        continue;
+
+                    candidates.Add(new Vector2Int(x, y));
+                }
+
+                Shuffle(candidates);
+                int placed = 0;
+                for (int i = 0; i < candidates.Count && placed < targetFlowers; i++)
+                {
+                    var cellPos = candidates[i];
+                    var c = Grid.Get(cellPos.x, cellPos.y);
+                    c.PlantStage = PlantStage.MediumTree;
+                    c.PlantAgeSeconds = Mathf.Max(secondsPerTreeStage * 2f, 0.1f);
+                    c.Durability = 1f;
+                    c.Success = 0.95f;
+                    c.Water = Mathf.Max(c.Water, 0.65f);
+                    c.WaterVisual = 0f;
+                    c.IsPlayerSeedLineage = initialFlowerClustersCountAsLineage;
+                    c.FlowerVariantIndex = flowerVariant;
+                    c.BurntAutoClearSeconds = 0f;
+                    c.PlantHealth = 65f;
+                    c.StompHits = 0;
+                    c.ClearPlantPlacementOffset();
+                    placed++;
+                }
+            }
+        }
+
+        bool TryFindInitialFlowerClusterCenter(out int centerX, out int centerY)
+        {
+            centerX = centerY = 0;
+            if (Grid == null)
+                return false;
+
+            for (int attempt = 0; attempt < 64; attempt++)
+            {
+                int x = _rng != null ? _rng.Next(0, Grid.Width) : UnityEngine.Random.Range(0, Grid.Width);
+                int y = _rng != null ? _rng.Next(0, Grid.Height) : UnityEngine.Random.Range(0, Grid.Height);
+                if (!CanUseCellForInitialFlower(x, y))
+                    continue;
+
+                centerX = x;
+                centerY = y;
+                return true;
+            }
+
+            return false;
+        }
+
+        bool CanUseCellForInitialFlower(int x, int y)
+        {
+            if (Grid == null || !Grid.InBounds(x, y))
+                return false;
+            if (!IsPlantableColumn(x, y))
+                return false;
+
+            var c = Grid.Get(x, y);
+            return c != null && (c.PlantStage == PlantStage.Empty || c.PlantStage == PlantStage.Burnt);
         }
 
         private int ResolveSpreadFlowerVariantIndex(int x, int y)

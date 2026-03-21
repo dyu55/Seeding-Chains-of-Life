@@ -1675,6 +1675,7 @@ public class FPSRaycastInteractor : MonoBehaviour
         StripHeldToolComponents(_heldToolInstance);
         if (currentTool == ApplyTool.Water)
             TintHeldWaterCan(_heldToolInstance);
+        TryPlayHeldToolAnimation(desiredPrefab, _heldToolInstance);
         return true;
     }
 
@@ -2467,6 +2468,45 @@ public class FPSRaycastInteractor : MonoBehaviour
         }
 
         return PickAnyClip(waterPlaceAnimationClips);
+    }
+
+    void TryPlayHeldToolAnimation(GameObject sourcePrefab, GameObject heldInstance)
+    {
+        if (heldInstance == null)
+            return;
+
+        switch (currentTool)
+        {
+            case ApplyTool.Fire:
+                TryPlayFireModelAnimation(heldInstance, ResolveHeldAnimationSourceName(sourcePrefab, heldInstance, "groundfirev2", "groundfirev1", "firev2", "firev1"));
+                break;
+            case ApplyTool.Water:
+                TryPlayModelAnimation(heldInstance, ResolveHeldAnimationSourceName(sourcePrefab, heldInstance, "waterv2", "water"), waterTargets: true);
+                break;
+        }
+    }
+
+    static string ResolveHeldAnimationSourceName(GameObject sourcePrefab, GameObject heldInstance, params string[] preferredNames)
+    {
+        if (heldInstance != null)
+        {
+            var transforms = heldInstance.GetComponentsInChildren<Transform>(includeInactive: true);
+            for (int i = 0; i < transforms.Length; i++)
+            {
+                var t = transforms[i];
+                if (t == null)
+                    continue;
+
+                string lower = t.name.ToLowerInvariant();
+                for (int j = 0; j < preferredNames.Length; j++)
+                {
+                    if (!string.IsNullOrEmpty(preferredNames[j]) && lower.Contains(preferredNames[j]))
+                        return t.name;
+                }
+            }
+        }
+
+        return sourcePrefab != null ? sourcePrefab.name : string.Empty;
     }
 
     static AnimationClip PickAnyClip(AnimationClip[] clips)
