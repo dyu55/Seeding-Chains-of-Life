@@ -49,6 +49,10 @@ namespace SCoL.Visualization
         private Image _crosshairDot;
         private Text _statusHeroLabel;
         private Text _statusLabel;
+        private RectTransform _safeZoneBadge;
+        private CanvasGroup _safeZoneBadgeGroup;
+        private Image _safeZoneBadgeFill;
+        private Text _safeZoneBadgeLabel;
         private RectTransform _aimPanel;
         private CanvasGroup _aimCanvasGroup;
         private Text _aimTitleLabel;
@@ -158,6 +162,7 @@ namespace SCoL.Visualization
             EnsurePlayerCombatHealth();
 
             UpdateStatus();
+            UpdateSafeZoneBadge();
             UpdateAimInfo();
             UpdateInventory();
             UpdateToolbelt();
@@ -238,6 +243,53 @@ namespace SCoL.Visualization
                 fontSize: 19,
                 color: HudTextSecondary,
                 alignment: TextAnchor.UpperLeft);
+
+            _safeZoneBadge = CreateImage(
+                _root,
+                "SafeZoneBadge",
+                anchorMin: new Vector2(1f, 1f),
+                anchorMax: new Vector2(1f, 1f),
+                pivot: new Vector2(1f, 1f),
+                anchoredPos: new Vector2(-28f, -26f),
+                size: new Vector2(222f, 54f),
+                color: new Color(0.10f, 0.15f, 0.12f, 0.92f)).rectTransform;
+            _safeZoneBadgeGroup = _safeZoneBadge.gameObject.AddComponent<CanvasGroup>();
+            _safeZoneBadgeGroup.alpha = 0f;
+            _safeZoneBadgeGroup.interactable = false;
+            _safeZoneBadgeGroup.blocksRaycasts = false;
+
+            _safeZoneBadgeFill = CreateImage(
+                _safeZoneBadge,
+                "Inset",
+                anchorMin: new Vector2(0.5f, 0.5f),
+                anchorMax: new Vector2(0.5f, 0.5f),
+                pivot: new Vector2(0.5f, 0.5f),
+                anchoredPos: Vector2.zero,
+                size: new Vector2(214f, 46f),
+                color: new Color(0.22f, 0.72f, 0.38f, 0.96f));
+
+            CreateImage(
+                _safeZoneBadgeFill.transform,
+                "Glow",
+                anchorMin: new Vector2(0.5f, 0.5f),
+                anchorMax: new Vector2(0.5f, 0.5f),
+                pivot: new Vector2(0.5f, 0.5f),
+                anchoredPos: Vector2.zero,
+                size: new Vector2(214f, 46f),
+                color: new Color(1f, 1f, 1f, 0.07f));
+
+            _safeZoneBadgeLabel = CreateText(
+                _safeZoneBadgeFill.transform,
+                "Label",
+                anchorMin: new Vector2(0.5f, 0.5f),
+                anchorMax: new Vector2(0.5f, 0.5f),
+                pivot: new Vector2(0.5f, 0.5f),
+                anchoredPos: Vector2.zero,
+                size: new Vector2(190f, 30f),
+                fontSize: 24,
+                color: new Color(0.94f, 1f, 0.94f, 0.98f),
+                alignment: TextAnchor.MiddleCenter,
+                addOutline: true);
 
             _aimPanel = CreateHudCard(
                 _root,
@@ -711,6 +763,26 @@ namespace SCoL.Visualization
                 _sb.Append(_settlementManager.StorageSummary);
             }
             SetText(_inventoryLabel, _sb.ToString());
+        }
+
+        private void UpdateSafeZoneBadge()
+        {
+            if (_safeZoneBadgeGroup == null || _safeZoneBadgeFill == null || _safeZoneBadgeLabel == null)
+                return;
+
+            bool show = _settlementManager != null && _settlementManager.IsActivated;
+            _safeZoneBadgeGroup.alpha = show ? 1f : 0f;
+            if (!show)
+                return;
+
+            bool inside = _settlementManager.PlayerInsideSafeZone;
+            _safeZoneBadgeFill.color = inside
+                ? new Color(0.21f, 0.72f, 0.38f, 0.96f)
+                : new Color(0.62f, 0.46f, 0.18f, 0.94f);
+            _safeZoneBadgeLabel.color = inside
+                ? new Color(0.94f, 1f, 0.94f, 0.98f)
+                : new Color(1f, 0.95f, 0.84f, 0.98f);
+            SetText(_safeZoneBadgeLabel, inside ? "SAFE ZONE" : "OUTSIDE HOME");
         }
 
         private void UpdateToolbelt()

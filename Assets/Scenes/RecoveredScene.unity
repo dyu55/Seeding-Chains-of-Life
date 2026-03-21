@@ -163,7 +163,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 8f36a839b607342dda87994cdfad6586, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::SCoL.SCoLBootstrap
   config: {fileID: 11400000, guid: b09076b5d538f468898a216a9f43cde4, type: 2}
   origin: {x: 0, y: 0, z: 0}
@@ -192,7 +192,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 80fd887da1da44917886a1b2400c5b72, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::SCoL.Visualization.SCoLViewModeController
   runtime: {fileID: 0}
 --- !u!114 &123275009
@@ -205,7 +205,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: c1c1eb3fda9e4cda97d0442728e4779b, type: 3}
-  m_Name: 
+  m_Name: SCoLCampsiteSceneAnchor
   m_EditorClassIdentifier: 
   runtime: {fileID: 0}
   rayLength: 50
@@ -262,6 +262,7 @@ MonoBehaviour:
   waterCount: 50
   fireCount: 70
   stoneCount: 24
+  spawnWaterPickups: 0
   seedPickupPrefab: {fileID: 0}
   firePickupPrefab: {fileID: 0}
   waterPickupPrefab: {fileID: 0}
@@ -17280,6 +17281,59 @@ MonoBehaviour:
   propCount: 6
   propsCenter: {x: 0.5, y: 1.1, z: 1}
   propsRadius: 0.35
+--- !u!1 &900200000
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 900200001}
+  - component: {fileID: 900200002}
+  m_Layer: 0
+  m_Name: CampsiteAnchor
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &900200001
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 900200000}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 106.5, y: 0.05, z: 100.5}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &900200002
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 900200000}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f1a9c3e4b7d2469f8ab13c5d2e4f6789, type: 3}
+  m_Name: SCoLCampsiteSceneAnchor
+  m_EditorClassIdentifier: Assembly-CSharp::SCoL.Settlement.SCoLCampsiteSceneAnchor
+  resourcePath: Campsite/tentV2
+  visualEuler: {x: 0, y: 180, z: 0}
+  targetFootprint: 6.2
+  targetHeight: 3.8
+  groundOffset: 0.05
+  dryLandSearchStep: 2
+  dryLandSearchRings: 8
+  minShoreClearance: 10
+  _visualInstance: {fileID: 0}
 --- !u!1 &9000000001
 GameObject:
   m_ObjectHideFlags: 0

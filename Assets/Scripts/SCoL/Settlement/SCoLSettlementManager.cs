@@ -2,6 +2,9 @@ using System.Text;
 using UnityEngine;
 using SCoL.Inventory;
 using SCoL.Voxels;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 namespace SCoL.Settlement
 {
@@ -26,7 +29,7 @@ namespace SCoL.Settlement
 
         [Header("Runtime Placeholder Setup")]
         public bool createRuntimePlaceholders = true;
-        public bool startActivated = false;
+        public bool startActivated = true;
         [Min(2f)] public float spawnAheadDistance = 8f;
         [Min(2f)] public float safeZoneRadius = 8.5f;
         [Min(0.5f)] public float slowZonePadding = 2.5f;
@@ -37,6 +40,13 @@ namespace SCoL.Settlement
         [Min(0.1f)] public float fenceThickness = 0.35f;
         [Min(1f)] public float frontGateWidth = 3.2f;
         [Min(1f)] public float storageSideOffset = 3.5f;
+
+        [Header("Centerpiece Model")]
+        public GameObject centerpiecePrefab;
+        [Min(0.5f)] public float centerpieceTargetFootprint = 6.2f;
+        [Min(0.5f)] public float centerpieceTargetHeight = 3.8f;
+        public Vector3 centerpieceModelEuler = Vector3.zero;
+        [Min(2f)] public float maxDistanceFromPlayerBeforeRecentering = 18f;
 
         [Header("Storage Transfer")]
         [Min(1)] public int seedTransferAmount = 20;
@@ -56,12 +66,14 @@ namespace SCoL.Settlement
 
         SCoLRuntime _runtime;
         VoxelWorld _voxelWorld;
+        SCoLCampsiteSceneAnchor _sceneAnchor;
         Transform _playerRoot;
         Vector3 _centerPosition;
         Vector3 _forward = Vector3.forward;
         bool _hasPlacedRuntimeObjects;
         bool _isActivated;
         bool _playerInsideSafeZone;
+        bool _didInitialRecentering;
         int _currentLevel;
         int _flowerCount;
         int _nearbyAnimalCount;
@@ -77,6 +89,8 @@ namespace SCoL.Settlement
         int _storedStones;
 
         GameObject _centerpieceRoot;
+        GameObject _centerpieceVisualRoot;
+        GameObject _safeZoneRingRoot;
         GameObject _storageRoot;
         readonly System.Collections.Generic.List<GameObject> _barrierRoots = new System.Collections.Generic.List<GameObject>(8);
         readonly StringBuilder _sb = new StringBuilder(192);
@@ -103,8 +117,9 @@ namespace SCoL.Settlement
 
             Instance = this;
             FindReferences();
+            AutoAssignCenterpiecePrefab();
 
-            if (startActivated)
+            if (startActivated || createRuntimePlaceholders)
             {
                 _isActivated = true;
                 _activatedAt = Time.time;
@@ -127,6 +142,23 @@ namespace SCoL.Settlement
         {
             if (Instance == this)
                 Instance = null;
+        }
+
+        void AutoAssignCenterpiecePrefab()
+        {
+            if (centerpiecePrefab != null)
+                return;
+
+            centerpiecePrefab = Resources.Load<GameObject>("Campsite/tentV2");
+            if (centerpiecePrefab != null)
+                return;
+
+#if UNITY_EDITOR
+            centerpiecePrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Models/Modeling/_Incoming/Campsite/tentV2.obj");
+#endif
+
+            if (centerpiecePrefab == null)
+                Debug.LogWarning("[SCoLSettlementManager] Failed to load campsite centerpiece prefab.");
         }
 
         public bool IsInsideSafeZone(Vector3 worldPosition)
@@ -396,6 +428,8 @@ namespace SCoL.Settlement
                 _runtime = FindFirstObjectByType<SCoLRuntime>();
             if (_voxelWorld == null || !_voxelWorld.isActiveAndEnabled)
                 _voxelWorld = FindFirstObjectByType<VoxelWorld>();
+            if (_sceneAnchor == null)
+                _sceneAnchor = FindFirstObjectByType<SCoLCampsiteSceneAnchor>();
 
             if (_playerRoot == null)
             {
@@ -411,26 +445,70 @@ namespace SCoL.Settlement
         {
             if (!createRuntimePlaceholders)
                 return;
-            if (_hasPlacedRuntimeObjects && _centerpieceRoot != null && _storageRoot != null && _barrierRoots.Count > 0)
-                return;
+
+            if (_sceneAnchor == null)
+                FindReferences();
 
             Vector3 anchor = ResolveAnchorPosition();
             Vector3 planarForward = ResolveForward();
             if (planarForward.sqrMagnitude < 0.0001f)
                 planarForward = Vector3.forward;
 
+            if (_hasPlacedRuntimeObjects && _centerpieceRoot != null && _storageRoot != null)
+            {
+                if (_sceneAnchor == null)
+                    TryRecenterRuntimePlaceholders(anchor);
+                else
+                {
+                    _centerPosition = anchor;
+                    _forward = planarForward;
+                    _centerpieceRoot.transform.position = anchor;
+                }
+                return;
+            }
+
             _centerPosition = anchor;
             _forward = planarForward;
 
             if (_centerpieceRoot == null)
-                _centerpieceRoot = CreateCenterpiece(anchor, planarForward);
+                _centerpieceRoot = _sceneAnchor != null
+                    ? BindSceneAnchorCenterpiece(_sceneAnchor, anchor, planarForward)
+                    : CreateCenterpiece(anchor, planarForward);
             if (_storageRoot == null)
                 _storageRoot = CreateStorage(anchor, planarForward);
-            if (_barrierRoots.Count == 0)
-                CreateDefensePlaceholders(anchor, planarForward);
 
             RefreshSettlementVisuals();
             _hasPlacedRuntimeObjects = true;
+        }
+
+        void TryRecenterRuntimePlaceholders(Vector3 desiredAnchor)
+        {
+            if (_didInitialRecentering || _isActivated || _playerRoot == null)
+                return;
+
+            Vector3 playerPlanar = _playerRoot.position;
+            playerPlanar.y = 0f;
+            Vector3 centerPlanar = _centerPosition;
+            centerPlanar.y = 0f;
+            float planarDistance = Vector3.Distance(playerPlanar, centerPlanar);
+            if (planarDistance <= Mathf.Max(2f, maxDistanceFromPlayerBeforeRecentering))
+                return;
+
+            Vector3 delta = desiredAnchor - _centerPosition;
+            if (delta.sqrMagnitude <= 0.01f)
+                return;
+
+            TranslateRuntimePlaceholders(delta);
+            _centerPosition += delta;
+            _didInitialRecentering = true;
+        }
+
+        void TranslateRuntimePlaceholders(Vector3 delta)
+        {
+            if (_centerpieceRoot != null)
+                _centerpieceRoot.transform.position += delta;
+            if (_storageRoot != null)
+                _storageRoot.transform.position += delta;
         }
 
         Vector3 ResolveForward()
@@ -456,6 +534,9 @@ namespace SCoL.Settlement
 
         Vector3 ResolveAnchorPosition()
         {
+            if (_sceneAnchor != null)
+                return _sceneAnchor.GetAnchorPosition(_voxelWorld);
+
             Vector3 origin = _playerRoot != null ? _playerRoot.position : Vector3.zero;
             Vector3 forward = ResolveForward();
             Vector3 candidate = origin + forward * Mathf.Max(2f, spawnAheadDistance);
@@ -468,6 +549,33 @@ namespace SCoL.Settlement
 
             candidate.y = 0f;
             return candidate;
+        }
+
+        GameObject BindSceneAnchorCenterpiece(SCoLCampsiteSceneAnchor anchor, Vector3 position, Vector3 forward)
+        {
+            if (anchor == null)
+                return CreateCenterpiece(position, forward);
+
+            var root = anchor.gameObject;
+            root.name = "SettlementCenterpiece";
+            root.transform.position = position;
+            root.transform.rotation = Quaternion.LookRotation(forward, Vector3.up);
+            anchor.EnsureVisualNow();
+
+            var marker = root.GetComponent<SCoLSettlementInteractable>();
+            if (marker == null)
+                marker = root.AddComponent<SCoLSettlementInteractable>();
+            marker.kind = SCoLSettlementInteractableKind.Centerpiece;
+            marker.manager = this;
+
+            _centerpieceVisualRoot = anchor.GetVisualRoot();
+            if (_centerpieceVisualRoot != null)
+                EnsureCenterpieceCollider(root, _centerpieceVisualRoot);
+
+            _safeZoneRingRoot = root.transform.Find("SafeZoneRing") != null
+                ? root.transform.Find("SafeZoneRing").gameObject
+                : CreateSafeZoneRing(root.transform);
+            return root;
         }
 
         bool TryProjectToGround(Vector3 world, out Vector3 grounded)
@@ -509,32 +617,146 @@ namespace SCoL.Settlement
             marker.kind = SCoLSettlementInteractableKind.Centerpiece;
             marker.manager = this;
 
-            var baseObj = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-            baseObj.name = "Base";
-            baseObj.transform.SetParent(root.transform, false);
-            baseObj.transform.localPosition = new Vector3(0f, 0.35f, 0f);
-            baseObj.transform.localScale = new Vector3(1.35f, 0.35f, 1.35f);
+            if (centerpiecePrefab != null)
+            {
+                _centerpieceVisualRoot = Instantiate(centerpiecePrefab, root.transform, false);
+                _centerpieceVisualRoot.name = "CenterpieceVisual";
+                _centerpieceVisualRoot.transform.localRotation = Quaternion.Euler(centerpieceModelEuler);
+                NormalizeCenterpieceVisual(root, _centerpieceVisualRoot);
+                EnsureCenterpieceCollider(root, _centerpieceVisualRoot);
+            }
+            else
+            {
+                var baseObj = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                baseObj.name = "Base";
+                baseObj.transform.SetParent(root.transform, false);
+                baseObj.transform.localPosition = new Vector3(0f, 0.35f, 0f);
+                baseObj.transform.localScale = new Vector3(1.35f, 0.35f, 1.35f);
+                ConfigureRenderer(baseObj, new Color(0.22f, 0.18f, 0.12f, 1f));
+            }
 
-            var coreObj = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            coreObj.name = "Core";
-            coreObj.transform.SetParent(root.transform, false);
-            coreObj.transform.localPosition = new Vector3(0f, 1.35f, 0f);
-            coreObj.transform.localScale = new Vector3(0.72f, 0.72f, 0.72f);
+            if (centerpiecePrefab == null)
+            {
+                var coreObj = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                coreObj.name = "Core";
+                coreObj.transform.SetParent(root.transform, false);
+                coreObj.transform.localPosition = new Vector3(0f, 1.35f, 0f);
+                coreObj.transform.localScale = new Vector3(0.72f, 0.72f, 0.72f);
 
-            var ringObj = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-            ringObj.name = "Halo";
-            ringObj.transform.SetParent(root.transform, false);
-            ringObj.transform.localPosition = new Vector3(0f, 0.05f, 0f);
-            ringObj.transform.localScale = new Vector3(SafeZoneRadius * 2f, 0.01f, SafeZoneRadius * 2f);
-            var ringCollider = ringObj.GetComponent<Collider>();
-            if (ringCollider != null)
-                Destroy(ringCollider);
+                var ringObj = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                ringObj.name = "Halo";
+                ringObj.transform.SetParent(root.transform, false);
+                ringObj.transform.localPosition = new Vector3(0f, 0.05f, 0f);
+                ringObj.transform.localScale = new Vector3(SafeZoneRadius * 2f, 0.01f, SafeZoneRadius * 2f);
+                var ringCollider = ringObj.GetComponent<Collider>();
+                if (ringCollider != null)
+                    Destroy(ringCollider);
 
-            ConfigureRenderer(baseObj, new Color(0.22f, 0.18f, 0.12f, 1f));
-            ConfigureRenderer(coreObj, new Color(0.30f, 0.70f, 0.92f, 1f));
-            ConfigureRenderer(ringObj, new Color(0.24f, 0.85f, 0.78f, 0.66f));
+                ConfigureRenderer(coreObj, new Color(0.30f, 0.70f, 0.92f, 1f));
+            }
+
+            _safeZoneRingRoot = CreateSafeZoneRing(root.transform);
 
             return root;
+        }
+
+        GameObject CreateSafeZoneRing(Transform parent)
+        {
+            var ringRoot = new GameObject("SafeZoneRing");
+            ringRoot.transform.SetParent(parent, false);
+            ringRoot.transform.localPosition = new Vector3(0f, 0.03f, 0f);
+            ringRoot.transform.localRotation = Quaternion.identity;
+
+            var line = ringRoot.AddComponent<LineRenderer>();
+            line.loop = true;
+            line.useWorldSpace = false;
+            line.alignment = LineAlignment.View;
+            line.widthMultiplier = 0.18f;
+            line.positionCount = 48;
+            line.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            line.receiveShadows = false;
+            line.textureMode = LineTextureMode.Stretch;
+            line.numCapVertices = 4;
+            line.numCornerVertices = 4;
+
+            var shader = Shader.Find("Sprites/Default") ?? Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Unlit/Color");
+            var material = new Material(shader);
+            line.sharedMaterial = material;
+
+            float radius = Mathf.Max(0.5f, SafeZoneRadius);
+            for (int i = 0; i < line.positionCount; i++)
+            {
+                float t = i / (float)line.positionCount;
+                float angle = t * Mathf.PI * 2f;
+                line.SetPosition(i, new Vector3(Mathf.Cos(angle) * radius, 0f, Mathf.Sin(angle) * radius));
+            }
+
+            return ringRoot;
+        }
+
+        void NormalizeCenterpieceVisual(GameObject root, GameObject visual)
+        {
+            if (root == null || visual == null || !TryGetHierarchyBounds(visual, out var bounds))
+                return;
+
+            float footprint = Mathf.Max(0.01f, Mathf.Max(bounds.size.x, bounds.size.z));
+            float height = Mathf.Max(0.01f, bounds.size.y);
+            float scaleByFootprint = Mathf.Max(0.01f, centerpieceTargetFootprint) / footprint;
+            float scaleByHeight = Mathf.Max(0.01f, centerpieceTargetHeight) / height;
+            float uniformScale = Mathf.Min(scaleByFootprint, scaleByHeight);
+            visual.transform.localScale *= uniformScale;
+
+            if (!TryGetHierarchyBounds(visual, out bounds))
+                return;
+
+            Vector3 desiredBottomCenter = root.transform.position;
+            Vector3 currentBottomCenter = new Vector3(bounds.center.x, bounds.min.y, bounds.center.z);
+            visual.transform.position += desiredBottomCenter - currentBottomCenter;
+        }
+
+        void EnsureCenterpieceCollider(GameObject root, GameObject visual)
+        {
+            if (root == null || visual == null || !TryGetHierarchyBounds(visual, out var bounds))
+                return;
+
+            var collider = root.GetComponent<BoxCollider>();
+            if (collider == null)
+                collider = root.AddComponent<BoxCollider>();
+
+            Vector3 localCenter = root.transform.InverseTransformPoint(new Vector3(bounds.center.x, bounds.min.y + bounds.size.y * 0.45f, bounds.center.z));
+            collider.center = localCenter;
+            collider.size = new Vector3(
+                Mathf.Max(1.4f, bounds.size.x * 0.92f),
+                Mathf.Max(1.8f, bounds.size.y * 0.9f),
+                Mathf.Max(1.4f, bounds.size.z * 0.92f));
+        }
+
+        static bool TryGetHierarchyBounds(GameObject go, out Bounds bounds)
+        {
+            bounds = default;
+            if (go == null)
+                return false;
+
+            var renderers = go.GetComponentsInChildren<Renderer>(includeInactive: true);
+            bool hasBounds = false;
+            for (int i = 0; i < renderers.Length; i++)
+            {
+                var renderer = renderers[i];
+                if (renderer == null)
+                    continue;
+
+                if (!hasBounds)
+                {
+                    bounds = renderer.bounds;
+                    hasBounds = true;
+                }
+                else
+                {
+                    bounds.Encapsulate(renderer.bounds);
+                }
+            }
+
+            return hasBounds;
         }
 
         GameObject CreateStorage(Vector3 center, Vector3 forward)
@@ -642,13 +864,24 @@ namespace SCoL.Settlement
             ApplyActivationTint(_storageRoot, _isActivated
                 ? new Color(0.78f, 0.60f, 0.28f, 1f)
                 : new Color(0.38f, 0.32f, 0.24f, 1f));
+            RefreshSafeZoneRing();
+        }
 
-            for (int i = 0; i < _barrierRoots.Count; i++)
-            {
-                ApplyActivationTint(_barrierRoots[i], _isActivated
-                    ? new Color(0.58f, 0.46f, 0.24f, 1f)
-                    : new Color(0.28f, 0.24f, 0.20f, 1f));
-            }
+        void RefreshSafeZoneRing()
+        {
+            if (_safeZoneRingRoot == null)
+                return;
+
+            var line = _safeZoneRingRoot.GetComponent<LineRenderer>();
+            if (line == null)
+                return;
+
+            Color color = _isActivated
+                ? new Color(0.30f, 0.92f, 0.48f, 0.95f)
+                : new Color(0.22f, 0.55f, 0.34f, 0.65f);
+            line.startColor = color;
+            line.endColor = color;
+            line.enabled = true;
         }
 
         void ApplyActivationTint(GameObject root, Color tint)
@@ -661,6 +894,10 @@ namespace SCoL.Settlement
             {
                 var renderer = renderers[i];
                 if (renderer == null)
+                    continue;
+                if (root == _centerpieceRoot &&
+                    _centerpieceVisualRoot != null &&
+                    renderer.transform.IsChildOf(_centerpieceVisualRoot.transform))
                     continue;
 
                 var materials = renderer.materials;

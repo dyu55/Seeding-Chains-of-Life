@@ -16,6 +16,8 @@ namespace SCoL.Inventory
         public int waterCount = 50;
         public int fireCount = 40;
         public int stoneCount = 24;
+        [Tooltip("If false, do not spawn world water pickups. Water should be collected directly from ponds/rivers.")]
+        public bool spawnWaterPickups = false;
 
         [Header("Prefabs (optional)")]
         [Tooltip("Legacy single seed pickup prefab.")]
@@ -53,7 +55,7 @@ namespace SCoL.Inventory
         [Min(0.1f)] public float groundSnapProbeHeight = 20f;
         [Min(0.5f)] public float groundSnapProbeDistance = 80f;
         [Min(0f)] public float groundClearance = 0.01f;
-        [Range(0.1f, 2f)] public float seedPickupScaleMultiplier = 0.68f;
+        [Range(0.1f, 2f)] public float seedPickupScaleMultiplier = 0.42f;
         public Vector2 randomScaleRange = new Vector2(0.75f, 1.25f);
         [Min(1)] public int maxSpawnAttemptsPerItem = 18;
         [Tooltip("If true, never spawn primitive placeholder objects. Only assigned/imported model prefabs are allowed.")]
@@ -90,7 +92,7 @@ namespace SCoL.Inventory
             EnsureSeedVariantTexturesLoaded();
 
             int spawnedSeeds = Spawn(SCoLItemType.Seed, seedCount, 0f);
-            int spawnedWater = Spawn(SCoLItemType.Water, waterCount, 1.5f);
+            int spawnedWater = spawnWaterPickups ? Spawn(SCoLItemType.Water, waterCount, 1.5f) : 0;
             int spawnedFire = Spawn(SCoLItemType.Fire, fireCount, 3.0f);
             int spawnedStones = Spawn(SCoLItemType.Stone, stoneCount, 5.5f);
             if (!modelsOnly && spawnedSeeds + spawnedWater + spawnedFire + spawnedStones == 0)
@@ -98,7 +100,6 @@ namespace SCoL.Inventory
                 // Hard fallback for debugging/first-use: always spawn a visible cluster near player.
                 SpawnFallbackClusterNearPlayer();
                 spawnedSeeds = Mathf.Max(spawnedSeeds, 3);
-                spawnedWater = Mathf.Max(spawnedWater, 3);
                 spawnedFire = Mathf.Max(spawnedFire, 3);
                 spawnedStones = Mathf.Max(spawnedStones, 3);
             }
@@ -294,7 +295,6 @@ namespace SCoL.Inventory
             for (int i = 0; i < 3; i++)
             {
                 SpawnOneAt(SCoLItemType.Seed, basePos + new Vector3(i * 0.35f, 0f, 0f), $"Pickup_Seed_Fallback_{i}");
-                SpawnOneAt(SCoLItemType.Water, basePos + new Vector3(i * 0.35f, 0f, 0.225f), $"Pickup_Water_Fallback_{i}");
                 SpawnOneAt(SCoLItemType.Fire, basePos + new Vector3(i * 0.35f, 0f, 0.45f), $"Pickup_Fire_Fallback_{i}");
                 SpawnOneAt(SCoLItemType.Stone, basePos + new Vector3(i * 0.35f, 0f, 0.9f), $"Pickup_Stone_Fallback_{i}");
             }
