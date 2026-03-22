@@ -1092,12 +1092,12 @@ assign_open:
                 backRight - right * cornerInset,
                 fenceStraightPrefab);
             CreateFenceSide(
-                backLeft + forward * cornerInset,
-                frontLeft - forward * cornerInset,
+                frontLeft + forward * cornerInset,
+                backLeft - forward * cornerInset,
                 fenceStraightPrefab);
             CreateFenceSide(
-                frontRight - forward * cornerInset,
-                backRight + forward * cornerInset,
+                frontRight + forward * cornerInset,
+                backRight - forward * cornerInset,
                 fenceStraightPrefab);
             CreateFenceSide(
                 frontLeft + right * cornerInset,
