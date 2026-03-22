@@ -46,6 +46,12 @@ namespace SCoL.Settlement
         [Min(0f)] public float groundPadSize = 0f;
         [Min(0.05f)] public float groundPadHeight = 0.3f;
         [Min(0f)] public float groundPadLift = 0.02f;
+        public bool useProceduralFenceRails = true;
+        [Min(0.05f)] public float fencePostThickness = 0.22f;
+        [Min(0.2f)] public float fencePostHeight = 1.75f;
+        [Min(0.05f)] public float fenceRailThickness = 0.16f;
+        [Min(0.1f)] public float fenceLowerRailHeight = 0.55f;
+        [Min(0.1f)] public float fenceUpperRailHeight = 1.2f;
 
         [Header("Centerpiece Model")]
         public GameObject centerpiecePrefab;
@@ -1151,10 +1157,6 @@ assign_open:
 
         void CreateBarrierCorner(Vector3 position, Quaternion rotation)
         {
-            var prefab = fenceCornerPrefab != null ? fenceCornerPrefab : fenceStraightPrefab;
-            if (prefab == null)
-                return;
-
             position = ProjectBarrierPosition(position);
 
             var root = new GameObject("SettlementBarrierCorner");
@@ -1166,19 +1168,28 @@ assign_open:
             marker.kind = SCoLSettlementInteractableKind.Barrier;
             marker.manager = this;
 
-            var visual = Instantiate(prefab, root.transform, false);
-            visual.name = "FenceCorner";
-            AlignLinearVisualToForward(visual, false);
-            NormalizeFenceCornerVisual(root, visual);
-            EnsureCenterpieceCollider(root, visual);
+            if (useProceduralFenceRails)
+            {
+                BuildFencePost(root.transform, "CornerPost", Vector3.zero, Mathf.Max(0.08f, fencePostThickness), Mathf.Max(0.5f, fencePostHeight));
+                EnsureCenterpieceCollider(root, root);
+            }
+            else
+            {
+                var prefab = fenceCornerPrefab != null ? fenceCornerPrefab : fenceStraightPrefab;
+                if (prefab == null)
+                    return;
+
+                var visual = Instantiate(prefab, root.transform, false);
+                visual.name = "FenceCorner";
+                AlignLinearVisualToForward(visual, false);
+                NormalizeFenceCornerVisual(root, visual);
+                EnsureCenterpieceCollider(root, visual);
+            }
             _barrierRoots.Add(root);
         }
 
         void CreateBarrierGate(Vector3 position, Quaternion rotation)
         {
-            if (fenceGatePrefab == null)
-                return;
-
             position = ProjectBarrierPosition(position);
 
             var root = new GameObject("SettlementBarrierGate");
@@ -1186,10 +1197,26 @@ assign_open:
             root.transform.position = position;
             root.transform.rotation = rotation;
 
-            var visual = Instantiate(fenceGatePrefab, root.transform, false);
-            visual.name = "FenceGate";
-            AlignLinearVisualToForward(visual, true);
-            NormalizeFenceGateVisual(root, visual, Mathf.Max(2f, frontGateWidth));
+            if (useProceduralFenceRails)
+            {
+                float gateWidth = Mathf.Max(2f, frontGateWidth);
+                float halfWidth = gateWidth * 0.5f;
+                float postHeight = Mathf.Max(0.5f, fencePostHeight);
+                float postThickness = Mathf.Max(0.08f, fencePostThickness);
+                BuildFencePost(root.transform, "GatePostLeft", new Vector3(-halfWidth, postHeight * 0.5f, 0f), postThickness, postHeight);
+                BuildFencePost(root.transform, "GatePostRight", new Vector3(halfWidth, postHeight * 0.5f, 0f), postThickness, postHeight);
+                BuildFenceRail(root.transform, "GateHeader", Vector3.up * Mathf.Max(fenceUpperRailHeight + 0.18f, postHeight - 0.2f), gateWidth + postThickness, Mathf.Max(0.06f, fenceRailThickness * 0.9f), Mathf.Max(0.08f, postThickness * 0.9f));
+            }
+            else
+            {
+                if (fenceGatePrefab == null)
+                    return;
+
+                var visual = Instantiate(fenceGatePrefab, root.transform, false);
+                visual.name = "FenceGate";
+                AlignLinearVisualToForward(visual, true);
+                NormalizeFenceGateVisual(root, visual, Mathf.Max(2f, frontGateWidth));
+            }
         }
 
         void CreateBarrierSegment(Vector3 position, Quaternion rotation, float length, GameObject prefab)
@@ -1205,7 +1232,12 @@ assign_open:
             marker.kind = SCoLSettlementInteractableKind.Barrier;
             marker.manager = this;
 
-            if (prefab != null)
+            if (useProceduralFenceRails)
+            {
+                BuildProceduralFenceSegment(root.transform, Mathf.Max(0.5f, length));
+                EnsureCenterpieceCollider(root, root);
+            }
+            else if (prefab != null)
             {
                 var visual = Instantiate(prefab, root.transform, false);
                 visual.name = "FenceVisual";
@@ -1224,6 +1256,46 @@ assign_open:
             }
 
             _barrierRoots.Add(root);
+        }
+
+        void BuildProceduralFenceSegment(Transform parent, float length)
+        {
+            if (parent == null)
+                return;
+
+            float safeLength = Mathf.Max(0.5f, length);
+            float postThickness = Mathf.Max(0.08f, fencePostThickness);
+            float postHeight = Mathf.Max(0.5f, fencePostHeight);
+            float railThickness = Mathf.Max(0.05f, fenceRailThickness);
+            float depth = Mathf.Max(0.08f, fenceVisualThickness);
+
+            BuildFencePost(parent, "PostLeft", new Vector3(-safeLength * 0.5f, postHeight * 0.5f, 0f), postThickness, postHeight);
+            BuildFencePost(parent, "PostRight", new Vector3(safeLength * 0.5f, postHeight * 0.5f, 0f), postThickness, postHeight);
+
+            BuildFenceRail(parent, "RailLower", new Vector3(0f, fenceLowerRailHeight, 0f), safeLength, railThickness, depth);
+            BuildFenceRail(parent, "RailUpper", new Vector3(0f, fenceUpperRailHeight, 0f), safeLength, railThickness, depth);
+        }
+
+        void BuildFencePost(Transform parent, string name, Vector3 localCenter, float thickness, float height)
+        {
+            var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            go.name = name;
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = localCenter;
+            go.transform.localRotation = Quaternion.identity;
+            go.transform.localScale = new Vector3(thickness, height, thickness);
+            ConfigureRenderer(go, new Color(0.47f, 0.34f, 0.22f, 1f));
+        }
+
+        void BuildFenceRail(Transform parent, string name, Vector3 localCenter, float length, float height, float depth)
+        {
+            var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            go.name = name;
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = localCenter;
+            go.transform.localRotation = Quaternion.identity;
+            go.transform.localScale = new Vector3(length, height, depth);
+            ConfigureRenderer(go, new Color(0.60f, 0.46f, 0.28f, 1f));
         }
 
         Vector3 ProjectBarrierPosition(Vector3 position)
