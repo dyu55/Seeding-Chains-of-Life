@@ -54,6 +54,24 @@ public class SimpleFirstPersonController : MonoBehaviour
     [Min(0.1f)] public float rescueCooldownSeconds = 1.0f;
     public int rescueColliderRadiusChunks = 2;
 
+    [Header("Footstep Audio")]
+    [Tooltip("AudioSource used to play one-off footstep sound.")]
+        public AudioSource footstepAudioSource;
+
+    [Tooltip("Default footstep clip")]
+    public AudioClip footstepClip;
+
+    [Tooltip("Snow footstep clip")]
+    public AudioClip footstepClipSnow;
+
+    [Tooltip("Underwater footstep clip")]
+    public AudioClip footstepClipUnderwater;
+
+    [Range(0f, 1f)] public float footstepVolume = 0.5f;
+
+    public float stepRate = 0.25f;
+	public float stepCoolDown;
+
     CharacterController _cc;
     float _pitch;
     Vector3 _velocity;
@@ -174,6 +192,8 @@ public class SimpleFirstPersonController : MonoBehaviour
             Cursor.lockState = CursorLockMode.Locked;
             Cursor.visible = false;
         }
+
+        applyFootstepAudio();
     }
 
     bool IsWinterActive()
@@ -319,6 +339,31 @@ public class SimpleFirstPersonController : MonoBehaviour
         }
 
         return false;
+    }
+
+    void applyFootstepAudio()
+    {
+        footstepAudioSource.spatialBlend = 0f; // 2D
+        footstepAudioSource.volume = Mathf.Clamp01(footstepVolume);
+        
+        Vector3 samplePos = cameraPivot != null ? cameraPivot.position : transform.position + Vector3.up * 1.6f;
+
+        stepCoolDown -= Time.deltaTime;
+
+        if ((_cc.velocity != Vector3.zero) && stepCoolDown < 0f && !footstepAudioSource.isPlaying)
+        {
+            if (IsUnderwater(samplePos)){
+                footstepAudioSource.clip = footstepClipUnderwater;
+            }
+            else if (IsWinterActive()){
+                footstepAudioSource.clip = footstepClipSnow;
+            }
+            else {
+                footstepAudioSource.clip = footstepClip;
+            }
+        footstepAudioSource.Play();
+        stepCoolDown = stepRate;
+        }
     }
 
     static Vector2 DirectionOnCircle(float t)
