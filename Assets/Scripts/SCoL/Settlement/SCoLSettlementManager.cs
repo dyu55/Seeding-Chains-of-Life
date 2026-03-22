@@ -94,6 +94,7 @@ namespace SCoL.Settlement
         int _storedFire;
         int _storedPlants;
         int _storedStones;
+        bool _settlementAreaCleared;
 
         string _statusLine = "Outside Home / Level 1";
         string _goalLine = "Grow 6 flowers and store 20 supplies";
@@ -158,6 +159,9 @@ namespace SCoL.Settlement
 
             if (Time.time >= _nextRefreshAt)
                 RefreshSettlementState(force: false);
+
+            if (_built && _isActivated)
+                KeepAnimalsOutOfSettlement();
         }
 
         void OnDestroy()
@@ -170,25 +174,31 @@ namespace SCoL.Settlement
         {
             if (!_isActivated)
                 return false;
-
-            Vector3 delta = worldPosition - _centerPosition;
-            delta.y = 0f;
-            return delta.sqrMagnitude <= SafeZoneRadius * SafeZoneRadius;
+            return IsInsideFenceBounds(worldPosition, 0f);
         }
 
         public float DistanceToCenterXZ(Vector3 worldPosition)
         {
-            Vector3 delta = worldPosition - _centerPosition;
-            delta.y = 0f;
-            return delta.magnitude;
+            Vector3 local = GetSettlementLocal(worldPosition);
+            float half = Mathf.Max(1f, fenceHalfExtent);
+            float dx = Mathf.Max(0f, Mathf.Abs(local.x) - half);
+            float dz = Mathf.Max(0f, Mathf.Abs(local.z) - half);
+            return Mathf.Sqrt(dx * dx + dz * dz);
         }
 
         public Vector3 GetSafeZoneRepelDirection(Vector3 worldPosition)
         {
-            Vector3 away = worldPosition - _centerPosition;
+            Vector3 local = GetSettlementLocal(worldPosition);
+            float half = Mathf.Max(1f, fenceHalfExtent);
+            float marginX = half - Mathf.Abs(local.x);
+            float marginZ = half - Mathf.Abs(local.z);
+
+            Vector3 away = marginX < marginZ
+                ? GetSettlementRight() * (local.x >= 0f ? 1f : -1f)
+                : _forward * (local.z >= 0f ? 1f : -1f);
             away.y = 0f;
             if (away.sqrMagnitude < 0.0001f)
-                away = -_forward;
+                away = _forward;
             return away.normalized;
         }
 
@@ -542,7 +552,7 @@ namespace SCoL.Settlement
 
             ResolveCenterAndForward();
 
-            bool missingCore = _centerpieceRoot == null || _storageRoot == null || _safeZoneRingRoot == null;
+            bool missingCore = _centerpieceRoot == null || _storageRoot == null;
             bool missingFence = spawnPerimeterFences && _barrierRoots.Count == 0;
             if (_built && !missingCore && !missingFence)
                 return;
@@ -550,9 +560,9 @@ namespace SCoL.Settlement
             ClearBuiltObjects();
             BuildCenterpiece();
             BuildStorage();
-            BuildSafeZoneRing();
             if (spawnPerimeterFences)
                 BuildFence();
+            ClearSettlementInterior();
 
             _built = true;
         }
@@ -642,35 +652,6 @@ namespace SCoL.Settlement
             SetStorageVisual(false, true);
         }
 
-        void BuildSafeZoneRing()
-        {
-            _safeZoneRingRoot = new GameObject("SettlementSafeZoneRing");
-            _safeZoneRingRoot.transform.SetParent(transform, false);
-            _safeZoneRingRoot.transform.position = _centerPosition + Vector3.up * 0.08f;
-
-            var lr = _safeZoneRingRoot.AddComponent<LineRenderer>();
-            lr.loop = true;
-            lr.useWorldSpace = false;
-            lr.positionCount = 64;
-            lr.widthMultiplier = 0.18f;
-            lr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            lr.receiveShadows = false;
-            lr.textureMode = LineTextureMode.Stretch;
-            lr.alignment = LineAlignment.View;
-            var mat = new Material(Shader.Find("Sprites/Default"));
-            mat.name = "SettlementSafeZoneMat";
-            lr.sharedMaterial = mat;
-
-            float radius = Mathf.Max(0.5f, SafeZoneRadius);
-            for (int i = 0; i < lr.positionCount; i++)
-            {
-                float t = i / (float)lr.positionCount * Mathf.PI * 2f;
-                lr.SetPosition(i, new Vector3(Mathf.Cos(t) * radius, 0f, Mathf.Sin(t) * radius));
-            }
-
-            RefreshRingVisual();
-        }
-
         void BuildFence()
         {
             Vector3 right = Vector3.Cross(Vector3.up, _forward).normalized;
@@ -694,8 +675,6 @@ namespace SCoL.Settlement
             CreateSide("SettlementBarrier_Left", frontLeft + _forward * cornerPad, backLeft - _forward * cornerPad, fenceStraightPrefab, _fenceStraightTexture);
             CreateSide("SettlementBarrier_Right", frontRight + _forward * cornerPad, backRight - _forward * cornerPad, fenceStraightPrefab, _fenceStraightTexture);
             CreateSide("SettlementBarrier_FrontLeft", frontLeft + right * cornerPad, front - right * gateHalf, fenceStraightPrefab, _fenceStraightTexture);
-            CreateSide("SettlementBarrier_FrontRight", front + right * gateHalf, frontRight - right * cornerPad, fenceStraightPrefab, _fenceStraightTexture);
-            CreateGate(front, right);
         }
 
         void CreateSide(string name, Vector3 start, Vector3 end, GameObject prefab, Texture2D texture)
@@ -819,23 +798,9 @@ namespace SCoL.Settlement
                 : $"Outside Home / Level {_currentLevel}";
             _goalLine = ResolveGoalLine();
             _storageSummary = BuildStorageSummary();
-            RefreshRingVisual();
         }
 
-        void RefreshRingVisual()
-        {
-            if (_safeZoneRingRoot == null)
-                return;
-            var lr = _safeZoneRingRoot.GetComponent<LineRenderer>();
-            if (lr == null)
-                return;
-
-            Color color = _playerInsideSafeZone
-                ? new Color(0.25f, 1f, 0.45f, 0.95f)
-                : new Color(0.12f, 0.95f, 0.35f, 0.88f);
-            lr.startColor = color;
-            lr.endColor = color;
-        }
+        void RefreshRingVisual() { }
 
         int CountFlowers()
         {
@@ -870,6 +835,85 @@ namespace SCoL.Settlement
                     count++;
             }
             return count;
+        }
+
+        bool IsInsideFenceBounds(Vector3 worldPosition, float padding)
+        {
+            Vector3 local = GetSettlementLocal(worldPosition);
+            float half = Mathf.Max(1f, fenceHalfExtent) + padding;
+            return Mathf.Abs(local.x) <= half && Mathf.Abs(local.z) <= half;
+        }
+
+        Vector3 GetSettlementLocal(Vector3 worldPosition)
+        {
+            Vector3 delta = worldPosition - _centerPosition;
+            delta.y = 0f;
+            Vector3 right = GetSettlementRight();
+            return new Vector3(Vector3.Dot(delta, right), 0f, Vector3.Dot(delta, _forward));
+        }
+
+        Vector3 GetSettlementRight()
+        {
+            Vector3 right = Vector3.Cross(Vector3.up, _forward);
+            if (right.sqrMagnitude < 0.0001f)
+                right = Vector3.right;
+            return right.normalized;
+        }
+
+        void ClearSettlementInterior()
+        {
+            if (_settlementAreaCleared)
+                return;
+
+            _settlementAreaCleared = true;
+            ClearNamedObjectsInsideSettlement("FeaturedTree_");
+            ClearNamedObjectsInsideSettlement("StylizedRock_");
+            ClearNamedObjectsInsideSettlement("StylizedPebble_");
+            ClearNamedObjectsInsideSettlement("StylizedPathRock_");
+            KeepAnimalsOutOfSettlement();
+        }
+
+        void ClearNamedObjectsInsideSettlement(string prefix)
+        {
+            var roots = FindObjectsByType<Transform>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+            for (int i = 0; i < roots.Length; i++)
+            {
+                var t = roots[i];
+                if (t == null || !t.name.StartsWith(prefix))
+                    continue;
+                if (!IsInsideFenceBounds(t.position, 0.5f))
+                    continue;
+
+#if UNITY_EDITOR
+                if (!Application.isPlaying)
+                    DestroyImmediate(t.gameObject);
+                else
+                    Destroy(t.gameObject);
+#else
+                Destroy(t.gameObject);
+#endif
+            }
+        }
+
+        void KeepAnimalsOutOfSettlement()
+        {
+            var agents = FPSBoidAgent.ActiveAgentsView;
+            if (agents == null)
+                return;
+
+            Vector3 exitBase = _centerPosition - _forward * (fenceHalfExtent + 7f);
+            float sideStep = Mathf.Max(2f, frontGateWidth * 0.5f);
+            int moved = 0;
+            for (int i = 0; i < agents.Count; i++)
+            {
+                var agent = agents[i];
+                if (agent == null || !IsInsideFenceBounds(agent.transform.position, 0.25f))
+                    continue;
+
+                float lane = ((moved & 1) == 0 ? -1f : 1f) * sideStep * (1 + moved / 2);
+                agent.transform.position = ProjectToGround(exitBase + GetSettlementRight() * lane);
+                moved++;
+            }
         }
 
         int ResolveLevel()
