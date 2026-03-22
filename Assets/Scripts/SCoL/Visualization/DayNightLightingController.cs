@@ -538,14 +538,12 @@ namespace SCoL.Visualization
             bgmAudioSource.volume = Mathf.Clamp01(bgmVolume);
             bgmAudioSource.clip = bgmLoop;
 
-            Debug.Log("test1:" + bgmAudioSource.isPlaying);
 
             if (!bgmAudioSource.isPlaying)
             {
                 bgmAudioSource.loop = true;
                 bgmAudioSource.Play();
             }
-            Debug.Log("test2:" + bgmAudioSource.isPlaying);
         }
 
         float SampleFlashInterval()
