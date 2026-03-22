@@ -91,6 +91,16 @@ namespace SCoL.Visualization
         [Tooltip("Multiplier applied to ambient intensity during rain/thunder.")]
         [Range(0f, 1f)] public float ambientDimmingInBadWeather = 0.85f;
 
+
+        [Header("BGM")]
+        [Tooltip("AudioSource used to play looping background music.")]
+        public AudioSource bgmAudioSource;
+
+        [Tooltip("BGM Loop")]
+        public AudioClip bgmLoop;
+
+        [Range(0f, 1f)] public float bgmVolume = 0.5f;
+
         [Header("Weather Audio (optional)")]
         [Tooltip("Optional AudioSource used to play looping weather ambience.")]
         public AudioSource weatherAudioSource;
@@ -260,7 +270,9 @@ namespace SCoL.Visualization
             _nextFlashIn = SampleFlashInterval();
 
             // Initialize audio for the starting phase.
-            if (Application.isPlaying && weatherSystem != null)
+            if (Application.isPlaying)
+                ApplyBGMAudio();
+                if (weatherSystem != null)
                 ApplyWeatherAudio(weatherSystem.CurrentPhase);
         }
 
@@ -518,6 +530,22 @@ namespace SCoL.Visualization
                 weatherAudioSource.loop = true;
                 weatherAudioSource.Play();
             }
+        }
+
+        void ApplyBGMAudio()
+        {
+            bgmAudioSource.spatialBlend = 0f; // 2D
+            bgmAudioSource.volume = Mathf.Clamp01(bgmVolume);
+            bgmAudioSource.clip = bgmLoop;
+
+            Debug.Log("test1:" + bgmAudioSource.isPlaying);
+
+            if (!bgmAudioSource.isPlaying)
+            {
+                bgmAudioSource.loop = true;
+                bgmAudioSource.Play();
+            }
+            Debug.Log("test2:" + bgmAudioSource.isPlaying);
         }
 
         float SampleFlashInterval()

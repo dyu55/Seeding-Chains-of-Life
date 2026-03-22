@@ -15,7 +15,7 @@ RenderSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 10
   m_Fog: 1
-  m_FogColor: {r: 0.75000304, g: 0.84999084, b: 0.9499847, a: 1}
+  m_FogColor: {r: 0.9280043, g: 0.9490074, b: 0.7490105, a: 1}
   m_FogMode: 3
   m_FogDensity: 0.00328
   m_LinearFogStart: 0
@@ -11480,8 +11480,8 @@ Transform:
   m_GameObject: {fileID: 1219605669}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 1, z: 0, w: -0.00000004371139}
-  m_LocalPosition: {x: 0, y: 0.10131328, z: -0.025604248}
-  m_LocalScale: {x: 1.7761508, y: 1.7761508, z: 1.7761508}
+  m_LocalPosition: {x: 0, y: 0.05704098, z: -0.014411926}
+  m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 900200001}
@@ -11854,34 +11854,37 @@ MonoBehaviour:
   fogDensityRainMultiplier: 1.35
   fogDensityThunderMultiplier: 1.6
   ambientDimmingInBadWeather: 0.85
+  bgmAudioSource: {fileID: 9000000008}
+  bgmLoop: {fileID: 8300000, guid: ebed17502af404ec8b15998ef9b106fe, type: 3}
+  bgmVolume: 1
   weatherAudioSource: {fileID: 1270282488}
-  clearLoop: {fileID: 8300000, guid: f836e12db0ff049d9b22c194d37da6a4, type: 3}
-  windLoop: {fileID: 8300000, guid: 56c373d550a61416a947b9a8d7ba9264, type: 3}
-  snowLoop: {fileID: 8300000, guid: b93984dcdde13493bbc63898415bf863, type: 3}
+  clearLoop: {fileID: 0}
+  windLoop: {fileID: 0}
+  snowLoop: {fileID: 0}
   rainLoop: {fileID: 8300000, guid: 73dd8318fcf394caea9790c78d2d6dd6, type: 3}
   thunderLoop: {fileID: 8300000, guid: 510d7a7d5c7734d24a45acfd79652e89, type: 3}
-  weatherVolume: 0.9
-  interactionAudioSource: {fileID: 0}
+  weatherVolume: 0.8
+  interactionAudioSource: {fileID: 1270282488}
   placeFireClip: {fileID: 8300000, guid: 78f538e74bc6d47d289b0732a9256abb, type: 3}
   extinguishFireClip: {fileID: 8300000, guid: 465a35a327b1540239257deb69dd6657, type: 3}
   plantSeedClip: {fileID: 8300000, guid: c9b24be035df24ab89efb6119066ec7d, type: 3}
   destroySeedClip: {fileID: 8300000, guid: 9ed9a8caab8644f5b93163471193fbbe, type: 3}
-  waterFillClip: {fileID: 8300000, guid: 2031026b8d3074960a0e18285e08413a, type: 3}
-  waterDropClip: {fileID: 8300000, guid: 2e7a124802392450384daf101af246fe, type: 3}
+  waterFillClip: {fileID: 8300000, guid: e315e8cd12a834611b139d73c932bf93, type: 3}
+  waterDropClip: {fileID: 8300000, guid: a1787452c10df467b961a7656917794c, type: 3}
   toggleSwitchClip: {fileID: 8300000, guid: a3c0e79ae6a06477aa6d62a9f7192744, type: 3}
   pickupItemClip: {fileID: 8300000, guid: f8df6c447df3f4f8abb52514eb022636, type: 3}
   throwStoneClip: {fileID: 8300000, guid: b1eef3c322b5547c29a3f102d836514b, type: 3}
-  interactionSfxVolume: 1
+  interactionSfxVolume: 0.55
   enableThunderFlash: 1
   lightningFlashDuration: 0.287
   lightningFlashIntervalRange: {x: 0.84, y: 2.13}
   lightningIntensityMultiplier: 6
-  lightningFlashColor: {r: 0.95, g: 0.97, b: 1, a: 1}
+  lightningFlashColor: {r: 0.96313804, g: 0.9716981, b: 0.81127626, a: 1}
   fogColor:
     serializedVersion: 2
     key0: {r: 0.03, g: 0.05, b: 0.1, a: 1}
     key1: {r: 0.85, g: 0.55, b: 0.45, a: 1}
-    key2: {r: 0.75, g: 0.85, b: 0.95, a: 0}
+    key2: {r: 0.9280067, g: 0.9490196, b: 0.7490196, a: 0}
     key3: {r: 0.85, g: 0.5, b: 0.4, a: 0}
     key4: {r: 0.03, g: 0.05, b: 0.1, a: 0}
     key5: {r: 0, g: 0, b: 0, a: 0}
@@ -12036,7 +12039,7 @@ AudioSource:
     m_Curve:
     - serializedVersion: 3
       time: 0
-      value: 0
+      value: 0.341
       inSlope: 0
       outSlope: 0
       tangentMode: 0
@@ -12066,7 +12069,7 @@ AudioSource:
     m_Curve:
     - serializedVersion: 3
       time: 0
-      value: 1
+      value: 1.043
       inSlope: 0
       outSlope: 0
       tangentMode: 0
