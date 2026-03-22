@@ -59,6 +59,8 @@ namespace SCoL.Voxels
         [Tooltip("Always reserve one large flat plain at the exact map center for the settlement/base.")]
         public bool forceCentralSettlementPad = true;
         [Min(4f)] public float centralSettlementPadRadius = 24f;
+        [Tooltip("Inside this inner radius, the central settlement pad is fully flattened with no blend.")]
+        [Min(1f)] public float centralSettlementPadHardRadius = 18f;
 
         [Header("Low Poly Terrain Visual")]
         [Tooltip("Render a smoothed low-poly terrain/water mesh and hide voxel cube renderers.")]
@@ -257,6 +259,7 @@ namespace SCoL.Voxels
         {
             public Vector2 centerXZ;
             public float radius;
+            public float hardRadius;
             public int targetHeight;
         }
 
@@ -2485,6 +2488,13 @@ namespace SCoL.Voxels
                 if (d > r)
                     continue;
 
+                float hardR = Mathf.Clamp(pad.hardRadius, 0f, r);
+                if (hardR > 0f && d <= hardR)
+                {
+                    outH = pad.targetHeight;
+                    continue;
+                }
+
                 float t = 1f - Mathf.Clamp01(d / r);
                 // Strong flatten in center, soft blend near edge.
                 float w = t * t * blendStrength;
@@ -2520,6 +2530,7 @@ namespace SCoL.Voxels
                 {
                     centerXZ = new Vector2(config.worldWidth * 0.5f, config.worldDepth * 0.5f),
                     radius = Mathf.Max(r, centralSettlementPadRadius),
+                    hardRadius = Mathf.Min(Mathf.Max(1f, centralSettlementPadHardRadius), Mathf.Max(r, centralSettlementPadRadius) - 0.5f),
                     targetHeight = centerTarget
                 });
             }
@@ -2543,6 +2554,7 @@ namespace SCoL.Voxels
                 {
                     centerXZ = new Vector2(cx, cz),
                     radius = r,
+                    hardRadius = 0f,
                     targetHeight = target
                 });
             }

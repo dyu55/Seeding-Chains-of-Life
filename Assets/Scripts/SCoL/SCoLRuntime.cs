@@ -267,6 +267,7 @@ namespace SCoL
                 _voxelWorld.flatBuildPadCount = 1;
                 _voxelWorld.flatBuildPadRadius = Mathf.Max(_voxelWorld.flatBuildPadRadius, centralSettlementPlainRadius);
                 _voxelWorld.centralSettlementPadRadius = Mathf.Max(_voxelWorld.centralSettlementPadRadius, centralSettlementPlainRadius);
+                _voxelWorld.centralSettlementPadHardRadius = Mathf.Max(_voxelWorld.centralSettlementPadHardRadius, centralSettlementPlainRadius * 0.72f);
                 _voxelWorld.flatBuildPadBlend = 1f;
             }
 

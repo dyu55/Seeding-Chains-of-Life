@@ -268,12 +268,15 @@ namespace SCoL.Visualization
 
             Apply(forceGI: true);
             _nextFlashIn = SampleFlashInterval();
+            EnsureRuntimeAudioSources();
 
             // Initialize audio for the starting phase.
             if (Application.isPlaying)
+            {
                 ApplyBGMAudio();
                 if (weatherSystem != null)
-                ApplyWeatherAudio(weatherSystem.CurrentPhase);
+                    ApplyWeatherAudio(weatherSystem.CurrentPhase);
+            }
         }
 
         void Update()
@@ -534,18 +537,51 @@ namespace SCoL.Visualization
 
         void ApplyBGMAudio()
         {
+            if (bgmAudioSource == null)
+                return;
+
             bgmAudioSource.spatialBlend = 0f; // 2D
             bgmAudioSource.volume = Mathf.Clamp01(bgmVolume);
             bgmAudioSource.clip = bgmLoop;
-
-            Debug.Log("test1:" + bgmAudioSource.isPlaying);
 
             if (!bgmAudioSource.isPlaying)
             {
                 bgmAudioSource.loop = true;
                 bgmAudioSource.Play();
             }
-            Debug.Log("test2:" + bgmAudioSource.isPlaying);
+        }
+
+        void EnsureRuntimeAudioSources()
+        {
+            if (bgmAudioSource == null)
+            {
+                var go = new GameObject("BGM Audio");
+                go.transform.SetParent(transform, false);
+                bgmAudioSource = go.AddComponent<AudioSource>();
+                bgmAudioSource.playOnAwake = false;
+                bgmAudioSource.loop = true;
+                bgmAudioSource.spatialBlend = 0f;
+            }
+
+            if (weatherAudioSource == null)
+            {
+                var go = new GameObject("Weather Audio");
+                go.transform.SetParent(transform, false);
+                weatherAudioSource = go.AddComponent<AudioSource>();
+                weatherAudioSource.playOnAwake = false;
+                weatherAudioSource.loop = true;
+                weatherAudioSource.spatialBlend = 0f;
+            }
+
+            if (interactionAudioSource == null)
+            {
+                var go = new GameObject("Interaction Audio");
+                go.transform.SetParent(transform, false);
+                interactionAudioSource = go.AddComponent<AudioSource>();
+                interactionAudioSource.playOnAwake = false;
+                interactionAudioSource.loop = false;
+                interactionAudioSource.spatialBlend = 0f;
+            }
         }
 
         float SampleFlashInterval()
