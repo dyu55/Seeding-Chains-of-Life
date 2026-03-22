@@ -14,6 +14,7 @@ namespace SCoL.Settlement
     public sealed class SCoLCampsiteSceneAnchor : MonoBehaviour
     {
         public string resourcePath = "Campsite/tentV2";
+        public string editorAssetPath = "Assets/Models/Modeling/_Incoming/tent updated/tent updated.obj";
         public Vector3 visualEuler = Vector3.zero;
         [Min(0.5f)] public float targetFootprint = 6.2f;
         [Min(0.5f)] public float targetHeight = 3.8f;
@@ -21,6 +22,8 @@ namespace SCoL.Settlement
         [Min(0.5f)] public float dryLandSearchStep = 2f;
         [Min(0)] public int dryLandSearchRings = 8;
         [Min(0f)] public float minShoreClearance = 6f;
+        [Min(0.5f)] public float flatnessSampleRadius = 6f;
+        [Min(0f)] public float maxFlatHeightDelta = 0.9f;
 
         [SerializeField] GameObject _visualInstance;
 
@@ -83,10 +86,19 @@ namespace SCoL.Settlement
             if (_visualInstance != null && _visualInstance.transform.parent != transform)
                 _visualInstance = null;
 
-            if (_visualInstance == null)
-                _visualInstance = BuildObjFallbackVisual();
-
-            var prefab = _visualInstance == null ? LoadVisualPrefab() : null;
+            var prefab = LoadVisualPrefab();
+            if (_visualInstance != null && ShouldRebuildFromPreferredPrefab(prefab))
+            {
+#if UNITY_EDITOR
+                if (!Application.isPlaying)
+                    DestroyImmediate(_visualInstance);
+                else
+                    Destroy(_visualInstance);
+#else
+                Destroy(_visualInstance);
+#endif
+                _visualInstance = null;
+            }
             if (_visualInstance == null && prefab != null)
             {
 #if UNITY_EDITOR
@@ -97,6 +109,9 @@ namespace SCoL.Settlement
                 _visualInstance = Instantiate(prefab, transform);
 #endif
             }
+
+            if (_visualInstance == null)
+                _visualInstance = BuildObjFallbackVisual();
 
             if (_visualInstance == null)
                 return;
@@ -115,6 +130,13 @@ namespace SCoL.Settlement
                 return prefab;
 
 #if UNITY_EDITOR
+            if (!string.IsNullOrWhiteSpace(editorAssetPath))
+            {
+                var editorPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(editorAssetPath);
+                if (editorPrefab != null)
+                    return editorPrefab;
+            }
+
             return AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Resources/Campsite/tentV2.obj");
 #else
             return null;
@@ -164,6 +186,16 @@ namespace SCoL.Settlement
             return material;
         }
 
+        bool ShouldRebuildFromPreferredPrefab(GameObject preferredPrefab)
+        {
+            if (_visualInstance == null || preferredPrefab == null)
+                return false;
+
+            return _visualInstance.transform.childCount == 0 &&
+                   _visualInstance.GetComponent<MeshFilter>() != null &&
+                   _visualInstance.GetComponent<MeshRenderer>() != null;
+        }
+
         bool TryFindNearbyDryGround(VoxelWorld voxelWorld, Vector3 around, out Vector3 grounded)
         {
             grounded = around;
@@ -187,7 +219,11 @@ namespace SCoL.Settlement
                         continue;
 
                     float shoreDistance = EstimateShoreDistance(voxelWorld, candidate);
-                    float score = shoreDistance - radius * 0.2f;
+                    float flatnessDelta = EstimateFlatnessDelta(voxelWorld, candidate);
+                    if (flatnessDelta > Mathf.Max(0.01f, maxFlatHeightDelta))
+                        continue;
+
+                    float score = shoreDistance - radius * 0.2f - flatnessDelta * 5f;
                     if (score <= bestScore)
                         continue;
 
@@ -241,6 +277,29 @@ namespace SCoL.Settlement
             }
 
             return target;
+        }
+
+        float EstimateFlatnessDelta(VoxelWorld voxelWorld, Vector3 center)
+        {
+            if (voxelWorld == null)
+                return 999f;
+
+            float radius = Mathf.Max(0.5f, flatnessSampleRadius);
+            float minY = float.PositiveInfinity;
+            float maxY = float.NegativeInfinity;
+            int samples = 8;
+            for (int i = 0; i < samples; i++)
+            {
+                float angle = i / (float)samples * Mathf.PI * 2f;
+                Vector3 probe = center + new Vector3(Mathf.Cos(angle) * radius, 0f, Mathf.Sin(angle) * radius);
+                if (!voxelWorld.TryGetTerrainSurfaceYAtWorld(probe + Vector3.up * 4f, out float surfaceY, includeWaterSurface: false))
+                    return 999f;
+
+                minY = Mathf.Min(minY, surfaceY);
+                maxY = Mathf.Max(maxY, surfaceY);
+            }
+
+            return maxY - minY;
         }
 
         static bool TryBuildObjMesh(string objPath, out Mesh mesh)

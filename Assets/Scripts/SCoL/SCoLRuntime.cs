@@ -36,6 +36,11 @@ namespace SCoL
         [Tooltip("Seed an initial set of plants so cellular automata has a starting population.")]
         public bool seedInitialPlants = true;
         [Range(0f, 0.10f)] public float initialPlantDensity = 0.02f;
+
+        [Header("Settlement Terrain")]
+        [Tooltip("Flatten a large dry plain at the map center for the campsite.")]
+        public bool flattenMapCenterForSettlement = true;
+        [Min(4f)] public float centralSettlementPlainRadius = 26f;
         [Header("Initial Flower Clusters")]
         public bool seedInitialFlowerClusters = true;
         [Min(1)] public int initialFlowerClusterCount = 8;
@@ -107,7 +112,7 @@ namespace SCoL
         [Min(0.25f)] public float denseFlowerSeedDropSpacing = 2.6f;
         [Min(0f)] public float denseFlowerSeedDropHeight = 0.24f;
         [Min(0f)] public float denseFlowerSeedDropVisibleLift = 0.18f;
-        [Min(0.1f)] public float denseFlowerSeedDropScale = 0.42f;
+        [Min(0.1f)] public float denseFlowerSeedDropScale = 0.28f;
         [Min(1f)] public float denseFlowerSeedDropLifetimeSeconds = 30f;
         [Min(1f)] public float denseFlowerSeedSelfPlantDelaySeconds = 12f;
         [Min(0.25f)] public float denseFlowerSeedSelfPlantRetrySeconds = 1f;
@@ -254,6 +259,17 @@ namespace SCoL
                 _voxelWorld = wgo.AddComponent<VoxelWorld>();
                 // user can assign a VoxelWorldConfig in-scene later; defaults are fine for prototype.
             }
+
+            if (flattenMapCenterForSettlement)
+            {
+                _voxelWorld.enableFlatBuildPads = true;
+                _voxelWorld.forceCentralSettlementPad = true;
+                _voxelWorld.flatBuildPadCount = 1;
+                _voxelWorld.flatBuildPadRadius = Mathf.Max(_voxelWorld.flatBuildPadRadius, centralSettlementPlainRadius);
+                _voxelWorld.centralSettlementPadRadius = Mathf.Max(_voxelWorld.centralSettlementPadRadius, centralSettlementPlainRadius);
+                _voxelWorld.flatBuildPadBlend = 1f;
+            }
+
             _voxelWorld.useTransformAsOrigin = true;
             _voxelWorld.InitIfNeeded();
 

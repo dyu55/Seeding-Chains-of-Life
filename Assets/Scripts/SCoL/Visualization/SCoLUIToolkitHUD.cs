@@ -923,6 +923,9 @@ namespace SCoL.Visualization
             bool hasTarget = FPSAimTargeting.TryResolve(cameraSource, maxDistance, hitMask, runtime, _plantRenderer, out var target)
                              && target.HasActionableTarget;
 
+            if (hasTarget && target.kind == FPSAimTargetKind.SettlementStorage && _settlementManager != null)
+                _settlementManager.PulseStorageOpen(0.12f);
+
             Color cross = hasTarget ? CrosshairHover : CrosshairIdle;
             SetCrosshairColor(cross);
 

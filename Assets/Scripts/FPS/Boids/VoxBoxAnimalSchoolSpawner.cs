@@ -375,7 +375,7 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
         {
             go.transform.position = worldPos + Vector3.up * 0.16f;
             go.transform.localScale = type == SCoL.Inventory.SCoLItemType.Seed
-                ? new Vector3(0.22f, 0.22f, 0.22f)
+                ? new Vector3(0.14f, 0.14f, 0.14f)
                 : new Vector3(0.24f, 0.18f, 0.24f);
         }
 

@@ -56,6 +56,9 @@ namespace SCoL.Voxels
         [Min(0)] public int flatBuildPadCount = 4;
         [Min(2f)] public float flatBuildPadRadius = 7f;
         [Range(0f, 1f)] public float flatBuildPadBlend = 0.95f;
+        [Tooltip("Always reserve one large flat plain at the exact map center for the settlement/base.")]
+        public bool forceCentralSettlementPad = true;
+        [Min(4f)] public float centralSettlementPadRadius = 24f;
 
         [Header("Low Poly Terrain Visual")]
         [Tooltip("Render a smoothed low-poly terrain/water mesh and hide voxel cube renderers.")]
@@ -2498,7 +2501,8 @@ namespace SCoL.Voxels
                 return;
 
             int count = Mathf.Max(0, flatBuildPadCount);
-            if (count <= 0)
+            bool addCentralPad = forceCentralSettlementPad;
+            if (count <= 0 && !addCentralPad)
                 return;
 
             float r = Mathf.Max(2f, flatBuildPadRadius);
@@ -2508,10 +2512,25 @@ namespace SCoL.Voxels
             float minZ = margin;
             float maxZ = Mathf.Max(minZ + 1f, config.worldDepth - margin);
             int minH = Mathf.Clamp(config.seaLevel + Mathf.Max(2, edgeMinHeightAboveSea + 1), 1, config.worldHeight - 2);
+            int centerTarget = Mathf.Clamp(Mathf.Max(config.baseHeight, config.seaLevel + 4), minH, config.worldHeight - 2);
 
-            for (int i = 0; i < count; i++)
+            if (addCentralPad)
             {
-                float cx = Mathf.Lerp(minX, maxX, (i + 1f) / (count + 1f));
+                _flatBuildPads.Add(new FlatBuildPad
+                {
+                    centerXZ = new Vector2(config.worldWidth * 0.5f, config.worldDepth * 0.5f),
+                    radius = Mathf.Max(r, centralSettlementPadRadius),
+                    targetHeight = centerTarget
+                });
+            }
+
+            int additionalCount = Mathf.Max(0, count - (addCentralPad ? 1 : 0));
+            if (additionalCount <= 0)
+                return;
+
+            for (int i = 0; i < additionalCount; i++)
+            {
+                float cx = Mathf.Lerp(minX, maxX, (i + 1f) / (additionalCount + 1f));
                 float cz = Mathf.Lerp(minZ, maxZ, Mathf.Repeat((i * 0.37f) + 0.23f, 1f));
                 // small deterministic jitter from seeded RNG
                 cx += (float)(_rng.NextDouble() * 2.0 - 1.0) * Mathf.Min(6f, r * 0.6f);

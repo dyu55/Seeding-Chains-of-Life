@@ -55,7 +55,7 @@ namespace SCoL.Inventory
         [Min(0.1f)] public float groundSnapProbeHeight = 20f;
         [Min(0.5f)] public float groundSnapProbeDistance = 80f;
         [Min(0f)] public float groundClearance = 0.01f;
-        [Range(0.1f, 2f)] public float seedPickupScaleMultiplier = 0.42f;
+        [Range(0.1f, 2f)] public float seedPickupScaleMultiplier = 0.28f;
         public Vector2 randomScaleRange = new Vector2(0.75f, 1.25f);
         [Min(1)] public int maxSpawnAttemptsPerItem = 18;
         [Tooltip("If true, never spawn primitive placeholder objects. Only assigned/imported model prefabs are allowed.")]

@@ -38,6 +38,7 @@ public class FPSAimAuraHighlighter : MonoBehaviour
     [Min(0f)] public float minWorldYOffset = 0.45f;
     [Min(0f)] public float boundsYOffset = 0.22f;
     [Min(0f)] public float stemHeight = 0.26f;
+    [Min(0f)] public float markerClusterRadius = 1.6f;
 
     sealed class MarkerState
     {
@@ -65,6 +66,7 @@ public class FPSAimAuraHighlighter : MonoBehaviour
     readonly Dictionary<int, MarkerState> _activeStates = new Dictionary<int, MarkerState>(32);
     readonly List<Transform> _sceneCandidates = new List<Transform>(64);
     readonly List<int> _pendingRemoval = new List<int>(32);
+    readonly List<Vector3> _reservedMarkerPositions = new List<Vector3>(32);
     readonly HashSet<int> _sceneCandidateIds = new HashSet<int>();
     readonly HashSet<int> _desiredIds = new HashSet<int>();
 
@@ -128,6 +130,7 @@ public class FPSAimAuraHighlighter : MonoBehaviour
 
         CollectSceneCandidates();
         _desiredIds.Clear();
+        _reservedMarkerPositions.Clear();
 
         if (focusedRoot != null)
             AddDesiredRoot(focusedRoot, isFocused: true);
@@ -350,6 +353,9 @@ public class FPSAimAuraHighlighter : MonoBehaviour
         if (root == null)
             return;
 
+        if (IsMarkerClusterOccupied(root, isFocused))
+            return;
+
         int id = root.GetInstanceID();
         _desiredIds.Add(id);
 
@@ -362,6 +368,57 @@ public class FPSAimAuraHighlighter : MonoBehaviour
         }
 
         state.isFocused = isFocused;
+        ReserveMarkerCluster(root);
+    }
+
+    bool IsMarkerClusterOccupied(Transform root, bool isFocused)
+    {
+        if (isFocused)
+            return false;
+
+        if (!TryGetCandidateMarkerPosition(root, out var position))
+            position = root.position;
+
+        float radius = Mathf.Max(0f, markerClusterRadius);
+        if (radius <= 0.01f)
+            return false;
+
+        float radiusSqr = radius * radius;
+        for (int i = 0; i < _reservedMarkerPositions.Count; i++)
+        {
+            Vector3 delta = _reservedMarkerPositions[i] - position;
+            delta.y = 0f;
+            if (delta.sqrMagnitude <= radiusSqr)
+                return true;
+        }
+
+        return false;
+    }
+
+    void ReserveMarkerCluster(Transform root)
+    {
+        if (root == null)
+            return;
+
+        if (!TryGetCandidateMarkerPosition(root, out var position))
+            position = root.position;
+        _reservedMarkerPositions.Add(position);
+    }
+
+    bool TryGetCandidateMarkerPosition(Transform root, out Vector3 position)
+    {
+        position = Vector3.zero;
+        if (root == null)
+            return false;
+
+        if (TryGetRenderableBounds(root, out var bounds))
+        {
+            position = new Vector3(bounds.center.x, bounds.max.y + Mathf.Max(minWorldYOffset, boundsYOffset), bounds.center.z);
+            return true;
+        }
+
+        position = root.position + Vector3.up * Mathf.Max(0.35f, minWorldYOffset);
+        return true;
     }
 
     MarkerState CreateState(Transform root)
@@ -438,6 +495,37 @@ public class FPSAimAuraHighlighter : MonoBehaviour
         return root.name.StartsWith("Plant_");
     }
 
+    static bool TryGetRenderableBounds(Transform root, out Bounds bounds)
+    {
+        bounds = default;
+        if (root == null)
+            return false;
+
+        var renderers = root.GetComponentsInChildren<Renderer>(includeInactive: false);
+        if (renderers == null || renderers.Length == 0)
+            return false;
+
+        bool found = false;
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            var renderer = renderers[i];
+            if (renderer == null || !renderer.enabled || !renderer.gameObject.activeInHierarchy)
+                continue;
+
+            if (!found)
+            {
+                bounds = renderer.bounds;
+                found = true;
+            }
+            else
+            {
+                bounds.Encapsulate(renderer.bounds);
+            }
+        }
+
+        return found;
+    }
+
     static Transform CreateQuad(string name, Transform parent, Vector2 size, Vector3 localPos, Vector3 localEuler, Material material)
     {
         var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
@@ -510,6 +598,7 @@ public class FPSAimAuraHighlighter : MonoBehaviour
         _desiredIds.Clear();
         _sceneCandidateIds.Clear();
         _sceneCandidates.Clear();
+        _reservedMarkerPositions.Clear();
     }
 
     static void RestoreState(MarkerState state)

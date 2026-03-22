@@ -35,11 +35,17 @@ namespace SCoL.Settlement
         [Min(0.5f)] public float slowZonePadding = 2.5f;
 
         [Header("Placeholder Layout")]
-        [Min(2f)] public float fenceHalfExtent = 9.5f;
+        [Min(2f)] public float fenceHalfExtent = 12f;
         [Min(1f)] public float fenceHeight = 1.6f;
         [Min(0.1f)] public float fenceThickness = 0.35f;
-        [Min(1f)] public float frontGateWidth = 3.2f;
+        [Min(1f)] public float frontGateWidth = 4.8f;
         [Min(1f)] public float storageSideOffset = 3.5f;
+        [Min(0.2f)] public float fenceSegmentLength = 4.8f;
+        [Min(0.2f)] public float fenceVisualHeight = 1.35f;
+        [Min(0.05f)] public float fenceVisualThickness = 0.2f;
+        [Min(0f)] public float groundPadSize = 0f;
+        [Min(0.05f)] public float groundPadHeight = 0.3f;
+        [Min(0f)] public float groundPadLift = 0.02f;
 
         [Header("Centerpiece Model")]
         public GameObject centerpiecePrefab;
@@ -47,6 +53,17 @@ namespace SCoL.Settlement
         [Min(0.5f)] public float centerpieceTargetHeight = 3.8f;
         public Vector3 centerpieceModelEuler = Vector3.zero;
         [Min(2f)] public float maxDistanceFromPlayerBeforeRecentering = 18f;
+
+        [Header("Settlement Props")]
+        public GameObject storagePrefab;
+        public GameObject storageOpenPrefab;
+        public GameObject fenceStraightPrefab;
+        public GameObject fenceCornerPrefab;
+        public GameObject fenceGatePrefab;
+        public bool spawnPerimeterFences = true;
+        [Min(0.5f)] public float storageTargetHeight = 1.4f;
+        [Min(0.5f)] public float fenceTargetHeight = 1.9f;
+        [Min(0.1f)] public float storageOpenHoldSeconds = 0.8f;
 
         [Header("Storage Transfer")]
         [Min(1)] public int seedTransferAmount = 20;
@@ -91,7 +108,11 @@ namespace SCoL.Settlement
         GameObject _centerpieceRoot;
         GameObject _centerpieceVisualRoot;
         GameObject _safeZoneRingRoot;
+        GameObject _groundPadRoot;
         GameObject _storageRoot;
+        GameObject _storageVisualRoot;
+        bool _storageIsOpen;
+        float _storageOpenUntil = -1f;
         readonly System.Collections.Generic.List<GameObject> _barrierRoots = new System.Collections.Generic.List<GameObject>(8);
         readonly StringBuilder _sb = new StringBuilder(192);
 
@@ -117,7 +138,7 @@ namespace SCoL.Settlement
 
             Instance = this;
             FindReferences();
-            AutoAssignCenterpiecePrefab();
+            AutoAssignSettlementPrefabs();
 
             if (startActivated || createRuntimePlaceholders)
             {
@@ -133,6 +154,7 @@ namespace SCoL.Settlement
         {
             FindReferences();
             EnsurePlaceholders();
+            UpdateStorageVisualState();
 
             if (Time.time >= _nextRefreshAt)
                 RefreshSettlementState(force: false);
@@ -144,21 +166,76 @@ namespace SCoL.Settlement
                 Instance = null;
         }
 
+        void AutoAssignSettlementPrefabs()
+        {
+            AutoAssignCenterpiecePrefab();
+            AutoAssignStoragePrefab();
+            AutoAssignFencePrefabs();
+        }
+
         void AutoAssignCenterpiecePrefab()
         {
             if (centerpiecePrefab != null)
                 return;
 
-            centerpiecePrefab = Resources.Load<GameObject>("Campsite/tentV2");
+#if UNITY_EDITOR
+            centerpiecePrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Models/Modeling/_Incoming/tent updated/tent updated.obj");
             if (centerpiecePrefab != null)
                 return;
 
-#if UNITY_EDITOR
+            centerpiecePrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Models/Modeling/_Incoming/Campsite/tentV1.obj");
+            if (centerpiecePrefab != null)
+                return;
+
             centerpiecePrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Models/Modeling/_Incoming/Campsite/tentV2.obj");
+            if (centerpiecePrefab != null)
+                return;
 #endif
+
+            centerpiecePrefab = Resources.Load<GameObject>("Campsite/tentV2");
 
             if (centerpiecePrefab == null)
                 Debug.LogWarning("[SCoLSettlementManager] Failed to load campsite centerpiece prefab.");
+        }
+
+        void AutoAssignStoragePrefab()
+        {
+            if (storagePrefab != null)
+                goto assign_open;
+
+#if UNITY_EDITOR
+            storagePrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Models/Modeling/_Incoming/chest closed/chest closed.obj");
+            if (storagePrefab != null)
+                goto assign_open;
+
+            storagePrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Models/Modeling/_Incoming/Campsite/ChestV1.obj");
+            if (storagePrefab != null)
+                goto assign_open;
+
+            storagePrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Models/Modeling/_Incoming/Crate/Crate.obj");
+#endif
+
+assign_open:
+#if UNITY_EDITOR
+            if (storageOpenPrefab == null)
+                storageOpenPrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Models/Modeling/_Incoming/Chest open/Chest open.obj");
+#endif
+        }
+
+        void AutoAssignFencePrefabs()
+        {
+            bool needsAny = fenceStraightPrefab == null || fenceCornerPrefab == null || fenceGatePrefab == null;
+            if (!needsAny)
+                return;
+
+#if UNITY_EDITOR
+            if (fenceStraightPrefab == null)
+                fenceStraightPrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Models/Modeling/_Incoming/fence alone/fence alone.obj");
+            if (fenceCornerPrefab == null)
+                fenceCornerPrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Models/Modeling/_Incoming/fence cornner/fence cornner.obj");
+            if (fenceGatePrefab == null)
+                fenceGatePrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Models/Modeling/_Incoming/fence gate/fence gate.obj");
+#endif
         }
 
         public bool IsInsideSafeZone(Vector3 worldPosition)
@@ -288,6 +365,7 @@ namespace SCoL.Settlement
             }
 
             RefreshSettlementState(force: true);
+            PulseStorageOpen();
             return true;
         }
 
@@ -375,7 +453,15 @@ namespace SCoL.Settlement
             }
 
             RefreshSettlementState(force: true);
+            PulseStorageOpen();
             return true;
+        }
+
+        public void PulseStorageOpen(float holdSeconds = -1f)
+        {
+            float hold = holdSeconds > 0f ? holdSeconds : Mathf.Max(0.1f, storageOpenHoldSeconds);
+            _storageOpenUntil = Mathf.Max(_storageOpenUntil, Time.time + hold);
+            SetStorageVisualOpen(true);
         }
 
         public string GetCurrentToolStorageHint(FPSRaycastInteractor interactor, SCoLInventory inventory)
@@ -449,12 +535,16 @@ namespace SCoL.Settlement
             if (_sceneAnchor == null)
                 FindReferences();
 
+            if (!spawnPerimeterFences && _barrierRoots.Count > 0)
+                ClearBarrierRoots();
+
             Vector3 anchor = ResolveAnchorPosition();
             Vector3 planarForward = ResolveForward();
             if (planarForward.sqrMagnitude < 0.0001f)
                 planarForward = Vector3.forward;
 
-            if (_hasPlacedRuntimeObjects && _centerpieceRoot != null && _storageRoot != null)
+            bool layoutReady = _centerpieceRoot != null && _storageRoot != null && (!spawnPerimeterFences || _barrierRoots.Count > 0);
+            if (_hasPlacedRuntimeObjects && layoutReady)
             {
                 if (_sceneAnchor == null)
                     TryRecenterRuntimePlaceholders(anchor);
@@ -476,6 +566,8 @@ namespace SCoL.Settlement
                     : CreateCenterpiece(anchor, planarForward);
             if (_storageRoot == null)
                 _storageRoot = CreateStorage(anchor, planarForward);
+            if (spawnPerimeterFences && _barrierRoots.Count == 0)
+                CreateDefensePlaceholders(anchor, planarForward);
 
             RefreshSettlementVisuals();
             _hasPlacedRuntimeObjects = true;
@@ -509,6 +601,30 @@ namespace SCoL.Settlement
                 _centerpieceRoot.transform.position += delta;
             if (_storageRoot != null)
                 _storageRoot.transform.position += delta;
+            for (int i = 0; i < _barrierRoots.Count; i++)
+            {
+                if (_barrierRoots[i] != null)
+                    _barrierRoots[i].transform.position += delta;
+            }
+        }
+
+        void ClearBarrierRoots()
+        {
+            for (int i = 0; i < _barrierRoots.Count; i++)
+            {
+                var root = _barrierRoots[i];
+                if (root == null)
+                    continue;
+#if UNITY_EDITOR
+                if (!Application.isPlaying)
+                    DestroyImmediate(root);
+                else
+                    Destroy(root);
+#else
+                Destroy(root);
+#endif
+            }
+            _barrierRoots.Clear();
         }
 
         Vector3 ResolveForward()
@@ -534,8 +650,16 @@ namespace SCoL.Settlement
 
         Vector3 ResolveAnchorPosition()
         {
+            if (TryResolveVoxelWorldCenter(out var worldCenter))
+                return worldCenter;
+
             if (_sceneAnchor != null)
-                return _sceneAnchor.GetAnchorPosition(_voxelWorld);
+            {
+                Vector3 anchored = _sceneAnchor.GetAnchorPosition(_voxelWorld);
+                if (TryProjectToGround(anchored, out var groundedAnchor))
+                    return groundedAnchor;
+                return anchored;
+            }
 
             Vector3 origin = _playerRoot != null ? _playerRoot.position : Vector3.zero;
             Vector3 forward = ResolveForward();
@@ -549,6 +673,22 @@ namespace SCoL.Settlement
 
             candidate.y = 0f;
             return candidate;
+        }
+
+        bool TryResolveVoxelWorldCenter(out Vector3 center)
+        {
+            center = default;
+            if (_voxelWorld == null || _voxelWorld.Config == null)
+                return false;
+
+            int x = Mathf.Clamp(_voxelWorld.Config.worldWidth / 2, 0, _voxelWorld.Config.worldWidth - 1);
+            int z = Mathf.Clamp(_voxelWorld.Config.worldDepth / 2, 0, _voxelWorld.Config.worldDepth - 1);
+            Vector3 candidate = _voxelWorld.OriginWorld + new Vector3(x + 0.5f, 0f, z + 0.5f);
+            if (TryProjectToGround(candidate, out center))
+                return true;
+
+            center = candidate;
+            return true;
         }
 
         GameObject BindSceneAnchorCenterpiece(SCoLCampsiteSceneAnchor anchor, Vector3 position, Vector3 forward)
@@ -572,6 +712,7 @@ namespace SCoL.Settlement
             if (_centerpieceVisualRoot != null)
                 EnsureCenterpieceCollider(root, _centerpieceVisualRoot);
 
+            _groundPadRoot = EnsureGroundPad(root.transform);
             _safeZoneRingRoot = root.transform.Find("SafeZoneRing") != null
                 ? root.transform.Find("SafeZoneRing").gameObject
                 : CreateSafeZoneRing(root.transform);
@@ -655,9 +796,59 @@ namespace SCoL.Settlement
                 ConfigureRenderer(coreObj, new Color(0.30f, 0.70f, 0.92f, 1f));
             }
 
+            _groundPadRoot = EnsureGroundPad(root.transform);
             _safeZoneRingRoot = CreateSafeZoneRing(root.transform);
 
             return root;
+        }
+
+        GameObject EnsureGroundPad(Transform parent)
+        {
+            if (parent == null)
+                return null;
+
+            if (groundPadSize <= 0.01f)
+            {
+                var existingPad = parent.Find("SettlementGroundPad");
+                if (existingPad != null)
+                {
+#if UNITY_EDITOR
+                    if (!Application.isPlaying)
+                        DestroyImmediate(existingPad.gameObject);
+                    else
+                        Destroy(existingPad.gameObject);
+#else
+                    Destroy(existingPad.gameObject);
+#endif
+                }
+                return null;
+            }
+
+            var existing = parent.Find("SettlementGroundPad");
+            if (existing != null)
+            {
+                ConfigureGroundPad(existing.gameObject);
+                return existing.gameObject;
+            }
+
+            var pad = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            pad.name = "SettlementGroundPad";
+            pad.transform.SetParent(parent, false);
+            ConfigureGroundPad(pad);
+            return pad;
+        }
+
+        void ConfigureGroundPad(GameObject pad)
+        {
+            if (pad == null)
+                return;
+
+            float size = Mathf.Max(2f, groundPadSize);
+            float height = Mathf.Max(0.05f, groundPadHeight);
+            pad.transform.localPosition = new Vector3(0f, -height * 0.5f + groundPadLift, 0f);
+            pad.transform.localRotation = Quaternion.identity;
+            pad.transform.localScale = new Vector3(size, height, size);
+            ConfigureRenderer(pad, new Color(0.36f, 0.29f, 0.18f, 1f));
         }
 
         GameObject CreateSafeZoneRing(Transform parent)
@@ -775,59 +966,384 @@ namespace SCoL.Settlement
             marker.kind = SCoLSettlementInteractableKind.Storage;
             marker.manager = this;
 
-            var box = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            box.name = "Crate";
-            box.transform.SetParent(root.transform, false);
-            box.transform.localPosition = new Vector3(0f, 0.55f, 0f);
-            box.transform.localScale = new Vector3(1.2f, 1.0f, 1.0f);
-            ConfigureRenderer(box, new Color(0.42f, 0.28f, 0.14f, 1f));
+            if (storagePrefab != null || storageOpenPrefab != null)
+            {
+                BuildStorageVisual(root, false);
+            }
+            else
+            {
+                var box = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                box.name = "Crate";
+                box.transform.SetParent(root.transform, false);
+                box.transform.localPosition = new Vector3(0f, 0.55f, 0f);
+                box.transform.localScale = new Vector3(1.2f, 1.0f, 1.0f);
+                ConfigureRenderer(box, new Color(0.42f, 0.28f, 0.14f, 1f));
 
-            var lid = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            lid.name = "Lid";
-            lid.transform.SetParent(root.transform, false);
-            lid.transform.localPosition = new Vector3(0f, 1.08f, 0f);
-            lid.transform.localScale = new Vector3(1.28f, 0.16f, 1.08f);
-            ConfigureRenderer(lid, new Color(0.66f, 0.50f, 0.24f, 1f));
+                var lid = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                lid.name = "Lid";
+                lid.transform.SetParent(root.transform, false);
+                lid.transform.localPosition = new Vector3(0f, 1.08f, 0f);
+                lid.transform.localScale = new Vector3(1.28f, 0.16f, 1.08f);
+                ConfigureRenderer(lid, new Color(0.66f, 0.50f, 0.24f, 1f));
+            }
 
             return root;
         }
 
-        void CreateDefensePlaceholders(Vector3 center, Vector3 forward)
+        void UpdateStorageVisualState()
         {
-            Vector3 right = Vector3.Cross(Vector3.up, forward).normalized;
-            float half = Mathf.Max(SafeZoneRadius + 1f, fenceHalfExtent);
-            float gateHalf = Mathf.Max(0.5f, frontGateWidth * 0.5f);
-            float segLen = Mathf.Max(1f, half - gateHalf);
+            if (_storageRoot == null)
+                return;
 
-            CreateBarrier(center + forward * half, Quaternion.LookRotation(right, Vector3.up), half * 2f);
-            CreateBarrier(center - forward * half + right * (gateHalf + segLen * 0.5f), Quaternion.LookRotation(right, Vector3.up), segLen);
-            CreateBarrier(center - forward * half - right * (gateHalf + segLen * 0.5f), Quaternion.LookRotation(right, Vector3.up), segLen);
-            CreateBarrier(center + right * half, Quaternion.LookRotation(forward, Vector3.up), half * 2f);
-            CreateBarrier(center - right * half, Quaternion.LookRotation(forward, Vector3.up), half * 2f);
+            bool shouldBeOpen = _storageOpenUntil > 0f && Time.time <= _storageOpenUntil;
+            if (_storageIsOpen != shouldBeOpen)
+                SetStorageVisualOpen(shouldBeOpen);
         }
 
-        void CreateBarrier(Vector3 position, Quaternion rotation, float length)
+        void SetStorageVisualOpen(bool open)
         {
-            if (TryProjectToGround(position, out var grounded))
-                position = grounded;
+            if (_storageRoot == null)
+                return;
 
-            var root = new GameObject("SettlementBarrier");
+            if (_storageVisualRoot == null)
+            {
+                BuildStorageVisual(_storageRoot, open);
+                _storageIsOpen = open;
+                return;
+            }
+
+            if (_storageIsOpen == open)
+                return;
+
+            GameObject desiredPrefab = open && storageOpenPrefab != null ? storageOpenPrefab : storagePrefab;
+            if (desiredPrefab == null)
+            {
+                _storageIsOpen = open;
+                return;
+            }
+
+            BuildStorageVisual(_storageRoot, open);
+            _storageIsOpen = open;
+            RefreshSettlementVisuals();
+        }
+
+        void BuildStorageVisual(GameObject root, bool open)
+        {
+            if (root == null)
+                return;
+
+            if (_storageVisualRoot != null)
+            {
+#if UNITY_EDITOR
+                if (!Application.isPlaying)
+                    DestroyImmediate(_storageVisualRoot);
+                else
+                    Destroy(_storageVisualRoot);
+#else
+                Destroy(_storageVisualRoot);
+#endif
+                _storageVisualRoot = null;
+            }
+
+            GameObject prefab = open && storageOpenPrefab != null ? storageOpenPrefab : storagePrefab;
+            if (prefab == null)
+                return;
+
+            var visual = Instantiate(prefab, root.transform, false);
+            visual.name = "StorageVisual";
+            NormalizeVisualToHeight(root, visual, Mathf.Max(0.5f, storageTargetHeight));
+            EnsureCenterpieceCollider(root, visual);
+            _storageVisualRoot = visual;
+        }
+
+        void CreateDefensePlaceholders(Vector3 center, Vector3 forward)
+        {
+            ClearBarrierRoots();
+            ClearStrayBarrierObjects();
+
+            Vector3 right = Vector3.Cross(Vector3.up, forward).normalized;
+            float half = Mathf.Max(SafeZoneRadius + 1f, fenceHalfExtent);
+            float gateWidth = Mathf.Clamp(frontGateWidth, 3.5f, half * 1.3f);
+            float gateHalfWidth = Mathf.Clamp(gateWidth * 0.5f, 1.75f, half - 1.4f);
+            Vector3 front = center - forward * half;
+            Vector3 back = center + forward * half;
+            Vector3 left = center - right * half;
+            Vector3 rightSide = center + right * half;
+            float cornerInset = Mathf.Clamp(Mathf.Max(0.9f, fenceSegmentLength * 0.22f), 0.9f, 1.6f);
+
+            Vector3 frontLeft = front - right * half;
+            Vector3 frontRight = front + right * half;
+            Vector3 backLeft = back - right * half;
+            Vector3 backRight = back + right * half;
+
+            CreateBarrierCorner(frontLeft, Quaternion.LookRotation(-forward - right, Vector3.up));
+            CreateBarrierCorner(frontRight, Quaternion.LookRotation(-forward + right, Vector3.up));
+            CreateBarrierCorner(backLeft, Quaternion.LookRotation(forward - right, Vector3.up));
+            CreateBarrierCorner(backRight, Quaternion.LookRotation(forward + right, Vector3.up));
+
+            CreateFenceSide(
+                backLeft + right * cornerInset,
+                backRight - right * cornerInset,
+                fenceStraightPrefab);
+            CreateFenceSide(
+                backLeft + forward * cornerInset,
+                frontLeft - forward * cornerInset,
+                fenceStraightPrefab);
+            CreateFenceSide(
+                frontRight - forward * cornerInset,
+                backRight + forward * cornerInset,
+                fenceStraightPrefab);
+            CreateFenceSide(
+                frontLeft + right * cornerInset,
+                front - right * gateHalfWidth,
+                fenceStraightPrefab);
+            CreateFenceSide(
+                front + right * gateHalfWidth,
+                frontRight - right * cornerInset,
+                fenceStraightPrefab);
+            CreateBarrierGate(front, Quaternion.LookRotation(right, Vector3.up));
+        }
+
+        void ClearStrayBarrierObjects()
+        {
+            var roots = FindObjectsByType<Transform>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            for (int i = 0; i < roots.Length; i++)
+            {
+                var t = roots[i];
+                if (t == null)
+                    continue;
+
+                string name = t.name;
+                if (name != "SettlementBarrier" &&
+                    name != "SettlementBarrierCorner" &&
+                    name != "SettlementBarrierGate")
+                    continue;
+
+                if (t.parent != transform)
+                    continue;
+
+#if UNITY_EDITOR
+                if (!Application.isPlaying)
+                    DestroyImmediate(t.gameObject);
+                else
+                    Destroy(t.gameObject);
+#else
+                Destroy(t.gameObject);
+#endif
+            }
+        }
+
+        void CreateFenceSide(Vector3 start, Vector3 end, GameObject prefab)
+        {
+            if ((end - start).sqrMagnitude < 0.25f)
+                return;
+
+            Vector3 delta = end - start;
+            delta.y = 0f;
+            float runLength = delta.magnitude;
+            if (runLength < 0.5f)
+                return;
+
+            Vector3 dir = delta / runLength;
+            Vector3 pos = (start + end) * 0.5f;
+            CreateBarrierSegment(pos, Quaternion.LookRotation(dir, Vector3.up), runLength, prefab);
+        }
+
+        void CreateBarrierCorner(Vector3 position, Quaternion rotation)
+        {
+            var prefab = fenceCornerPrefab != null ? fenceCornerPrefab : fenceStraightPrefab;
+            if (prefab == null)
+                return;
+
+            position = ProjectBarrierPosition(position);
+
+            var root = new GameObject("SettlementBarrierCorner");
             root.transform.SetParent(transform, false);
-            root.transform.position = position + Vector3.up * Mathf.Max(0.45f, fenceHeight * 0.5f - 0.05f);
+            root.transform.position = position;
             root.transform.rotation = rotation;
 
             var marker = root.AddComponent<SCoLSettlementInteractable>();
             marker.kind = SCoLSettlementInteractableKind.Barrier;
             marker.manager = this;
 
-            var cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            cube.name = "Barrier";
-            cube.transform.SetParent(root.transform, false);
-            cube.transform.localPosition = Vector3.zero;
-            cube.transform.localScale = new Vector3(Mathf.Max(1f, length), Mathf.Max(1f, fenceHeight), Mathf.Max(0.1f, fenceThickness));
-            ConfigureRenderer(cube, new Color(0.46f, 0.34f, 0.18f, 1f));
+            var visual = Instantiate(prefab, root.transform, false);
+            visual.name = "FenceCorner";
+            AlignLinearVisualToForward(visual, false);
+            NormalizeFenceCornerVisual(root, visual);
+            EnsureCenterpieceCollider(root, visual);
+            _barrierRoots.Add(root);
+        }
+
+        void CreateBarrierGate(Vector3 position, Quaternion rotation)
+        {
+            if (fenceGatePrefab == null)
+                return;
+
+            position = ProjectBarrierPosition(position);
+
+            var root = new GameObject("SettlementBarrierGate");
+            root.transform.SetParent(transform, false);
+            root.transform.position = position;
+            root.transform.rotation = rotation;
+
+            var visual = Instantiate(fenceGatePrefab, root.transform, false);
+            visual.name = "FenceGate";
+            AlignLinearVisualToForward(visual, true);
+            NormalizeFenceGateVisual(root, visual, Mathf.Max(2f, frontGateWidth));
+        }
+
+        void CreateBarrierSegment(Vector3 position, Quaternion rotation, float length, GameObject prefab)
+        {
+            position = ProjectBarrierPosition(position);
+
+            var root = new GameObject("SettlementBarrier");
+            root.transform.SetParent(transform, false);
+            root.transform.position = position;
+            root.transform.rotation = rotation;
+
+            var marker = root.AddComponent<SCoLSettlementInteractable>();
+            marker.kind = SCoLSettlementInteractableKind.Barrier;
+            marker.manager = this;
+
+            if (prefab != null)
+            {
+                var visual = Instantiate(prefab, root.transform, false);
+                visual.name = "FenceVisual";
+                AlignLinearVisualToForward(visual, true);
+                NormalizeFenceSegmentVisual(root, visual, Mathf.Max(0.5f, length));
+                EnsureCenterpieceCollider(root, visual);
+            }
+            else
+            {
+                var cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                cube.name = "Barrier";
+                cube.transform.SetParent(root.transform, false);
+                cube.transform.localPosition = Vector3.zero;
+                cube.transform.localScale = new Vector3(Mathf.Max(1f, length), Mathf.Max(1f, fenceHeight), Mathf.Max(0.1f, fenceThickness));
+                ConfigureRenderer(cube, new Color(0.46f, 0.34f, 0.18f, 1f));
+            }
 
             _barrierRoots.Add(root);
+        }
+
+        Vector3 ProjectBarrierPosition(Vector3 position)
+        {
+            if (_voxelWorld != null && _voxelWorld.TryGetTerrainSurfaceYAtWorld(position + Vector3.up * 4f, out float surfaceY, includeWaterSurface: false))
+            {
+                position.y = surfaceY + 0.05f;
+                return position;
+            }
+
+            if (TryProjectToGround(position, out var grounded))
+                return grounded;
+
+            return position;
+        }
+
+        void NormalizeVisualToHeight(GameObject root, GameObject visual, float targetHeight)
+        {
+            if (root == null || visual == null || !TryGetHierarchyBounds(visual, out var bounds))
+                return;
+
+            float height = Mathf.Max(0.01f, bounds.size.y);
+            float uniformScale = Mathf.Max(0.01f, targetHeight) / height;
+            visual.transform.localScale *= uniformScale;
+
+            if (!TryGetHierarchyBounds(visual, out bounds))
+                return;
+
+            Vector3 desiredBottomCenter = root.transform.position;
+            Vector3 currentBottomCenter = new Vector3(bounds.center.x, bounds.min.y, bounds.center.z);
+            visual.transform.position += desiredBottomCenter - currentBottomCenter;
+        }
+
+        void NormalizeBarrierVisual(GameObject root, GameObject visual, float targetLength, float targetHeight)
+        {
+            NormalizeVisualToHeight(root, visual, targetHeight);
+            if (root == null || visual == null || !TryGetHierarchyBounds(visual, out var bounds))
+                return;
+
+            float currentLength = Mathf.Max(0.01f, Mathf.Max(bounds.size.x, bounds.size.z));
+            float lengthScale = Mathf.Clamp(Mathf.Max(0.1f, targetLength) / currentLength, 0.85f, 1.15f);
+
+            if (bounds.size.z >= bounds.size.x)
+                visual.transform.localScale = Vector3.Scale(visual.transform.localScale, new Vector3(1f, 1f, lengthScale));
+            else
+                visual.transform.localScale = Vector3.Scale(visual.transform.localScale, new Vector3(lengthScale, 1f, 1f));
+
+            if (!TryGetHierarchyBounds(visual, out bounds))
+                return;
+
+            Vector3 desiredBottomCenter = root.transform.position;
+            Vector3 currentBottomCenter = new Vector3(bounds.center.x, bounds.min.y, bounds.center.z);
+            visual.transform.position += desiredBottomCenter - currentBottomCenter;
+        }
+
+        void NormalizeFenceSegmentVisual(GameObject root, GameObject visual, float targetLength)
+        {
+            NormalizeFenceVisual(root, visual, targetLength, Mathf.Max(0.4f, fenceVisualHeight));
+        }
+
+        void NormalizeFenceCornerVisual(GameObject root, GameObject visual)
+        {
+            NormalizeFenceVisual(root, visual, Mathf.Max(0.8f, fenceSegmentLength * 0.9f), Mathf.Max(0.4f, fenceVisualHeight));
+        }
+
+        void NormalizeFenceGateVisual(GameObject root, GameObject visual, float gateWidth)
+        {
+            NormalizeFenceVisual(root, visual, gateWidth, Mathf.Max(0.4f, fenceVisualHeight));
+        }
+
+        void NormalizeFenceVisual(GameObject root, GameObject visual, float targetLength, float targetHeight)
+        {
+            if (root == null || visual == null || !TryGetHierarchyBounds(visual, out var bounds))
+                return;
+
+            bool lengthOnX = bounds.size.x >= bounds.size.z;
+            float currentLength = Mathf.Max(0.01f, lengthOnX ? bounds.size.x : bounds.size.z);
+            float currentThickness = Mathf.Max(0.01f, lengthOnX ? bounds.size.z : bounds.size.x);
+            float currentHeight = Mathf.Max(0.01f, bounds.size.y);
+
+            float lengthScale = Mathf.Max(0.1f, targetLength) / currentLength;
+            float heightScale = Mathf.Max(0.1f, targetHeight) / currentHeight;
+            float thicknessScale = Mathf.Max(0.05f, fenceVisualThickness) / currentThickness;
+
+            Vector3 scale = visual.transform.localScale;
+            scale = lengthOnX
+                ? Vector3.Scale(scale, new Vector3(lengthScale, heightScale, thicknessScale))
+                : Vector3.Scale(scale, new Vector3(thicknessScale, heightScale, lengthScale));
+            visual.transform.localScale = scale;
+
+            if (!TryGetHierarchyBounds(visual, out bounds))
+                return;
+
+            Vector3 desiredBottomCenter = root.transform.position;
+            Vector3 currentBottomCenter = new Vector3(bounds.center.x, bounds.min.y, bounds.center.z);
+            visual.transform.position += desiredBottomCenter - currentBottomCenter;
+        }
+
+        float GetFencePrimaryLength(GameObject prefab, float targetHeight)
+        {
+            if (prefab == null || !TryGetHierarchyBounds(prefab, out var bounds))
+                return Mathf.Max(0.5f, fenceSegmentLength);
+
+            float horizontal = Mathf.Max(bounds.size.x, bounds.size.z);
+            if (horizontal <= 0.01f)
+                return Mathf.Max(0.5f, fenceSegmentLength);
+
+            return Mathf.Max(0.5f, horizontal);
+        }
+
+        void AlignLinearVisualToForward(GameObject visual, bool preferForwardAxis)
+        {
+            if (visual == null || !TryGetHierarchyBounds(visual, out var bounds))
+                return;
+
+            if (!preferForwardAxis)
+                return;
+
+            if (bounds.size.x > bounds.size.z)
+                visual.transform.localRotation *= Quaternion.Euler(0f, 90f, 0f);
         }
 
         void ConfigureRenderer(GameObject go, Color color)

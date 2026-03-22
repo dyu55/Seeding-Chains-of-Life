@@ -192,7 +192,7 @@ public class FPSRaycastInteractor : MonoBehaviour
     public GameObject heldSeedPrefab;
     public Vector3 heldSeedLocalPosition = new Vector3(0.31f, -0.31f, 0.56f);
     public Vector3 heldSeedLocalEuler = new Vector3(14f, -18f, -12f);
-    [Min(0.05f)] public float heldSeedScale = 0.16f;
+    [Min(0.05f)] public float heldSeedScale = 0.12f;
     public GameObject heldPlantPrefab;
     public Vector3 heldPlantLocalPosition = new Vector3(0.30f, -0.30f, 0.56f);
     public Vector3 heldPlantLocalEuler = new Vector3(10f, -12f, -8f);
@@ -903,7 +903,7 @@ public class FPSRaycastInteractor : MonoBehaviour
             go.transform.position = worldPos + Vector3.up * Mathf.Max(0f, dropVerticalOffset);
             go.transform.localScale = type switch
             {
-                SCoLItemType.Seed => new Vector3(0.12f, 0.12f, 0.12f),
+                SCoLItemType.Seed => new Vector3(0.09f, 0.09f, 0.09f),
                 SCoLItemType.Stone => new Vector3(0.22f, 0.22f, 0.22f),
                 SCoLItemType.Plant => new Vector3(0.24f, 0.28f, 0.24f),
                 _ => new Vector3(0.24f, 0.18f, 0.24f)
