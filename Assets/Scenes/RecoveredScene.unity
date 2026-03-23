@@ -299,16 +299,6 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1 &271994051 stripped
-GameObject:
-  m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: 12a483e3f418c47c389a67092aa1160c, type: 3}
-  m_PrefabInstance: {fileID: 823868315}
-  m_PrefabAsset: {fileID: 0}
---- !u!4 &271994052 stripped
-Transform:
-  m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: 12a483e3f418c47c389a67092aa1160c, type: 3}
-  m_PrefabInstance: {fileID: 823868315}
-  m_PrefabAsset: {fileID: 0}
 --- !u!1 &426019055
 GameObject:
   m_ObjectHideFlags: 0
@@ -376,21 +366,25 @@ MonoBehaviour:
     clear: 0.8
     rain: 0.2
     wind: 0
+    thunder: 0
     snow: 0
   summer:
-    clear: 0.6
-    rain: 0.4
+    clear: 0.5
+    rain: 0.3
     wind: 0
+    thunder: 0.2
     snow: 0
   autumn:
-    clear: 0.4
+    clear: 0.3
     rain: 0.1
     wind: 0.5
+    thunder: 0.1
     snow: 0
   winter:
     clear: 0.1
     rain: 0
     wind: 0
+    thunder: 0
     snow: 0.9
   deterministic: 0
   randomSeed: 12345
@@ -427,6 +421,16 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &478003252 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: c98df9c53f41b423c8043d8cb8c3b24a, type: 3}
+  m_PrefabInstance: {fileID: 2130999034}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &478003253 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: c98df9c53f41b423c8043d8cb8c3b24a, type: 3}
+  m_PrefabInstance: {fileID: 2130999034}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1 &571384965
 GameObject:
   m_ObjectHideFlags: 0
@@ -783,75 +787,6 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1001 &823868315
-PrefabInstance:
-  m_ObjectHideFlags: 0
-  serializedVersion: 2
-  m_Modification:
-    serializedVersion: 3
-    m_TransformParent: {fileID: 900200001}
-    m_Modifications:
-    - target: {fileID: -8679921383154817045, guid: 12a483e3f418c47c389a67092aa1160c, type: 3}
-      propertyPath: m_LocalScale.x
-      value: 1
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 12a483e3f418c47c389a67092aa1160c, type: 3}
-      propertyPath: m_LocalScale.y
-      value: 1
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 12a483e3f418c47c389a67092aa1160c, type: 3}
-      propertyPath: m_LocalScale.z
-      value: 1
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 12a483e3f418c47c389a67092aa1160c, type: 3}
-      propertyPath: m_LocalPosition.x
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 12a483e3f418c47c389a67092aa1160c, type: 3}
-      propertyPath: m_LocalPosition.y
-      value: 0.05704098
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 12a483e3f418c47c389a67092aa1160c, type: 3}
-      propertyPath: m_LocalPosition.z
-      value: -0.014411926
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 12a483e3f418c47c389a67092aa1160c, type: 3}
-      propertyPath: m_LocalRotation.w
-      value: -0.00000004371139
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 12a483e3f418c47c389a67092aa1160c, type: 3}
-      propertyPath: m_LocalRotation.x
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 12a483e3f418c47c389a67092aa1160c, type: 3}
-      propertyPath: m_LocalRotation.y
-      value: 1
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 12a483e3f418c47c389a67092aa1160c, type: 3}
-      propertyPath: m_LocalRotation.z
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 12a483e3f418c47c389a67092aa1160c, type: 3}
-      propertyPath: m_LocalEulerAnglesHint.x
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 12a483e3f418c47c389a67092aa1160c, type: 3}
-      propertyPath: m_LocalEulerAnglesHint.y
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 12a483e3f418c47c389a67092aa1160c, type: 3}
-      propertyPath: m_LocalEulerAnglesHint.z
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 919132149155446097, guid: 12a483e3f418c47c389a67092aa1160c, type: 3}
-      propertyPath: m_Name
-      value: CampsiteVisual
-      objectReference: {fileID: 0}
-    m_RemovedComponents: []
-    m_RemovedGameObjects: []
-    m_AddedGameObjects: []
-    m_AddedComponents: []
-  m_SourcePrefab: {fileID: 100100000, guid: 12a483e3f418c47c389a67092aa1160c, type: 3}
 --- !u!1 &825973265
 GameObject:
   m_ObjectHideFlags: 0
@@ -10745,6 +10680,19 @@ MonoBehaviour:
   windMainRain: 0.35
   windMainThunder: 0.55
   windMainSnow: 0.25
+  skyBirdPrefab: {fileID: 0}
+  enableSkyBirds: 1
+  skyBirdCount: 10
+  skyBirdHorizontalRadius: 42
+  skyBirdMinHeight: 10
+  skyBirdMaxHeight: 24
+  skyBirdMinSpeed: 2.5
+  skyBirdMaxSpeed: 5.5
+  skyBirdTurnIntervalMin: 1.5
+  skyBirdTurnIntervalMax: 4.5
+  skyBirdReturnWeight: 1.4
+  skyBirdVerticalJitter: 0.55
+  skyBirdRotationLerp: 7
   playModeOnly: 1
 --- !u!1 &900200000
 GameObject:
@@ -10776,7 +10724,7 @@ Transform:
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
-  - {fileID: 271994052}
+  - {fileID: 478003253}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!114 &900200002
@@ -10792,7 +10740,7 @@ MonoBehaviour:
   m_Name: SCoLCampsiteSceneAnchor
   m_EditorClassIdentifier: Assembly-CSharp::SCoL.Settlement.SCoLCampsiteSceneAnchor
   resourcePath: 
-  editorAssetPath: Assets/Models/Modeling/_Incoming/tent updated/tent updated 2.obj
+  editorAssetPath: Assets/Models/Modeling/_Incoming/tent updated/tent updated.obj
   visualEuler: {x: 0, y: 180, z: 0}
   targetFootprint: 17.6
   targetHeight: 10.4
@@ -10802,7 +10750,7 @@ MonoBehaviour:
   minShoreClearance: 10
   flatnessSampleRadius: 6
   maxFlatHeightDelta: 0.9
-  _visualInstance: {fileID: 271994051}
+  _visualInstance: {fileID: 478003252}
 --- !u!1 &910000100
 GameObject:
   m_ObjectHideFlags: 0
@@ -11547,7 +11495,7 @@ MonoBehaviour:
   fogDensityThunderMultiplier: 1.6
   ambientDimmingInBadWeather: 0.85
   bgmAudioSource: {fileID: 0}
-  bgmLoop: {fileID: 0}
+  bgmLoop: {fileID: 8300000, guid: ebed17502af404ec8b15998ef9b106fe, type: 3}
   bgmVolume: 0.5
   weatherAudioSource: {fileID: 1270282488}
   clearLoop: {fileID: 0}
@@ -11566,6 +11514,8 @@ MonoBehaviour:
   toggleSwitchClip: {fileID: 8300000, guid: a3c0e79ae6a06477aa6d62a9f7192744, type: 3}
   pickupItemClip: {fileID: 8300000, guid: f8df6c447df3f4f8abb52514eb022636, type: 3}
   throwStoneClip: {fileID: 8300000, guid: b1eef3c322b5547c29a3f102d836514b, type: 3}
+  chestOpenClip: {fileID: 8300000, guid: 0ebc8c0f077804186a06eb94399ccdcd, type: 3}
+  chestCloseClip: {fileID: 8300000, guid: 8cfe61478a38b4d4cb7799167dec9c13, type: 3}
   interactionSfxVolume: 0.55
   enableThunderFlash: 1
   lightningFlashDuration: 0.287
@@ -12238,38 +12188,26 @@ MonoBehaviour:
   safeZoneRadius: 8.5
   slowZonePadding: 2.5
   fenceHalfExtent: 12
-  fenceHeight: 1.6
-  fenceThickness: 0.35
   frontGateWidth: 4.8
   storageSideOffset: 0
   storageForwardOffset: 0.9
-  fenceSegmentLength: 4.8
-  fenceVisualHeight: 1.35
+  useStorageWorldPositionOverride: 1
+  storageWorldPositionOverride: {x: 90.3, y: 23.07, z: 89.58}
+  fenceTargetHeight: 1.9
   fenceVisualThickness: 0.2
-  groundPadSize: 0
-  groundPadHeight: 0.3
-  groundPadLift: 0.02
-  useProceduralFenceRails: 0
-  fencePostThickness: 0.22
-  fencePostHeight: 1.75
-  fenceRailThickness: 0.16
-  fenceLowerRailHeight: 0.55
-  fenceUpperRailHeight: 1.2
-  fenceModelUniformScale: 1
-  centerpiecePrefab: {fileID: 0}
+  fenceCornerFootprint: 1.6
+  storageTargetHeight: 1.25
   centerpieceTargetFootprint: 17.6
   centerpieceTargetHeight: 10.4
   centerpieceModelEuler: {x: 0, y: 0, z: 0}
-  maxDistanceFromPlayerBeforeRecentering: 18
+  storageOpenHoldSeconds: 0.8
+  centerpiecePrefab: {fileID: 0}
   storagePrefab: {fileID: 0}
   storageOpenPrefab: {fileID: 0}
   fenceStraightPrefab: {fileID: 100100000, guid: 54ce8bcde04ac4684ad1a8868ed5b87a, type: 3}
   fenceCornerPrefab: {fileID: 100100000, guid: 9f1dcf86b8c6f4b089a5e7dca82a2360, type: 3}
   fenceGatePrefab: {fileID: 100100000, guid: dd9c6577e3b324ba9ba7d3909776bc74, type: 3}
   spawnPerimeterFences: 1
-  storageTargetHeight: 1.25
-  fenceTargetHeight: 1.9
-  storageOpenHoldSeconds: 0.8
   seedTransferAmount: 20
   waterTransferAmount: 5
   fireTransferAmount: 2
@@ -17521,6 +17459,63 @@ MonoBehaviour:
   propCount: 6
   propsCenter: {x: 0.5, y: 1.1, z: 1}
   propsRadius: 0.35
+--- !u!1001 &2130999034
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 900200001}
+    m_Modifications:
+    - target: {fileID: -8679921383154817045, guid: c98df9c53f41b423c8043d8cb8c3b24a, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: -0.0015182495
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: c98df9c53f41b423c8043d8cb8c3b24a, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0.0000000037252903
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: c98df9c53f41b423c8043d8cb8c3b24a, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: -0.0012588501
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: c98df9c53f41b423c8043d8cb8c3b24a, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: -0.00000004371139
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: c98df9c53f41b423c8043d8cb8c3b24a, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: c98df9c53f41b423c8043d8cb8c3b24a, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: c98df9c53f41b423c8043d8cb8c3b24a, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: c98df9c53f41b423c8043d8cb8c3b24a, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: c98df9c53f41b423c8043d8cb8c3b24a, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: c98df9c53f41b423c8043d8cb8c3b24a, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 919132149155446097, guid: c98df9c53f41b423c8043d8cb8c3b24a, type: 3}
+      propertyPath: m_Name
+      value: CampsiteVisual
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: c98df9c53f41b423c8043d8cb8c3b24a, type: 3}
 --- !u!1 &9000000001
 GameObject:
   m_ObjectHideFlags: 0
@@ -17752,6 +17747,10 @@ MonoBehaviour:
   thunderCanIgniteTargetedPlant: 1
   thunderTargetIgniteChance: 0.12
   thunderTargetCheckIntervalSeconds: 0.35
+  thunderBurnFlowerFractionMin: 0.2
+  thunderBurnFlowerFractionMax: 0.3
+  thunderBurnAutoClearSeconds: 5
+  thunderBurnSpreadBlockSeconds: 20
   collectPickupsOnRightClick: 1
   collectWaterFromRegionOnRightClick: 1
   waterCollectAmount: 1

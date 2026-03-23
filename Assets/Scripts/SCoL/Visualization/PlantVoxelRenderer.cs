@@ -334,6 +334,8 @@ namespace SCoL.Visualization
                 "Assets/Models/Modeling/_Incoming/purple tulip open/purple tulip open.obj");
             var redTulipOpen = AssetDatabase.LoadAssetAtPath<GameObject>(
                 "Assets/Models/Modeling/_Incoming/red tulip open/red tulip open.obj");
+            var multiFlowers = AssetDatabase.LoadAssetAtPath<GameObject>(
+                "Assets/Models/Modeling/_Incoming/multi flowers/multi flowers.obj");
             var seedV1Sprout = AssetDatabase.LoadAssetAtPath<GameObject>(
                 "Assets/Models/Modeling/_Incoming/3stageFlowers/Sprout/SeedV1Sprout.obj");
             var seedV2Sprout = AssetDatabase.LoadAssetAtPath<GameObject>(
@@ -357,6 +359,7 @@ namespace SCoL.Visualization
                 beanBlueFlower == null || beanBlueYellowFlower == null || beanBlueRose == null ||
                 blueTulip == null || whiteDaisy == null || whiteTulipClosed == null || pinkRose == null ||
                 pinkTulip == null || redRose == null || purpleTulipOpen == null || redTulipOpen == null ||
+                multiFlowers == null ||
                 seedV1Sprout == null || seedV2Sprout == null || seedV3Sprout == null ||
                 sproutV1 == null || sproutV2 == null || sproutV3 == null ||
                 flowerV1 == null || flowerV2 == null || flowerV3 == null)
@@ -397,7 +400,7 @@ namespace SCoL.Visualization
                 MakeProfile(1, "BrownSeed", flowerStage1, flowerStage2, blueTulip),
                 MakeProfile(2, "LightBrownSeed", flowerStage1, flowerStage2, whiteDaisy, new[] { whiteDaisy, whiteTulipClosed, pinkRose }),
                 MakeProfile(3, "LongSeed", flowerStage1, flowerStage2, pinkTulip),
-                MakeProfile(4, "Seed1", flowerStage1, flowerStage2, redRose, new[] { redRose, purpleTulipOpen, redTulipOpen }),
+                MakeProfile(4, "Seed1", flowerStage1, flowerStage2, redRose, new[] { redRose, purpleTulipOpen, redTulipOpen, multiFlowers }),
                 MakeProfile(5, "SeedV1", seedV1Sprout, sproutV1, flowerV1),
                 MakeProfile(6, "SeedV2", seedV2Sprout, sproutV2, flowerV2),
                 MakeProfile(7, "SeedV3", seedV3Sprout, sproutV2, flowerV3),

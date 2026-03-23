@@ -27,7 +27,9 @@ namespace SCoL.Visualization
             WaterDrop,
             ToggleSwitch,
             PickupItem,
-            ThrowStone
+            ThrowStone,
+            ChestOpen,
+            ChestClose
         }
 
         static DayNightLightingController _instance;
@@ -134,6 +136,8 @@ namespace SCoL.Visualization
         public AudioClip toggleSwitchClip;
         public AudioClip pickupItemClip;
         public AudioClip throwStoneClip;
+        public AudioClip chestOpenClip;
+        public AudioClip chestCloseClip;
         [Range(0f, 1f)] public float interactionSfxVolume = 1f;
 
         [Header("Thunderstorm Lightning Flash (optional)")]
@@ -245,6 +249,8 @@ namespace SCoL.Visualization
                 InteractionSfx.ToggleSwitch => toggleSwitchClip,
                 InteractionSfx.PickupItem => pickupItemClip,
                 InteractionSfx.ThrowStone => throwStoneClip,
+                InteractionSfx.ChestOpen => chestOpenClip,
+                InteractionSfx.ChestClose => chestCloseClip,
                 _ => null
             };
             if (clip == null) return;
@@ -316,6 +322,12 @@ namespace SCoL.Visualization
                 pickupItemClip = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Sounds/pickupitem.mp3");
             if (throwStoneClip == null)
                 throwStoneClip = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Sounds/throwstone.mp3");
+            if (chestOpenClip == null)
+                chestOpenClip = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Sounds/chestopen.mp3");
+            if (chestCloseClip == null)
+                chestCloseClip = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Sounds/chestclose.mp3");
+            if (bgmLoop == null)
+                bgmLoop = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Sounds/BGM_Loop_Final.wav");
 
             if (!isActiveAndEnabled) return;
             // Apply in edit mode too (nice for tuning curves/gradients)

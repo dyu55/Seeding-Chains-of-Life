@@ -14,7 +14,7 @@ namespace SCoL.Settlement
     public sealed class SCoLCampsiteSceneAnchor : MonoBehaviour
     {
         public string resourcePath = "";
-        public string editorAssetPath = "Assets/Models/Modeling/_Incoming/tent updated/tent updated 2.obj";
+        public string editorAssetPath = "Assets/Models/Modeling/_Incoming/tent updated/tent updated.obj";
         public Vector3 visualEuler = Vector3.zero;
         [Min(0.5f)] public float targetFootprint = 17.6f;
         [Min(0.5f)] public float targetHeight = 10.4f;

@@ -10,7 +10,7 @@ namespace SCoL.Weather
     /// Design goals:
     /// - Global (one weather at a time)
     /// - Season-aware: each season has its own frequency weights
-    /// - Thunderstorm only occurs as escalation after 2 consecutive Rain segments (sessions)
+    /// - Thunderstorm can be rolled directly from seasonal weights
     /// - Tunable, deterministic (optional seed)
     ///
     /// This class does NOT do visuals by itself; consumers (VFX/audio/lighting) should subscribe to events
@@ -24,27 +24,29 @@ namespace SCoL.Weather
             [Range(0f, 1f)] public float clear;
             [Range(0f, 1f)] public float rain;
             [Range(0f, 1f)] public float wind;
+            [Range(0f, 1f)] public float thunder;
             [Range(0f, 1f)] public float snow;
 
             public static SeasonWeights Normalize(SeasonWeights w)
             {
-                // NOTE: thunder is not a base weight; it's escalation-only.
                 float c = Mathf.Max(0f, w.clear);
                 float r = Mathf.Max(0f, w.rain);
                 float wi = Mathf.Max(0f, w.wind);
+                float th = Mathf.Max(0f, w.thunder);
                 float s = Mathf.Max(0f, w.snow);
 
-                float sum = c + r + wi + s;
+                float sum = c + r + wi + th + s;
                 if (sum <= 0f)
                 {
                     w.clear = 1f;
-                    w.rain = w.wind = w.snow = 0f;
+                    w.rain = w.wind = w.thunder = w.snow = 0f;
                     return w;
                 }
 
                 w.clear = c / sum;
                 w.rain = r / sum;
                 w.wind = wi / sum;
+                w.thunder = th / sum;
                 w.snow = s / sum;
                 return w;
             }
@@ -55,17 +57,17 @@ namespace SCoL.Weather
         public SeasonSkyboxController seasonSource;
 
         [Header("Seasonal Frequencies (weights)")]
-        [Tooltip("Spring target: Clear ~70%, Rain ~30% (Thunder is escalation-only).")]
-        public SeasonWeights spring = new SeasonWeights { clear = 0.70f, rain = 0.30f, wind = 0f, snow = 0f };
+        [Tooltip("Spring target: Clear ~70%, Rain ~30%.")]
+        public SeasonWeights spring = new SeasonWeights { clear = 0.70f, rain = 0.30f, wind = 0f, thunder = 0f, snow = 0f };
 
-        [Tooltip("Summer target: Clear ~60%, Rain ~40% (Thunder is escalation-only).")]
-        public SeasonWeights summer = new SeasonWeights { clear = 0.60f, rain = 0.40f, wind = 0f, snow = 0f };
+        [Tooltip("Summer target: Clear ~50%, Rain ~40%, Thunder ~10%.")]
+        public SeasonWeights summer = new SeasonWeights { clear = 0.50f, rain = 0.40f, wind = 0f, thunder = 0.10f, snow = 0f };
 
-        [Tooltip("Autumn target: Clear ~40%, Wind ~50%, remaining Rain. Thunder is escalation-only.")]
-        public SeasonWeights autumn = new SeasonWeights { clear = 0.40f, rain = 0.10f, wind = 0.50f, snow = 0f };
+        [Tooltip("Autumn target: Clear ~40%, Wind ~50%, remaining Rain.")]
+        public SeasonWeights autumn = new SeasonWeights { clear = 0.40f, rain = 0.10f, wind = 0.50f, thunder = 0f, snow = 0f };
 
         [Tooltip("Winter target: Snow ~80%, Clear ~20%.")]
-        public SeasonWeights winter = new SeasonWeights { clear = 0.20f, rain = 0f, wind = 0f, snow = 0.80f };
+        public SeasonWeights winter = new SeasonWeights { clear = 0.20f, rain = 0f, wind = 0f, thunder = 0f, snow = 0.80f };
 
         [Header("Randomness")]
         [Tooltip("If true, use a fixed seed for deterministic weather.")]
@@ -87,7 +89,7 @@ namespace SCoL.Weather
         [Tooltip("When currently in the same category, multiply its chance to continue by this factor.")]
         [Min(0f)] public float phaseStickiness = 1.25f;
 
-        [Header("Thunderstorm (Escalation)")]
+        [Header("Thunderstorm (Legacy Escalation)")]
         [Tooltip("Number of consecutive Rain segments required before thunderstorms can occur.")]
         [Min(1)] public int thunderAfterConsecutiveRainSegments = 2;
 
@@ -225,7 +227,7 @@ namespace SCoL.Weather
         {
             EnsureRandomInitialized();
 
-            // Thunderstorm: escalation-only and only from Rain.
+            // Legacy escalation path. Direct seasonal thunder weights also exist below.
             if (_thunderQueued && currentPhase == WeatherPhase.Rain)
             {
                 bool trigger = thunderGuaranteedWhenQueued || _rng.NextDouble() < thunderTriggerProbability;
@@ -250,12 +252,13 @@ namespace SCoL.Weather
                     case WeatherPhase.Clear: w.clear *= stick; break;
                     case WeatherPhase.Wind: w.wind *= stick; break;
                     case WeatherPhase.Rain: w.rain *= stick; break;
+                    case WeatherPhase.Thunderstorm: w.thunder *= stick; break;
                     case WeatherPhase.Snow: w.snow *= stick; break;
                 }
             }
 
             // Roll
-            float sum = Mathf.Max(0f, w.clear) + Mathf.Max(0f, w.wind) + Mathf.Max(0f, w.rain) + Mathf.Max(0f, w.snow);
+            float sum = Mathf.Max(0f, w.clear) + Mathf.Max(0f, w.wind) + Mathf.Max(0f, w.rain) + Mathf.Max(0f, w.thunder) + Mathf.Max(0f, w.snow);
             if (sum <= 0f)
             {
                 ForcePhase(WeatherPhase.Clear, SampleRange(clearDurationRange));
@@ -268,11 +271,13 @@ namespace SCoL.Weather
             double c = Mathf.Max(0f, w.clear);
             double wi = Mathf.Max(0f, w.wind);
             double r = Mathf.Max(0f, w.rain);
+            double th = Mathf.Max(0f, w.thunder);
             // snow implied
 
             if (roll < c) next = WeatherPhase.Clear;
             else if (roll < c + wi) next = WeatherPhase.Wind;
             else if (roll < c + wi + r) next = WeatherPhase.Rain;
+            else if (roll < c + wi + r + th) next = WeatherPhase.Thunderstorm;
             else next = WeatherPhase.Snow;
 
             float dur = next switch
@@ -280,6 +285,7 @@ namespace SCoL.Weather
                 WeatherPhase.Clear => SampleRange(clearDurationRange),
                 WeatherPhase.Wind => SampleRange(windDurationRange),
                 WeatherPhase.Rain => SampleRange(rainDurationRange),
+                WeatherPhase.Thunderstorm => SampleRange(thunderDurationRange),
                 WeatherPhase.Snow => SampleRange(snowDurationRange),
                 _ => SampleRange(clearDurationRange)
             };

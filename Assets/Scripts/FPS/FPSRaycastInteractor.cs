@@ -165,6 +165,10 @@ public class FPSRaycastInteractor : MonoBehaviour
     public bool thunderCanIgniteTargetedPlant = true;
     [Range(0f, 1f)] public float thunderTargetIgniteChance = 0.12f;
     [Min(0.05f)] public float thunderTargetCheckIntervalSeconds = 0.35f;
+    [Range(0f, 1f)] public float thunderBurnFlowerFractionMin = 0.40f;
+    [Range(0f, 1f)] public float thunderBurnFlowerFractionMax = 0.40f;
+    [Min(0f)] public float thunderBurnAutoClearSeconds = 5f;
+    [Min(0f)] public float thunderBurnSpreadBlockSeconds = 20f;
 
     [Header("Pickup Action")]
     public bool collectPickupsOnRightClick = true;
@@ -221,6 +225,7 @@ public class FPSRaycastInteractor : MonoBehaviour
     Vector3 _activeFireCenter;
     bool _hasActiveFire;
     WeatherSystem _weatherSystem;
+    WeatherSystem _subscribedWeatherSystem;
     SeasonSkyboxController _seasonSkybox;
     float _nextSeasonLookupAt;
     float _nextThunderTargetCheckAt;
@@ -271,6 +276,7 @@ public class FPSRaycastInteractor : MonoBehaviour
         _runtime = FindFirstObjectByType<SCoLRuntime>();
         _plantRenderer = FindFirstObjectByType<PlantVoxelRenderer>();
         _settlementManager = FindFirstObjectByType<SCoLSettlementManager>();
+        RefreshWeatherSystemSubscription();
         EnsurePlayerCombatHealth();
         EnsureStoneProjectilePrefabs();
 
@@ -288,6 +294,7 @@ public class FPSRaycastInteractor : MonoBehaviour
 
     void OnDisable()
     {
+        UnsubscribeWeatherSystem();
         if (_instance == this)
             _instance = null;
         ClearActiveFire();
@@ -449,10 +456,10 @@ public class FPSRaycastInteractor : MonoBehaviour
         if (cameraSource == null) return;
         if (_settlementManager == null)
             _settlementManager = FindFirstObjectByType<SCoLSettlementManager>();
+        RefreshWeatherSystemSubscription();
         HandleToolSwitchInput();
         UpdateHeldToolVisual();
         UpdatePlantAttractor();
-        TryIgniteTargetedPlantDuringThunder();
 
         // Primary: pick up / fill / uproot
         if (SCoL.Interaction.SCoLInteractionInput.PrimaryPressed())
@@ -1190,18 +1197,37 @@ public class FPSRaycastInteractor : MonoBehaviour
 
     void TryIgniteTargetedPlantDuringThunder()
     {
-        if (!thunderCanIgniteTargetedPlant)
-            return;
-        if (Time.time < _nextThunderTargetCheckAt)
-            return;
-        _nextThunderTargetCheckAt = Time.time + Mathf.Max(0.05f, thunderTargetCheckIntervalSeconds);
+        // Thunder scorching is handled once per thunderstorm via weather phase start.
+    }
 
+    void RefreshWeatherSystemSubscription()
+    {
         if (_weatherSystem == null || !_weatherSystem.isActiveAndEnabled)
             _weatherSystem = FindFirstObjectByType<WeatherSystem>();
-        if (_weatherSystem == null || _weatherSystem.CurrentPhase != WeatherPhase.Thunderstorm)
+
+        if (_subscribedWeatherSystem == _weatherSystem)
             return;
 
-        if (Random.value > Mathf.Clamp01(thunderTargetIgniteChance))
+        UnsubscribeWeatherSystem();
+
+        if (_weatherSystem != null)
+        {
+            _weatherSystem.OnPhaseStarted += HandleWeatherPhaseStarted;
+            _subscribedWeatherSystem = _weatherSystem;
+        }
+    }
+
+    void UnsubscribeWeatherSystem()
+    {
+        if (_subscribedWeatherSystem == null)
+            return;
+        _subscribedWeatherSystem.OnPhaseStarted -= HandleWeatherPhaseStarted;
+        _subscribedWeatherSystem = null;
+    }
+
+    void HandleWeatherPhaseStarted(WeatherPhase phase)
+    {
+        if (phase != WeatherPhase.Thunderstorm || !thunderCanIgniteTargetedPlant)
             return;
 
         if (_runtime == null || !_runtime.isActiveAndEnabled)
@@ -1209,9 +1235,14 @@ public class FPSRaycastInteractor : MonoBehaviour
         if (_runtime == null)
             return;
 
-        int scorched = _runtime.ScorchRandomPlants(minCount: 1, maxCount: 5, autoClearSeconds: 5f);
+        int scorched = _runtime.ScorchRandomFlowersByFraction(
+            thunderBurnFlowerFractionMin,
+            thunderBurnFlowerFractionMax,
+            thunderBurnAutoClearSeconds,
+            thunderBurnSpreadBlockSeconds);
+
         if (logHits && scorched > 0)
-            Debug.Log($"[FPSRaycastInteractor] Thunder scorched random flowers: {scorched}");
+            Debug.Log($"[FPSRaycastInteractor] Thunder scorched flowers across the world: {scorched}");
     }
 
     bool IsWinterSeasonActive()

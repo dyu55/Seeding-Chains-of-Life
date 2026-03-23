@@ -1,6 +1,9 @@
 using UnityEngine;
 using SCoL.Weather;
 using SCoL.Voxels;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 namespace SCoL.Visualization
 {
@@ -137,6 +140,22 @@ namespace SCoL.Visualization
         [Min(0f)] public float windMainThunder = 0.55f;
         [Min(0f)] public float windMainSnow = 0.25f;
 
+        [Header("Sky Birds")]
+        [Tooltip("Optional bird prefab. If null, the VoxBox bird prefab is auto-loaded in the editor.")]
+        public GameObject skyBirdPrefab;
+        public bool enableSkyBirds = true;
+        [Range(1, 64)] public int skyBirdCount = 10;
+        [Min(5f)] public float skyBirdHorizontalRadius = 42f;
+        [Min(1f)] public float skyBirdMinHeight = 10f;
+        [Min(1f)] public float skyBirdMaxHeight = 24f;
+        [Min(0.1f)] public float skyBirdMinSpeed = 2.5f;
+        [Min(0.1f)] public float skyBirdMaxSpeed = 5.5f;
+        [Min(0.1f)] public float skyBirdTurnIntervalMin = 1.5f;
+        [Min(0.1f)] public float skyBirdTurnIntervalMax = 4.5f;
+        [Min(0f)] public float skyBirdReturnWeight = 1.4f;
+        [Min(0f)] public float skyBirdVerticalJitter = 0.55f;
+        [Range(0f, 20f)] public float skyBirdRotationLerp = 7f;
+
         [Header("Performance")]
         [Tooltip("If true, disables VFX in Edit Mode (always) and only runs during Play Mode.")]
         public bool playModeOnly = true;
@@ -152,11 +171,21 @@ namespace SCoL.Visualization
         bool _hasFireflyClusterTarget;
         Vector3 _fireflyClusterTarget;
         float _fireflyClusterStrength = 1f;
+        readonly System.Collections.Generic.List<SkyBirdAgent> _skyBirds = new System.Collections.Generic.List<SkyBirdAgent>(16);
+
+        struct SkyBirdAgent
+        {
+            public Transform transform;
+            public Vector3 velocity;
+            public float speed;
+            public float nextTurnAt;
+        }
 
         void Reset()
         {
             // Best effort auto-wire
             weatherSystem = FindFirstObjectByType<WeatherSystem>();
+            AutoAssignBirdPrefab();
         }
 
         void Start()
@@ -176,8 +205,14 @@ namespace SCoL.Visualization
             EnsureRainSystem();
             EnsureSnowSystem();
             EnsureFireflySystem();
+            EnsureSkyBirds();
             ApplyScaledVolumeSettings();
             ApplyForPhase(weatherSystem != null ? weatherSystem.CurrentPhase : WeatherPhase.Clear, force: true);
+        }
+
+        void OnDisable()
+        {
+            ClearSkyBirds();
         }
 
         void Update()
@@ -196,20 +231,12 @@ namespace SCoL.Visualization
             ApplyScaledVolumeSettings();
             UpdateFireflyClusterTarget(weatherSystem != null ? weatherSystem.CurrentPhase : WeatherPhase.Clear);
 
+            Transform target = ResolveFollowTarget();
+            UpdateSkyBirds(target);
+
             // Follow camera/target
             if (followMainCamera)
             {
-                Transform target = followTarget;
-                if (preferMainCameraAtRuntime && Camera.main != null)
-                {
-                    target = Camera.main.transform;
-                }
-                else if (target == null)
-                {
-                    var cam = Camera.main;
-                    target = cam != null ? cam.transform : null;
-                }
-
                 if (target != null)
                 {
                     Vector3 p = target.position;
@@ -369,6 +396,170 @@ namespace SCoL.Visualization
             }
 
             ApplyWindZone(phase);
+        }
+
+        Transform ResolveFollowTarget()
+        {
+            Transform target = followTarget;
+            if (preferMainCameraAtRuntime && Camera.main != null)
+                target = Camera.main.transform;
+            else if (target == null)
+            {
+                var cam = Camera.main;
+                target = cam != null ? cam.transform : null;
+            }
+            return target;
+        }
+
+        void EnsureSkyBirds()
+        {
+            if (!enableSkyBirds)
+            {
+                ClearSkyBirds();
+                return;
+            }
+
+            AutoAssignBirdPrefab();
+            if (skyBirdPrefab == null)
+                return;
+
+            int desired = Mathf.Max(1, skyBirdCount);
+            while (_skyBirds.Count < desired)
+                SpawnSkyBird();
+            while (_skyBirds.Count > desired)
+                RemoveSkyBird(_skyBirds.Count - 1);
+        }
+
+        void UpdateSkyBirds(Transform target)
+        {
+            if (!Application.isPlaying)
+                return;
+
+            EnsureSkyBirds();
+            if (!enableSkyBirds || _skyBirds.Count == 0 || target == null)
+                return;
+
+            float dt = Mathf.Max(0.0001f, Time.deltaTime);
+            float minHeight = Mathf.Min(skyBirdMinHeight, skyBirdMaxHeight);
+            float maxHeight = Mathf.Max(skyBirdMinHeight, skyBirdMaxHeight);
+            Vector3 center = target.position + Vector3.up * Mathf.Lerp(minHeight, maxHeight, 0.5f);
+            float radius = Mathf.Max(5f, skyBirdHorizontalRadius);
+
+            for (int i = 0; i < _skyBirds.Count; i++)
+            {
+                var bird = _skyBirds[i];
+                if (bird.transform == null)
+                    continue;
+
+                Vector3 pos = bird.transform.position;
+                Vector3 planarDelta = new Vector3(pos.x - center.x, 0f, pos.z - center.z);
+                float dist01 = Mathf.Clamp01(planarDelta.magnitude / radius);
+                Vector3 returnDir = planarDelta.sqrMagnitude > 0.001f ? (-planarDelta.normalized) : Random.onUnitSphere;
+                float verticalTarget = Mathf.Clamp(center.y + Random.Range(-skyBirdVerticalJitter, skyBirdVerticalJitter), target.position.y + minHeight, target.position.y + maxHeight);
+                Vector3 desired = bird.velocity.normalized;
+
+                if (Time.time >= bird.nextTurnAt)
+                {
+                    Vector3 randomDir = Random.onUnitSphere;
+                    randomDir.y = Mathf.Clamp(randomDir.y, -0.55f, 0.55f);
+                    desired = (randomDir + returnDir * (dist01 * skyBirdReturnWeight)).normalized;
+                    desired.y += Mathf.Clamp((verticalTarget - pos.y) / Mathf.Max(1f, maxHeight), -0.35f, 0.35f);
+                    desired.Normalize();
+                    bird.nextTurnAt = Time.time + Random.Range(
+                        Mathf.Min(skyBirdTurnIntervalMin, skyBirdTurnIntervalMax),
+                        Mathf.Max(skyBirdTurnIntervalMin, skyBirdTurnIntervalMax));
+                }
+                else
+                {
+                    desired = (desired + returnDir * (dist01 * 0.35f)).normalized;
+                    desired.y += Mathf.Clamp((verticalTarget - pos.y) * 0.05f, -0.2f, 0.2f);
+                    desired.Normalize();
+                }
+
+                if (pos.y < target.position.y + minHeight)
+                    desired.y = Mathf.Abs(desired.y) + 0.2f;
+                else if (pos.y > target.position.y + maxHeight)
+                    desired.y = -Mathf.Abs(desired.y) - 0.2f;
+
+                bird.velocity = Vector3.Lerp(bird.velocity, desired * bird.speed, dt * 2.25f);
+                pos += bird.velocity * dt;
+                bird.transform.position = pos;
+
+                Vector3 look = bird.velocity.sqrMagnitude > 0.0001f ? bird.velocity.normalized : bird.transform.forward;
+                Quaternion targetRot = Quaternion.LookRotation(look, Vector3.up);
+                bird.transform.rotation = Quaternion.Slerp(
+                    bird.transform.rotation,
+                    targetRot,
+                    dt * Mathf.Max(0f, skyBirdRotationLerp));
+
+                _skyBirds[i] = bird;
+            }
+        }
+
+        void SpawnSkyBird()
+        {
+            if (skyBirdPrefab == null)
+                return;
+
+            var go = Instantiate(skyBirdPrefab, transform);
+            go.name = $"SkyBird_{_skyBirds.Count}";
+            SetLayerRecursive(go.transform, 0);
+
+            Transform target = ResolveFollowTarget();
+            Vector3 anchor = target != null ? target.position : transform.position;
+            float minHeight = Mathf.Min(skyBirdMinHeight, skyBirdMaxHeight);
+            float maxHeight = Mathf.Max(skyBirdMinHeight, skyBirdMaxHeight);
+            Vector2 ring = Random.insideUnitCircle * Mathf.Max(5f, skyBirdHorizontalRadius);
+            Vector3 pos = anchor + new Vector3(ring.x, Random.Range(minHeight, maxHeight), ring.y);
+            go.transform.position = pos;
+
+            float speed = Random.Range(Mathf.Min(skyBirdMinSpeed, skyBirdMaxSpeed), Mathf.Max(skyBirdMinSpeed, skyBirdMaxSpeed));
+            Vector3 dir = Random.onUnitSphere;
+            dir.y = Mathf.Clamp(dir.y, -0.4f, 0.4f);
+            dir.Normalize();
+
+            _skyBirds.Add(new SkyBirdAgent
+            {
+                transform = go.transform,
+                velocity = dir * speed,
+                speed = speed,
+                nextTurnAt = Time.time + Random.Range(
+                    Mathf.Min(skyBirdTurnIntervalMin, skyBirdTurnIntervalMax),
+                    Mathf.Max(skyBirdTurnIntervalMin, skyBirdTurnIntervalMax))
+            });
+        }
+
+        void RemoveSkyBird(int index)
+        {
+            if (index < 0 || index >= _skyBirds.Count)
+                return;
+            var bird = _skyBirds[index];
+            if (bird.transform != null)
+                Destroy(bird.transform.gameObject);
+            _skyBirds.RemoveAt(index);
+        }
+
+        void ClearSkyBirds()
+        {
+            for (int i = _skyBirds.Count - 1; i >= 0; i--)
+                RemoveSkyBird(i);
+        }
+
+        void AutoAssignBirdPrefab()
+        {
+#if UNITY_EDITOR
+            if (skyBirdPrefab == null)
+                skyBirdPrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Models/Modeling/_Incoming/bird.obj/bird.obj");
+#endif
+        }
+
+        static void SetLayerRecursive(Transform root, int layer)
+        {
+            if (root == null)
+                return;
+            root.gameObject.layer = layer;
+            for (int i = 0; i < root.childCount; i++)
+                SetLayerRecursive(root.GetChild(i), layer);
         }
 
         void EnsureRainSystem()

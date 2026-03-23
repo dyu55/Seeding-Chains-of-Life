@@ -86,6 +86,7 @@ namespace SCoL
                 IsOnFire = c.IsOnFire,
                 FireFuel = c.FireFuel,
                 BurntAutoClearSeconds = c.BurntAutoClearSeconds,
+                SpreadBlockSeconds = c.SpreadBlockSeconds,
                 WaterVisual = c.WaterVisual,
                 IsPlayerSeedLineage = c.IsPlayerSeedLineage,
                 FlowerVariantIndex = c.FlowerVariantIndex,
@@ -109,6 +110,7 @@ namespace SCoL
             dst.IsOnFire = src.IsOnFire;
             dst.FireFuel = src.FireFuel;
             dst.BurntAutoClearSeconds = src.BurntAutoClearSeconds;
+            dst.SpreadBlockSeconds = src.SpreadBlockSeconds;
             dst.WaterVisual = src.WaterVisual;
             dst.IsPlayerSeedLineage = src.IsPlayerSeedLineage;
             dst.FlowerVariantIndex = src.FlowerVariantIndex;

@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
 using SCoL.Inventory;
+using SCoL.Visualization;
 using SCoL.Voxels;
 #if UNITY_EDITOR
 using UnityEditor;
@@ -40,6 +41,8 @@ namespace SCoL.Settlement
         [Min(2f)] public float frontGateWidth = 4.8f;
         [Min(0f)] public float storageSideOffset = 0f;
         [Min(0.2f)] public float storageForwardOffset = 0.9f;
+        public bool useStorageWorldPositionOverride = true;
+        public Vector3 storageWorldPositionOverride = new Vector3(90.3f, 23.07f, 89.58f);
         [Min(0.5f)] public float fenceTargetHeight = 1.9f;
         [Min(0.05f)] public float fenceVisualThickness = 0.18f;
         [Min(0.2f)] public float fenceCornerFootprint = 1.6f;
@@ -106,6 +109,7 @@ namespace SCoL.Settlement
         GameObject _storageVisualRoot;
         GameObject _safeZoneRingRoot;
         bool _storageIsOpen;
+        bool _storageVisualInitialized;
         readonly List<GameObject> _barrierRoots = new List<GameObject>(10);
         readonly StringBuilder _sb = new StringBuilder(128);
         static readonly Quaternion FenceVisualQuarterTurn = Quaternion.Euler(0f, 90f, 0f);
@@ -646,7 +650,10 @@ namespace SCoL.Settlement
             _storageRoot = new GameObject("SettlementStorage");
             _storageRoot.transform.SetParent(transform, false);
             Vector3 right = Vector3.Cross(Vector3.up, _forward).normalized;
-            _storageRoot.transform.position = ProjectToGround(_centerPosition + right * storageSideOffset + _forward * storageForwardOffset);
+            Vector3 storagePos = useStorageWorldPositionOverride
+                ? storageWorldPositionOverride
+                : ProjectToGround(_centerPosition + right * storageSideOffset + _forward * storageForwardOffset);
+            _storageRoot.transform.position = storagePos;
             _storageRoot.transform.rotation = Quaternion.LookRotation(-_forward, Vector3.up);
             ApplyInteractable(_storageRoot, SCoLSettlementInteractableKind.Storage);
             SetStorageVisual(false, true);
@@ -749,6 +756,7 @@ namespace SCoL.Settlement
             if (!force && _storageIsOpen == open)
                 return;
 
+            bool previousOpen = _storageIsOpen;
             _storageIsOpen = open;
             if (_storageVisualRoot != null)
             {
@@ -771,6 +779,15 @@ namespace SCoL.Settlement
             NormalizeToHeight(_storageRoot, _storageVisualRoot, storageTargetHeight);
             ApplyTextureToRenderers(_storageVisualRoot, open ? _storageOpenTexture : _storageClosedTexture, open ? "StorageOpenMat" : "StorageClosedMat");
             EnsureColliderFromVisual(_storageRoot, _storageVisualRoot, true);
+
+            if (Application.isPlaying && _storageVisualInitialized && previousOpen != open)
+            {
+                DayNightLightingController.PlayInteractionSfx(open
+                    ? DayNightLightingController.InteractionSfx.ChestOpen
+                    : DayNightLightingController.InteractionSfx.ChestClose);
+            }
+
+            _storageVisualInitialized = true;
         }
 
         void UpdateStorageVisualState()

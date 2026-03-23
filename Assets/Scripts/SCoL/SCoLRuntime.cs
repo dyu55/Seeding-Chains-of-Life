@@ -674,6 +674,7 @@ namespace SCoL
                     n.Success = cur.Success;
                     n.IsPlayerSeedLineage = cur.IsPlayerSeedLineage;
                     n.FlowerVariantIndex = cur.FlowerVariantIndex;
+                    n.SpreadBlockSeconds = cur.SpreadBlockSeconds;
                     if (remain <= 0f)
                     {
                         n.PlantStage = PlantStage.Empty;
@@ -695,6 +696,7 @@ namespace SCoL
                     n.IsPlayerSeedLineage = cur.IsPlayerSeedLineage;
                     n.FlowerVariantIndex = cur.FlowerVariantIndex;
                     n.BurntAutoClearSeconds = 0f;
+                    n.SpreadBlockSeconds = cur.SpreadBlockSeconds;
                     return;
                 }
 
@@ -703,6 +705,7 @@ namespace SCoL
                 n.IsPlayerSeedLineage = cur.IsPlayerSeedLineage;
                 n.FlowerVariantIndex = cur.FlowerVariantIndex;
                 n.BurntAutoClearSeconds = 0f;
+                n.SpreadBlockSeconds = cur.SpreadBlockSeconds;
                 return;
             }
 
@@ -760,12 +763,16 @@ namespace SCoL
 
             if (cur.PlantStage == PlantStage.Empty)
             {
+                float spreadBlockRemain = Mathf.Max(0f, cur.SpreadBlockSeconds - Mathf.Max(0.01f, Config.tickSeconds));
                 n.FlowerVariantIndex = -1;
                 n.PlantHealth = 0f;
                 n.StompHits = 0;
                 n.ClearPlantPlacementOffset();
+                n.SpreadBlockSeconds = spreadBlockRemain;
 
                 if (!IsPlantableColumn(x, y))
+                    return;
+                if (spreadBlockRemain > 0f)
                     return;
                 if (onlyPlayerSeededLineageCA && lineagePlants <= 0)
                     return;
@@ -878,6 +885,7 @@ namespace SCoL
                 n.IsPlayerSeedLineage = false;
                 n.FlowerVariantIndex = -1;
                 n.BurntAutoClearSeconds = 0f;
+                n.SpreadBlockSeconds = Mathf.Max(0f, cur.SpreadBlockSeconds - Mathf.Max(0.01f, Config.tickSeconds));
                 n.PlantHealth = 0f;
                 n.StompHits = 0;
                 n.ClearPlantPlacementOffset();
@@ -1590,6 +1598,59 @@ namespace SCoL
                 candidates[i] = cell;
                 if (ScorchCell(cell.x, cell.y, autoClearSeconds))
                     scorched++;
+            }
+
+            if (scorched > 0)
+            {
+                ViewMode = GridViewMode.Stage;
+                OverlayFire = true;
+                _renderer?.Render(Grid);
+                _plantRenderer?.RenderNow();
+            }
+
+            return scorched;
+        }
+
+        public int ScorchRandomFlowersByFraction(float minFraction = 0.2f, float maxFraction = 0.3f, float autoClearSeconds = 5f, float postClearSpreadBlockSeconds = 20f)
+        {
+            if (Grid == null)
+                return 0;
+
+            float low = Mathf.Clamp01(Mathf.Min(minFraction, maxFraction));
+            float high = Mathf.Clamp01(Mathf.Max(minFraction, maxFraction));
+            var candidates = new List<(int x, int y)>(256);
+
+            for (int y = 0; y < Grid.Height; y++)
+            for (int x = 0; x < Grid.Width; x++)
+            {
+                var c = Grid.Get(x, y);
+                if (c == null || !c.HasPlant || c.PlantStage == PlantStage.Burnt)
+                    continue;
+                if (c.PlantStage < PlantStage.MediumTree && c.FlowerVariantIndex < 0)
+                    continue;
+                candidates.Add((x, y));
+            }
+
+            if (candidates.Count == 0)
+                return 0;
+
+            float fraction = Mathf.Lerp(low, high, _rng != null ? (float)_rng.NextDouble() : UnityEngine.Random.value);
+            int target = Mathf.Clamp(Mathf.RoundToInt(candidates.Count * fraction), 1, candidates.Count);
+            int scorched = 0;
+
+            for (int i = 0; i < target; i++)
+            {
+                int pick = i + (_rng != null ? _rng.Next(0, candidates.Count - i) : UnityEngine.Random.Range(0, candidates.Count - i));
+                var cell = candidates[pick];
+                candidates[pick] = candidates[i];
+                candidates[i] = cell;
+                if (ScorchCell(cell.x, cell.y, autoClearSeconds))
+                {
+                    var c = Grid.Get(cell.x, cell.y);
+                    if (c != null)
+                        c.SpreadBlockSeconds = Mathf.Max(0f, postClearSpreadBlockSeconds);
+                    scorched++;
+                }
             }
 
             if (scorched > 0)
