@@ -163,7 +163,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 8f36a839b607342dda87994cdfad6586, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SCoL.SCoLBootstrap
   config: {fileID: 11400000, guid: b09076b5d538f468898a216a9f43cde4, type: 2}
   origin: {x: 0, y: 0, z: 0}
@@ -10791,11 +10791,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f1a9c3e4b7d2469f8ab13c5d2e4f6789, type: 3}
   m_Name: SCoLCampsiteSceneAnchor
   m_EditorClassIdentifier: Assembly-CSharp::SCoL.Settlement.SCoLCampsiteSceneAnchor
-  resourcePath: Campsite/tentV2
-  editorAssetPath: Assets/Models/Modeling/_Incoming/tent updated/tent updated.obj
+  resourcePath: 
+  editorAssetPath: Assets/Models/Modeling/_Incoming/tent updated/tent updated 2.obj
   visualEuler: {x: 0, y: 180, z: 0}
-  targetFootprint: 6.2
-  targetHeight: 3.8
+  targetFootprint: 17.6
+  targetHeight: 10.4
   groundOffset: 0.05
   dryLandSearchStep: 2
   dryLandSearchRings: 8
@@ -12230,7 +12230,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: fd1e38332c7b45d5bb5d37072f51c5e2, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SCoL.Settlement.SCoLSettlementManager
   createRuntimePlaceholders: 1
   startActivated: 1
@@ -12241,25 +12241,33 @@ MonoBehaviour:
   fenceHeight: 1.6
   fenceThickness: 0.35
   frontGateWidth: 4.8
-  storageSideOffset: 3.5
+  storageSideOffset: 0
+  storageForwardOffset: 0.9
   fenceSegmentLength: 4.8
   fenceVisualHeight: 1.35
   fenceVisualThickness: 0.2
   groundPadSize: 0
   groundPadHeight: 0.3
   groundPadLift: 0.02
+  useProceduralFenceRails: 0
+  fencePostThickness: 0.22
+  fencePostHeight: 1.75
+  fenceRailThickness: 0.16
+  fenceLowerRailHeight: 0.55
+  fenceUpperRailHeight: 1.2
+  fenceModelUniformScale: 1
   centerpiecePrefab: {fileID: 0}
-  centerpieceTargetFootprint: 6.2
-  centerpieceTargetHeight: 3.8
+  centerpieceTargetFootprint: 17.6
+  centerpieceTargetHeight: 10.4
   centerpieceModelEuler: {x: 0, y: 0, z: 0}
   maxDistanceFromPlayerBeforeRecentering: 18
   storagePrefab: {fileID: 0}
   storageOpenPrefab: {fileID: 0}
-  fenceStraightPrefab: {fileID: 0}
-  fenceCornerPrefab: {fileID: 0}
-  fenceGatePrefab: {fileID: 0}
+  fenceStraightPrefab: {fileID: 100100000, guid: 54ce8bcde04ac4684ad1a8868ed5b87a, type: 3}
+  fenceCornerPrefab: {fileID: 100100000, guid: 9f1dcf86b8c6f4b089a5e7dca82a2360, type: 3}
+  fenceGatePrefab: {fileID: 100100000, guid: dd9c6577e3b324ba9ba7d3909776bc74, type: 3}
   spawnPerimeterFences: 1
-  storageTargetHeight: 1.4
+  storageTargetHeight: 1.25
   fenceTargetHeight: 1.9
   storageOpenHoldSeconds: 0.8
   seedTransferAmount: 20

@@ -13,11 +13,11 @@ namespace SCoL.Settlement
     [DisallowMultipleComponent]
     public sealed class SCoLCampsiteSceneAnchor : MonoBehaviour
     {
-        public string resourcePath = "Campsite/tentV2";
-        public string editorAssetPath = "Assets/Models/Modeling/_Incoming/tent updated/tent updated.obj";
+        public string resourcePath = "";
+        public string editorAssetPath = "Assets/Models/Modeling/_Incoming/tent updated/tent updated 2.obj";
         public Vector3 visualEuler = Vector3.zero;
-        [Min(0.5f)] public float targetFootprint = 6.2f;
-        [Min(0.5f)] public float targetHeight = 3.8f;
+        [Min(0.5f)] public float targetFootprint = 17.6f;
+        [Min(0.5f)] public float targetHeight = 10.4f;
         [Min(0f)] public float groundOffset = 0.05f;
         [Min(0.5f)] public float dryLandSearchStep = 2f;
         [Min(0)] public int dryLandSearchRings = 8;
@@ -125,10 +125,6 @@ namespace SCoL.Settlement
 
         GameObject LoadVisualPrefab()
         {
-            var prefab = Resources.Load<GameObject>(resourcePath);
-            if (prefab != null)
-                return prefab;
-
 #if UNITY_EDITOR
             if (!string.IsNullOrWhiteSpace(editorAssetPath))
             {
@@ -137,15 +133,24 @@ namespace SCoL.Settlement
                     return editorPrefab;
             }
 
+            if (!string.IsNullOrWhiteSpace(resourcePath))
+            {
+                var editorResourcePrefab = AssetDatabase.LoadAssetAtPath<GameObject>($"Assets/Resources/{resourcePath}.obj");
+                if (editorResourcePrefab != null)
+                    return editorResourcePrefab;
+            }
+
             return AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Resources/Campsite/tentV2.obj");
 #else
+            if (!string.IsNullOrWhiteSpace(resourcePath))
+                return Resources.Load<GameObject>(resourcePath);
             return null;
 #endif
         }
 
         GameObject BuildObjFallbackVisual()
         {
-            string objPath = Path.Combine(Application.dataPath, "Resources/Campsite/tentV2.obj");
+            string objPath = ResolveObjFallbackPath();
             if (!File.Exists(objPath))
                 return null;
 
@@ -165,10 +170,18 @@ namespace SCoL.Settlement
 
         Material CreateFallbackMaterial()
         {
-            Texture2D texture = Resources.Load<Texture2D>("Campsite/texturefile2");
+            Texture2D texture = null;
 #if UNITY_EDITOR
+            if (!string.IsNullOrWhiteSpace(editorAssetPath))
+            {
+                string texturePath = Path.ChangeExtension(editorAssetPath, ".jpg");
+                texture = AssetDatabase.LoadAssetAtPath<Texture2D>(texturePath);
+            }
             if (texture == null)
                 texture = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/Resources/Campsite/texturefile2.png");
+#else
+            if (!string.IsNullOrWhiteSpace(resourcePath))
+                texture = Resources.Load<Texture2D>(resourcePath);
 #endif
 
             var shader = Shader.Find("Universal Render Pipeline/Lit")
@@ -186,15 +199,62 @@ namespace SCoL.Settlement
             return material;
         }
 
+        string ResolveObjFallbackPath()
+        {
+#if UNITY_EDITOR
+            if (!string.IsNullOrWhiteSpace(editorAssetPath))
+            {
+                string fullEditorPath = Path.Combine(Application.dataPath, editorAssetPath.Substring("Assets/".Length));
+                if (File.Exists(fullEditorPath))
+                    return fullEditorPath;
+            }
+#endif
+            return Path.Combine(Application.dataPath, "Resources/Campsite/tentV2.obj");
+        }
+
         bool ShouldRebuildFromPreferredPrefab(GameObject preferredPrefab)
         {
-            if (_visualInstance == null || preferredPrefab == null)
+            if (_visualInstance == null)
+                return false;
+
+#if UNITY_EDITOR
+            if (!string.IsNullOrWhiteSpace(editorAssetPath))
+            {
+                string currentAssetPath = GetCurrentVisualAssetPath();
+                if (!string.IsNullOrWhiteSpace(currentAssetPath) && currentAssetPath != editorAssetPath)
+                    return true;
+            }
+#endif
+
+            if (preferredPrefab == null)
                 return false;
 
             return _visualInstance.transform.childCount == 0 &&
                    _visualInstance.GetComponent<MeshFilter>() != null &&
                    _visualInstance.GetComponent<MeshRenderer>() != null;
         }
+
+#if UNITY_EDITOR
+        string GetCurrentVisualAssetPath()
+        {
+            if (_visualInstance == null)
+                return string.Empty;
+
+            var filters = _visualInstance.GetComponentsInChildren<MeshFilter>(true);
+            for (int i = 0; i < filters.Length; i++)
+            {
+                var filter = filters[i];
+                if (filter == null || filter.sharedMesh == null)
+                    continue;
+
+                string path = AssetDatabase.GetAssetPath(filter.sharedMesh);
+                if (!string.IsNullOrWhiteSpace(path))
+                    return path;
+            }
+
+            return string.Empty;
+        }
+#endif
 
         bool TryFindNearbyDryGround(VoxelWorld voxelWorld, Vector3 around, out Vector3 grounded)
         {
@@ -452,16 +512,6 @@ namespace SCoL.Settlement
         void NormalizeVisual()
         {
             if (_visualInstance == null || !TryGetHierarchyBounds(_visualInstance, out var bounds))
-                return;
-
-            float footprint = Mathf.Max(0.01f, Mathf.Max(bounds.size.x, bounds.size.z));
-            float height = Mathf.Max(0.01f, bounds.size.y);
-            float uniformScale = Mathf.Min(
-                Mathf.Max(0.01f, targetFootprint) / footprint,
-                Mathf.Max(0.01f, targetHeight) / height);
-            _visualInstance.transform.localScale = Vector3.one * uniformScale;
-
-            if (!TryGetHierarchyBounds(_visualInstance, out bounds))
                 return;
 
             Vector3 currentBottomCenter = new Vector3(bounds.center.x, bounds.min.y, bounds.center.z);

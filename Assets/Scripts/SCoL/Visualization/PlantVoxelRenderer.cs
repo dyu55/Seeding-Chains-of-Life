@@ -1548,10 +1548,17 @@ namespace SCoL.Visualization
                 UpdateMatureFlowerGlow(plantGO, stage);
 
                 var healthBar = plantGO.GetComponent<SCoLWorldHealthBar>();
-                if (healthBar == null)
-                    healthBar = plantGO.AddComponent<SCoLWorldHealthBar>();
-                healthBar.SetVisible(cell.PlantHealth > 0.01f);
-                healthBar.SetHealth(cell.PlantHealth, 50f);
+                if (healthBar != null)
+                {
+#if UNITY_EDITOR
+                    if (!Application.isPlaying)
+                        DestroyImmediate(healthBar);
+                    else
+                        Destroy(healthBar);
+#else
+                    Destroy(healthBar);
+#endif
+                }
             }
 
             foreach (var idx in stale)

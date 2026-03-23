@@ -38,14 +38,14 @@ namespace SCoL.Settlement
         [Header("Layout")]
         [Min(4f)] public float fenceHalfExtent = 11f;
         [Min(2f)] public float frontGateWidth = 4.8f;
-        [Min(1f)] public float storageSideOffset = 4f;
-        [Min(0.5f)] public float storageForwardOffset = 1.5f;
+        [Min(0f)] public float storageSideOffset = 0f;
+        [Min(0.2f)] public float storageForwardOffset = 0.9f;
         [Min(0.5f)] public float fenceTargetHeight = 1.9f;
         [Min(0.05f)] public float fenceVisualThickness = 0.18f;
         [Min(0.2f)] public float fenceCornerFootprint = 1.6f;
         [Min(0.5f)] public float storageTargetHeight = 1.4f;
-        [Min(0.5f)] public float centerpieceTargetFootprint = 6.2f;
-        [Min(0.5f)] public float centerpieceTargetHeight = 3.8f;
+        [Min(0.5f)] public float centerpieceTargetFootprint = 17.6f;
+        [Min(0.5f)] public float centerpieceTargetHeight = 10.4f;
         public Vector3 centerpieceModelEuler = Vector3.zero;
         [Min(0.1f)] public float storageOpenHoldSeconds = 0.8f;
 
@@ -647,7 +647,7 @@ namespace SCoL.Settlement
             _storageRoot.transform.SetParent(transform, false);
             Vector3 right = Vector3.Cross(Vector3.up, _forward).normalized;
             _storageRoot.transform.position = ProjectToGround(_centerPosition + right * storageSideOffset + _forward * storageForwardOffset);
-            _storageRoot.transform.rotation = Quaternion.LookRotation(-right, Vector3.up);
+            _storageRoot.transform.rotation = Quaternion.LookRotation(-_forward, Vector3.up);
             ApplyInteractable(_storageRoot, SCoLSettlementInteractableKind.Storage);
             SetStorageVisual(false, true);
         }
@@ -1171,8 +1171,19 @@ namespace SCoL.Settlement
             if (box == null)
                 box = root.AddComponent<BoxCollider>();
 
+            var interactable = root.GetComponent<SCoLSettlementInteractable>();
             Vector3 center = root.transform.InverseTransformPoint(bounds.center);
             Vector3 size = bounds.size;
+
+            if (interactable != null && interactable.kind == SCoLSettlementInteractableKind.Centerpiece)
+            {
+                float footprint = Mathf.Clamp(Mathf.Min(size.x, size.z), 2.2f, 4.2f);
+                float height = Mathf.Clamp(size.y * 0.22f, 1.4f, 2.6f);
+                box.center = new Vector3(center.x, height * 0.5f, center.z);
+                box.size = new Vector3(footprint, height, footprint);
+                return;
+            }
+
             if (!includeGateFront)
                 size.z = Mathf.Max(0.05f, size.z * 0.6f);
             box.center = center;
