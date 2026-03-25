@@ -389,18 +389,36 @@ public class FPSBoidAgent : MonoBehaviour
         }
 
         var settlement = SCoLSettlementManager.Instance;
-        if (settlement != null && settlement.IsActivated && role == BoidRole.Predator)
+        if (settlement != null && settlement.IsActivated)
         {
             float avoidRadius = settlement.SafeZoneRadius + Mathf.Max(0.5f, settlement.SlowZonePadding);
             float distToSettlement = settlement.DistanceToCenterXZ(transform.position);
             if (distToSettlement < avoidRadius)
             {
                 Vector3 away = settlement.GetSafeZoneRepelDirection(transform.position);
-                float t = 1f - Mathf.Clamp01((distToSettlement - settlement.SafeZoneRadius) / Mathf.Max(0.1f, avoidRadius - settlement.SafeZoneRadius));
-                accel += SteerTowards(away) * Mathf.Lerp(1.5f, 5.5f, Mathf.Clamp01(t));
+                bool insideSettlement = settlement.IsInsideSafeZone(transform.position);
+                float t = insideSettlement
+                    ? 1f
+                    : 1f - Mathf.Clamp01((distToSettlement - settlement.SafeZoneRadius) / Mathf.Max(0.1f, avoidRadius - settlement.SafeZoneRadius));
+                float avoidWeight = role == BoidRole.Predator
+                    ? Mathf.Lerp(1.8f, 5.5f, Mathf.Clamp01(t))
+                    : Mathf.Lerp(1.2f, 4.2f, Mathf.Clamp01(t));
+                accel += SteerTowards(away) * avoidWeight;
 
-                if (distToSettlement <= settlement.SafeZoneRadius * 1.02f)
-                    velocity = Vector3.Lerp(velocity, Vector3.zero, Mathf.Clamp01(4f * Time.deltaTime));
+                _wanderDir = away.sqrMagnitude > 0.0001f ? away.normalized : _wanderDir;
+                _nextWanderRetargetAt = Time.time + Mathf.Max(0.2f, wanderRetargetSeconds * 0.5f);
+
+                if (insideSettlement)
+                {
+                    Vector3 planarVelocity = new Vector3(velocity.x, 0f, velocity.z);
+                    float speed = Mathf.Max(1.2f, planarVelocity.magnitude, maxSpeed * 0.55f);
+                    Vector3 desired = away * speed;
+                    Vector3 turned = planarVelocity.sqrMagnitude < 0.01f || Vector3.Dot(planarVelocity.normalized, away) < 0.25f
+                        ? desired
+                        : Vector3.Lerp(planarVelocity, desired, 0.65f);
+                    velocity.x = turned.x;
+                    velocity.z = turned.z;
+                }
             }
         }
 

@@ -3,6 +3,7 @@ using SCoL.Voxels;
 using SCoL.Visualization;
 using SCoL.Weather;
 using SCoL.Interaction;
+using SCoL.Settlement;
 
 /// <summary>
 /// Minimal FPS controller for keyboard + mouse (no XR, no Input System dependency).
@@ -61,6 +62,7 @@ public class SimpleFirstPersonController : MonoBehaviour
     SeasonSkyboxController _seasonSkybox;
     WeatherSystem _weatherSystem;
     SCoL.SCoLRuntime _runtime;
+    SCoLSettlementManager _settlementManager;
     float _nextSeasonLookupAt;
 
     bool _underwaterActive;
@@ -94,6 +96,20 @@ public class SimpleFirstPersonController : MonoBehaviour
     void Update()
     {
         if (_cc == null) return;
+        if (_settlementManager == null)
+            _settlementManager = FindFirstObjectByType<SCoLSettlementManager>();
+
+        if (_settlementManager != null && _settlementManager.IsStorageUiOpen)
+        {
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
+
+            if (SCoLInteractionInput.PausePressed())
+                _settlementManager.CloseStorageUi(relockCursor: lockCursor);
+
+            _velocity = Vector3.zero;
+            return;
+        }
 
         bool cursorLocked = Cursor.lockState == CursorLockMode.Locked;
 

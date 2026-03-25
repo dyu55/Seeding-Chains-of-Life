@@ -8,6 +8,7 @@ using SCoL.Settlement;
 using SCoL.Voxels;
 using UnityEngine.Animations;
 using UnityEngine.Playables;
+using UnityEngine.InputSystem;
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
@@ -137,6 +138,8 @@ public class FPSRaycastInteractor : MonoBehaviour
     [Min(0f)] public float fireRepelWeight = 5f;
     [Min(0f)] public float fireRepelFrontOffset = 1.2f;
     public bool plantFeedConsumesInventory = true;
+    public bool plantsCanHealPlayer = true;
+    [Min(0f)] public float plantHealAmount = 15f;
     [Min(0.05f)] public float feedJumpHeight = 0.35f;
     [Min(0.2f)] public float feedReactionDuration = 1.2f;
     [Min(1)] public int feedJumpCount = 3;
@@ -457,9 +460,28 @@ public class FPSRaycastInteractor : MonoBehaviour
         if (_settlementManager == null)
             _settlementManager = FindFirstObjectByType<SCoLSettlementManager>();
         RefreshWeatherSystemSubscription();
+
+        if (_settlementManager != null && _settlementManager.IsStorageUiOpen)
+        {
+            UpdateHeldToolVisual();
+            return;
+        }
         HandleToolSwitchInput();
         UpdateHeldToolVisual();
         UpdatePlantAttractor();
+
+        if (SCoL.Interaction.SCoLInteractionInput.ChestPressed())
+        {
+            if (_settlementManager != null &&
+                _settlementManager.TryGetStorageNearAim(cameraSource, maxDistance, out var storageInteractable) &&
+                TryOpenSettlementStorage(storageInteractable))
+                return;
+
+            if (FPSAimTargeting.TryResolve(cameraSource, maxDistance, hitMask, _runtime, _plantRenderer, out var chestTarget) &&
+                chestTarget.kind == FPSAimTargetKind.SettlementStorage &&
+                TryOpenSettlementStorage(chestTarget.settlementInteractable))
+                return;
+        }
 
         // Primary: pick up / fill / uproot
         if (SCoL.Interaction.SCoLInteractionInput.PrimaryPressed())
@@ -474,9 +496,6 @@ public class FPSRaycastInteractor : MonoBehaviour
 
                 if (_inventory != null)
                 {
-                    if (TryHandleSettlementPrimary(hit))
-                        return;
-
                     if (collectPickupsOnRightClick && TryCollectPickupAtHit(hit))
                         return;
 
@@ -694,7 +713,31 @@ public class FPSRaycastInteractor : MonoBehaviour
                         FPSAimTargeting.TryResolveAnimalNearAim(cameraSource, maxDistance, hitMask, out animal, out feedPoint);
                     if (animal == null)
                     {
-                        if (logHits) Debug.Log("[FPSRaycastInteractor] Plant feed requires targeting an animal (FPSBoidAgent).");
+                        if (!plantsCanHealPlayer)
+                        {
+                            if (logHits) Debug.Log("[FPSRaycastInteractor] Plant feed requires targeting an animal (FPSBoidAgent).");
+                            return;
+                        }
+
+                        EnsurePlayerCombatHealth();
+                        if (_playerCombatHealth == null || _playerCombatHealth.IsDead)
+                            return;
+                        if (_playerCombatHealth.CurrentHealth >= _playerCombatHealth.MaxHealth - 0.001f)
+                        {
+                            if (logHits) Debug.Log("[FPSRaycastInteractor] Player health already full.");
+                            return;
+                        }
+                        if (plantFeedConsumesInventory && !_inventory.TryConsume(SCoL.Inventory.SCoLItemType.Plant, 1))
+                        {
+                            if (logHits) Debug.Log("[FPSRaycastInteractor] No plant items to eat");
+                            return;
+                        }
+
+                        _playerCombatHealth.Heal(Mathf.Max(0f, plantHealAmount));
+                        FPSGameFeel.VoxelBurst(cameraSource.transform.position + cameraSource.transform.forward * 0.55f, count: 8, spread: 0.45f, life: 0.45f, cubeSize: 0.035f);
+                        FPSGameFeel.Shake(0.025f, 0.05f);
+                        DayNightLightingController.PlayInteractionSfx(DayNightLightingController.InteractionSfx.PickupItem);
+                        if (logHits) Debug.Log($"[FPSRaycastInteractor] Player ate plant and healed {plantHealAmount:0.#} HP.");
                         return;
                     }
 
@@ -747,19 +790,35 @@ public class FPSRaycastInteractor : MonoBehaviour
         {
             case SCoLSettlementInteractableKind.Storage:
             {
-                bool withdrew = _settlementManager.TryWithdrawCurrentTool(_inventory, currentTool, GetSelectedSeedVariantIndex(), out string message);
-                if (logHits && !string.IsNullOrEmpty(message))
-                    Debug.Log($"[FPSRaycastInteractor] {message}");
-                DayNightLightingController.PlayInteractionSfx(withdrew
-                    ? DayNightLightingController.InteractionSfx.PickupItem
-                    : DayNightLightingController.InteractionSfx.ToggleSwitch);
-                if (withdrew)
-                    FPSGameFeel.Shake(0.02f, 0.04f);
+                _settlementManager.OpenStorageUi();
+                DayNightLightingController.PlayInteractionSfx(DayNightLightingController.InteractionSfx.ToggleSwitch);
                 return true;
             }
             default:
                 return false;
         }
+    }
+
+    bool TryOpenSettlementStorage(RaycastHit hit)
+    {
+        var interactable = hit.collider != null ? hit.collider.GetComponentInParent<SCoLSettlementInteractable>() : null;
+        return TryOpenSettlementStorage(interactable);
+    }
+
+    bool TryOpenSettlementStorage(SCoLSettlementInteractable interactable)
+    {
+        if (interactable == null || interactable.kind != SCoLSettlementInteractableKind.Storage)
+            return false;
+
+        if (_settlementManager == null)
+            _settlementManager = interactable.manager != null ? interactable.manager : FindFirstObjectByType<SCoLSettlementManager>();
+        if (_settlementManager == null)
+            return false;
+
+        _settlementManager.OpenStorageUi();
+        if (logHits)
+            Debug.Log("[FPSRaycastInteractor] Opened storage chest.");
+        return true;
     }
 
     bool TryHandleSettlementSecondary(RaycastHit hit)
@@ -804,14 +863,8 @@ public class FPSRaycastInteractor : MonoBehaviour
         if (_settlementManager == null)
             return false;
 
-        bool stored = _settlementManager.TryDepositCurrentTool(_inventory, currentTool, GetSelectedSeedVariantIndex(), out string message);
-        if (logHits && !string.IsNullOrEmpty(message))
-            Debug.Log($"[FPSRaycastInteractor] {message}");
-        DayNightLightingController.PlayInteractionSfx(stored
-            ? DayNightLightingController.InteractionSfx.PickupItem
-            : DayNightLightingController.InteractionSfx.ToggleSwitch);
-        if (stored)
-            FPSGameFeel.Shake(0.02f, 0.04f);
+        _settlementManager.OpenStorageUi();
+        DayNightLightingController.PlayInteractionSfx(DayNightLightingController.InteractionSfx.ToggleSwitch);
         return true;
     }
 
@@ -1625,13 +1678,37 @@ public class FPSRaycastInteractor : MonoBehaviour
         if (SCoL.Interaction.SCoLInteractionInput.ToolSlotPressed(4)) currentTool = ApplyTool.Plant;
         if (SCoL.Interaction.SCoLInteractionInput.ToolSlotPressed(5)) currentTool = ApplyTool.Stone;
 
-        if (SCoL.Interaction.SCoLInteractionInput.ToolNextPressed())
+        if (currentTool == ApplyTool.Seed && TryHandleGamepadSeedVariantInput())
+        {
+            // D-pad left/right is reserved for seed variant switching while Seed tool is active.
+        }
+        else if (SCoL.Interaction.SCoLInteractionInput.ToolNextPressed())
             CycleTool(+1);
-        if (SCoL.Interaction.SCoLInteractionInput.ToolPrevPressed())
+        if (!(currentTool == ApplyTool.Seed && IsGamepadDpadHorizontalPressed()) &&
+            SCoL.Interaction.SCoLInteractionInput.ToolPrevPressed())
             CycleTool(-1);
 
         if (currentTool != previousTool)
             DayNightLightingController.PlayInteractionSfx(DayNightLightingController.InteractionSfx.ToggleSwitch);
+    }
+
+    bool TryHandleGamepadSeedVariantInput()
+    {
+        var gamepad = Gamepad.current;
+        if (gamepad == null)
+            return false;
+
+        if (gamepad.dpad.right.wasPressedThisFrame)
+            return TryCycleOwnedSeedVariant(+1);
+        if (gamepad.dpad.left.wasPressedThisFrame)
+            return TryCycleOwnedSeedVariant(-1);
+        return false;
+    }
+
+    bool IsGamepadDpadHorizontalPressed()
+    {
+        var gamepad = Gamepad.current;
+        return gamepad != null && (gamepad.dpad.left.wasPressedThisFrame || gamepad.dpad.right.wasPressedThisFrame);
     }
 
     void UpdateHeldToolVisual()
@@ -1977,7 +2054,7 @@ public class FPSRaycastInteractor : MonoBehaviour
         return true;
     }
 
-    bool TryCycleOwnedSeedVariant()
+    bool TryCycleOwnedSeedVariant(int direction = +1)
     {
         if (_inventory == null)
             _inventory = FindFirstObjectByType<SCoL.Inventory.SCoLInventory>();
@@ -1988,9 +2065,12 @@ public class FPSRaycastInteractor : MonoBehaviour
 
         int current = GetSelectedSeedVariantIndex();
         int variantCount = _inventory.GetSeedTypeVariantCount();
+        int dir = direction >= 0 ? 1 : -1;
         for (int step = 1; step <= variantCount; step++)
         {
-            int candidate = (current + step) % variantCount;
+            int candidate = (current + step * dir) % variantCount;
+            if (candidate < 0)
+                candidate += variantCount;
             if (_inventory.GetSeedTypeCount(candidate) > 0)
             {
                 _plantRenderer.SetSelectedFlowerVariantIndex(candidate);

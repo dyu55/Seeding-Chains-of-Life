@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
+using SCoL;
 using SCoL.Inventory;
 using SCoL.Visualization;
 using SCoL.Voxels;
@@ -62,6 +63,8 @@ namespace SCoL.Settlement
         public bool spawnPerimeterFences = true;
 
         [Header("Storage")]
+        public bool initializeStarterStorageOnAwake = true;
+        [Min(0)] public int starterStorageAmountPerItem = 100;
         [Min(1)] public int seedTransferAmount = 20;
         [Min(1)] public int waterTransferAmount = 5;
         [Min(1)] public int fireTransferAmount = 2;
@@ -78,6 +81,7 @@ namespace SCoL.Settlement
         [Min(1f)] public float level4SurvivalSeconds = 120f;
 
         VoxelWorld _voxelWorld;
+        SCoLRuntime _runtime;
         SCoLCampsiteSceneAnchor _sceneAnchor;
         Transform _playerRoot;
         Vector3 _centerPosition;
@@ -98,6 +102,7 @@ namespace SCoL.Settlement
         int _storedPlants;
         int _storedStones;
         bool _settlementAreaCleared;
+        bool _storageUiOpen;
 
         string _statusLine = "Outside Home / Level 1";
         string _goalLine = "Grow 6 flowers and store 20 supplies";
@@ -134,6 +139,9 @@ namespace SCoL.Settlement
         public string StatusLine => _statusLine;
         public string GoalLine => _goalLine;
         public string StorageSummary => _storageSummary;
+        public bool IsStorageUiOpen => _storageUiOpen;
+        public int StorageSlotCount => 12;
+        public Transform StorageTransform => _storageRoot != null ? _storageRoot.transform : null;
 
         void Awake()
         {
@@ -148,6 +156,7 @@ namespace SCoL.Settlement
             if (_isActivated)
                 _activatedAt = Time.time;
 
+            ApplyStarterStorageIfNeeded();
             FindReferences();
             AutoAssignAssets();
             EnsureBuilt();
@@ -164,8 +173,8 @@ namespace SCoL.Settlement
             if (Time.time >= _nextRefreshAt)
                 RefreshSettlementState(force: false);
 
-            if (_built && _isActivated)
-                KeepAnimalsOutOfSettlement();
+            if (_built)
+                ClearFlowersInsideTent();
         }
 
         void OnDestroy()
@@ -209,6 +218,31 @@ namespace SCoL.Settlement
         public bool IsProtectedCombatTarget(Transform target)
         {
             return target != null && IsInsideSafeZone(target.position);
+        }
+
+        public bool TryGetStorageNearAim(Camera cameraSource, float maxDistance, out SCoLSettlementInteractable interactable)
+        {
+            interactable = null;
+            if (cameraSource == null || _storageRoot == null)
+                return false;
+
+            Vector3 targetPoint;
+            if (_storageVisualRoot != null && TryGetHierarchyBounds(_storageVisualRoot, out var bounds))
+                targetPoint = bounds.ClosestPoint(cameraSource.transform.position);
+            else
+                targetPoint = _storageRoot.transform.position + Vector3.up * 0.9f;
+
+            Vector3 toTarget = targetPoint - cameraSource.transform.position;
+            float distance = toTarget.magnitude;
+            if (distance > Mathf.Max(0.5f, maxDistance + 1.25f))
+                return false;
+
+            Vector3 dir = distance > 0.0001f ? toTarget / distance : cameraSource.transform.forward;
+            if (Vector3.Dot(cameraSource.transform.forward, dir) < 0.55f)
+                return false;
+
+            interactable = _storageRoot.GetComponent<SCoLSettlementInteractable>();
+            return interactable != null;
         }
 
         public bool TryActivate(out string message)
@@ -393,6 +427,135 @@ namespace SCoL.Settlement
             SetStorageVisual(true);
         }
 
+        public void OpenStorageUi()
+        {
+            _storageUiOpen = true;
+            OpenStorageTemporarily();
+            RefreshSettlementState(force: true);
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
+        }
+
+        public void CloseStorageUi(bool relockCursor = true)
+        {
+            _storageUiOpen = false;
+            _storageOpenUntil = -1f;
+            SetStorageVisual(false, force: true);
+            if (relockCursor)
+            {
+                Cursor.lockState = CursorLockMode.Locked;
+                Cursor.visible = false;
+            }
+        }
+
+        public string GetStorageSlotLabel(int slotIndex, SCoLInventory inventory = null)
+        {
+            if (slotIndex >= 0 && slotIndex < 8)
+                return inventory != null ? inventory.GetSeedTypeDisplayName(slotIndex) : $"Seed {slotIndex + 1}";
+
+            return slotIndex switch
+            {
+                8 => "Water",
+                9 => "Fire",
+                10 => "Plant",
+                11 => "Stone",
+                _ => "Empty"
+            };
+        }
+
+        public int GetStorageSlotCount(int slotIndex)
+        {
+            return slotIndex switch
+            {
+                >= 0 and < 8 => _storedSeedVariants[slotIndex],
+                8 => _storedWater,
+                9 => _storedFire,
+                10 => _storedPlants,
+                11 => _storedStones,
+                _ => 0
+            };
+        }
+
+        public int GetPlayerSlotCount(SCoLInventory inventory, int slotIndex)
+        {
+            if (inventory == null)
+                return 0;
+
+            return slotIndex switch
+            {
+                >= 0 and < 8 => inventory.GetSeedTypeCount(slotIndex),
+                8 => inventory.water,
+                9 => inventory.fire,
+                10 => inventory.plants,
+                11 => inventory.stones,
+                _ => 0
+            };
+        }
+
+        public bool TryStoreInventorySlot(SCoLInventory inventory, int slotIndex, out string message)
+        {
+            message = "Nothing stored.";
+            if (inventory == null)
+                return false;
+
+            int count = GetPlayerSlotCount(inventory, slotIndex);
+            if (count <= 0)
+            {
+                message = "No items in that slot.";
+                return false;
+            }
+
+            if (slotIndex >= 0 && slotIndex < 8)
+            {
+                if (!inventory.TryConsumeSeedType(slotIndex, count))
+                    return false;
+                _storedSeedVariants[slotIndex] += count;
+            }
+            else
+            {
+                if (!TryGetItemTypeForSlot(slotIndex, out var type) || !inventory.TryConsume(type, count))
+                    return false;
+                AddToStorageSlot(slotIndex, count);
+            }
+
+            message = $"Stored {count} {GetStorageSlotLabel(slotIndex, inventory)}.";
+            OpenStorageUi();
+            RefreshSettlementState(force: true);
+            return true;
+        }
+
+        public bool TryWithdrawStorageSlot(SCoLInventory inventory, int slotIndex, out string message)
+        {
+            message = "Storage empty.";
+            if (inventory == null)
+                return false;
+
+            int count = GetStorageSlotCount(slotIndex);
+            if (count <= 0)
+            {
+                message = "That chest slot is empty.";
+                return false;
+            }
+
+            if (slotIndex >= 0 && slotIndex < 8)
+            {
+                _storedSeedVariants[slotIndex] = 0;
+                inventory.AddSeedType(slotIndex, count);
+            }
+            else
+            {
+                AddToStorageSlot(slotIndex, -count);
+                if (!TryGetItemTypeForSlot(slotIndex, out var type))
+                    return false;
+                inventory.Add(type, count);
+            }
+
+            message = $"Withdrew {count} {GetStorageSlotLabel(slotIndex, inventory)}.";
+            OpenStorageUi();
+            RefreshSettlementState(force: true);
+            return true;
+        }
+
         public string GetCurrentToolStorageHint(FPSRaycastInteractor interactor, SCoLInventory inventory)
         {
             if (interactor == null)
@@ -413,6 +576,8 @@ namespace SCoL.Settlement
         {
             if (_voxelWorld == null)
                 _voxelWorld = FindFirstObjectByType<VoxelWorld>();
+            if (_runtime == null)
+                _runtime = FindFirstObjectByType<SCoLRuntime>();
             if (_sceneAnchor == null)
                 _sceneAnchor = FindFirstObjectByType<SCoLCampsiteSceneAnchor>();
             if (_playerRoot == null)
@@ -624,7 +789,8 @@ namespace SCoL.Settlement
                     _centerpieceVisualRoot.transform.localRotation = Quaternion.Euler(centerpieceModelEuler);
                     NormalizeToFootprintAndHeight(_centerpieceRoot, _centerpieceVisualRoot, centerpieceTargetFootprint, centerpieceTargetHeight);
                     ApplyTextureToRenderers(_centerpieceVisualRoot, _tentTexture, "SettlementTentMat");
-                    EnsureColliderFromVisual(_centerpieceRoot, _centerpieceVisualRoot, true);
+                    RemoveVisualColliders(_centerpieceRoot, _centerpieceVisualRoot);
+                    ConfigureCenterpieceCollider(_centerpieceRoot);
                 }
                 return;
             }
@@ -641,7 +807,8 @@ namespace SCoL.Settlement
                 _centerpieceVisualRoot.transform.localRotation = Quaternion.Euler(centerpieceModelEuler);
                 NormalizeToFootprintAndHeight(_centerpieceRoot, _centerpieceVisualRoot, centerpieceTargetFootprint, centerpieceTargetHeight);
                 ApplyTextureToRenderers(_centerpieceVisualRoot, _tentTexture, "SettlementTentMat");
-                EnsureColliderFromVisual(_centerpieceRoot, _centerpieceVisualRoot, true);
+                RemoveVisualColliders(_centerpieceRoot, _centerpieceVisualRoot);
+                ConfigureCenterpieceCollider(_centerpieceRoot);
             }
         }
 
@@ -707,7 +874,8 @@ namespace SCoL.Settlement
             visual.transform.localRotation = FenceVisualQuarterTurn;
             NormalizeLinearVisual(root, visual, length, fenceTargetHeight, fenceVisualThickness);
             ApplyTextureToRenderers(visual, texture, name + "_Mat");
-            EnsureColliderFromVisual(root, visual, false);
+            RemoveVisualColliders(root, visual);
+            ConfigureBarrierCollider(root, length);
             _barrierRoots.Add(root);
         }
 
@@ -727,7 +895,8 @@ namespace SCoL.Settlement
             visual.transform.localRotation = FenceVisualQuarterTurn;
             NormalizeCornerVisual(root, visual, fenceCornerFootprint, fenceTargetHeight);
             ApplyTextureToRenderers(visual, _fenceCornerTexture, "SettlementFenceCornerMat");
-            EnsureColliderFromVisual(root, visual, false);
+            RemoveVisualColliders(root, visual);
+            ConfigureCornerCollider(root);
             _barrierRoots.Add(root);
         }
 
@@ -778,7 +947,8 @@ namespace SCoL.Settlement
             _storageVisualRoot.name = open ? "StorageVisualOpen" : "StorageVisualClosed";
             NormalizeToHeight(_storageRoot, _storageVisualRoot, storageTargetHeight);
             ApplyTextureToRenderers(_storageVisualRoot, open ? _storageOpenTexture : _storageClosedTexture, open ? "StorageOpenMat" : "StorageClosedMat");
-            EnsureColliderFromVisual(_storageRoot, _storageVisualRoot, true);
+            RemoveVisualColliders(_storageRoot, _storageVisualRoot);
+            ConfigureStorageCollider(_storageRoot);
 
             if (Application.isPlaying && _storageVisualInitialized && previousOpen != open)
             {
@@ -792,7 +962,7 @@ namespace SCoL.Settlement
 
         void UpdateStorageVisualState()
         {
-            bool shouldOpen = Time.time < _storageOpenUntil;
+            bool shouldOpen = _storageUiOpen || Time.time < _storageOpenUntil;
             SetStorageVisual(shouldOpen);
         }
 
@@ -817,6 +987,61 @@ namespace SCoL.Settlement
             _storageSummary = BuildStorageSummary();
         }
 
+        void ApplyStarterStorageIfNeeded()
+        {
+            if (!initializeStarterStorageOnAwake)
+                return;
+
+            int amount = Mathf.Max(0, starterStorageAmountPerItem);
+            for (int i = 0; i < _storedSeedVariants.Length; i++)
+                _storedSeedVariants[i] = Mathf.Max(_storedSeedVariants[i], amount);
+            _storedWater = Mathf.Max(_storedWater, amount);
+            _storedFire = Mathf.Max(_storedFire, amount);
+            _storedPlants = Mathf.Max(_storedPlants, amount);
+            _storedStones = Mathf.Max(_storedStones, amount);
+        }
+
+        void AddToStorageSlot(int slotIndex, int delta)
+        {
+            switch (slotIndex)
+            {
+                case 8:
+                    _storedWater = Mathf.Max(0, _storedWater + delta);
+                    break;
+                case 9:
+                    _storedFire = Mathf.Max(0, _storedFire + delta);
+                    break;
+                case 10:
+                    _storedPlants = Mathf.Max(0, _storedPlants + delta);
+                    break;
+                case 11:
+                    _storedStones = Mathf.Max(0, _storedStones + delta);
+                    break;
+            }
+        }
+
+        bool TryGetItemTypeForSlot(int slotIndex, out SCoLItemType type)
+        {
+            switch (slotIndex)
+            {
+                case 8:
+                    type = SCoLItemType.Water;
+                    return true;
+                case 9:
+                    type = SCoLItemType.Fire;
+                    return true;
+                case 10:
+                    type = SCoLItemType.Plant;
+                    return true;
+                case 11:
+                    type = SCoLItemType.Stone;
+                    return true;
+                default:
+                    type = default;
+                    return false;
+            }
+        }
+
         void RefreshRingVisual() { }
 
         int CountFlowers()
@@ -833,6 +1058,15 @@ namespace SCoL.Settlement
                 count++;
             }
             return count;
+        }
+
+        public bool IsInsideTentNoPlantZone(Vector3 worldPosition)
+        {
+            if (!TryGetTentNoPlantBounds(out var center, out var halfExtents))
+                return false;
+
+            Vector3 delta = worldPosition - center;
+            return Mathf.Abs(delta.x) <= halfExtents.x && Mathf.Abs(delta.z) <= halfExtents.z;
         }
 
         int CountNearbyAnimals()
@@ -890,6 +1124,91 @@ namespace SCoL.Settlement
             KeepAnimalsOutOfSettlement();
         }
 
+        void ClearFlowersInsideTent()
+        {
+            if (!TryGetTentNoPlantBounds(out var center, out var halfExtents))
+                return;
+
+            if (_runtime != null && _runtime.Grid != null)
+            {
+                Vector3 min = center - new Vector3(halfExtents.x, 0f, halfExtents.z);
+                Vector3 max = center + new Vector3(halfExtents.x, 0f, halfExtents.z);
+                if (_runtime.TryWorldToCell(min, out int minX, out int minY) &&
+                    _runtime.TryWorldToCell(max, out int maxX, out int maxY))
+                {
+                    if (minX > maxX) (minX, maxX) = (maxX, minX);
+                    if (minY > maxY) (minY, maxY) = (maxY, minY);
+
+                    bool removedAny = false;
+                    for (int y = minY; y <= maxY; y++)
+                    {
+                        for (int x = minX; x <= maxX; x++)
+                        {
+                            if (!_runtime.Grid.InBounds(x, y))
+                                continue;
+
+                            Vector3 cellCenter = _runtime.Grid.CellCenterWorld(x, y);
+                            if (!IsInsideTentNoPlantZone(cellCenter))
+                                continue;
+
+                            var cell = _runtime.Grid.Get(x, y);
+                            if (cell != null && cell.HasPlant)
+                            {
+                                _runtime.TryDestroyPlantAtCell(x, y);
+                                removedAny = true;
+                            }
+                        }
+                    }
+
+                    if (removedAny)
+                        return;
+                }
+            }
+
+            var roots = FindObjectsByType<Transform>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+            for (int i = 0; i < roots.Length; i++)
+            {
+                var t = roots[i];
+                if (t == null || !t.name.StartsWith("Plant_"))
+                    continue;
+                if (t.parent != null && t.parent.name.StartsWith("Plant_"))
+                    continue;
+                if (!IsInsideTentNoPlantZone(t.position))
+                    continue;
+
+#if UNITY_EDITOR
+                if (!Application.isPlaying)
+                    DestroyImmediate(t.gameObject);
+                else
+                    Destroy(t.gameObject);
+#else
+                Destroy(t.gameObject);
+#endif
+            }
+        }
+
+        bool TryGetTentNoPlantBounds(out Vector3 center, out Vector3 halfExtents)
+        {
+            center = _centerPosition;
+            float fallbackX = Mathf.Max(2.2f, centerpieceTargetFootprint * 0.18f);
+            float fallbackZ = Mathf.Max(1.8f, centerpieceTargetFootprint * 0.14f);
+            halfExtents = new Vector3(fallbackX, 0f, fallbackZ);
+
+            var visual = _centerpieceVisualRoot;
+            if (visual == null && _sceneAnchor != null)
+                visual = _sceneAnchor.GetVisualRoot();
+
+            if (visual == null || !TryGetHierarchyBounds(visual, out var bounds))
+                return true;
+
+            center = bounds.center;
+            halfExtents = new Vector3(
+                Mathf.Max(2.2f, bounds.extents.x * 0.32f),
+                0f,
+                Mathf.Max(1.8f, bounds.extents.z * 0.32f));
+            return true;
+        }
+
         void ClearNamedObjectsInsideSettlement(string prefix)
         {
             var roots = FindObjectsByType<Transform>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
@@ -918,18 +1237,18 @@ namespace SCoL.Settlement
             if (agents == null)
                 return;
 
-            Vector3 exitBase = _centerPosition - _forward * (fenceHalfExtent + 7f);
-            float sideStep = Mathf.Max(2f, frontGateWidth * 0.5f);
-            int moved = 0;
             for (int i = 0; i < agents.Count; i++)
             {
-                var agent = agents[i];
+                FPSBoidAgent agent = agents[i];
                 if (agent == null || !IsInsideFenceBounds(agent.transform.position, 0.25f))
                     continue;
 
-                float lane = ((moved & 1) == 0 ? -1f : 1f) * sideStep * (1 + moved / 2);
-                agent.transform.position = ProjectToGround(exitBase + GetSettlementRight() * lane);
-                moved++;
+                Vector3 away = GetSafeZoneRepelDirection(agent.transform.position);
+                Vector3 planarVelocity = new Vector3(agent.velocity.x, 0f, agent.velocity.z);
+                float targetSpeed = Mathf.Max(1.4f, planarVelocity.magnitude);
+                Vector3 turned = away * targetSpeed;
+                agent.velocity.x = turned.x;
+                agent.velocity.z = turned.z;
             }
         }
 
@@ -1000,6 +1319,9 @@ namespace SCoL.Settlement
 
         void ClearBuiltObjects()
         {
+            _storageUiOpen = false;
+            _settlementAreaCleared = false;
+
             for (int i = transform.childCount - 1; i >= 0; i--)
             {
                 var child = transform.GetChild(i);
@@ -1184,6 +1506,8 @@ namespace SCoL.Settlement
             if (root == null || visual == null || !TryGetHierarchyBounds(visual, out var bounds))
                 return;
 
+            RemoveVisualColliders(root, visual);
+
             var box = root.GetComponent<BoxCollider>();
             if (box == null)
                 box = root.AddComponent<BoxCollider>();
@@ -1201,10 +1525,109 @@ namespace SCoL.Settlement
                 return;
             }
 
+            if (interactable != null && interactable.kind == SCoLSettlementInteractableKind.Storage)
+            {
+                float footprint = Mathf.Clamp(Mathf.Min(size.x, size.z) * 0.42f, 1.2f, 2.2f);
+                float height = Mathf.Clamp(size.y * 0.52f, 0.9f, 1.8f);
+                box.center = new Vector3(center.x, height * 0.5f, center.z);
+                box.size = new Vector3(footprint, height, footprint);
+                return;
+            }
+
             if (!includeGateFront)
                 size.z = Mathf.Max(0.05f, size.z * 0.6f);
             box.center = center;
             box.size = size;
+        }
+
+        void ConfigureCenterpieceCollider(GameObject root)
+        {
+            if (root == null)
+                return;
+
+            var box = root.GetComponent<BoxCollider>();
+            if (box == null)
+                box = root.AddComponent<BoxCollider>();
+
+            float footprint = Mathf.Clamp(centerpieceTargetFootprint * 0.16f, 2.2f, 4.2f);
+            float height = Mathf.Clamp(centerpieceTargetHeight * 0.20f, 1.4f, 2.6f);
+            box.center = new Vector3(0f, height * 0.5f, 0f);
+            box.size = new Vector3(footprint, height, footprint);
+        }
+
+        void ConfigureStorageCollider(GameObject root)
+        {
+            if (root == null)
+                return;
+
+            var box = root.GetComponent<BoxCollider>();
+            if (box == null)
+                box = root.AddComponent<BoxCollider>();
+            if (_storageVisualRoot != null && TryGetHierarchyBounds(_storageVisualRoot, out var bounds))
+            {
+                Vector3 center = root.transform.InverseTransformPoint(bounds.center);
+                Vector3 size = bounds.size;
+                float footprintX = Mathf.Clamp(size.x * 0.72f, 0.9f, 2.2f);
+                float footprintZ = Mathf.Clamp(size.z * 0.72f, 0.9f, 2.2f);
+                float height = Mathf.Clamp(size.y * 0.78f, 0.9f, 1.9f);
+                box.center = new Vector3(center.x, Mathf.Max(height * 0.5f, center.y), center.z);
+                box.size = new Vector3(footprintX, height, footprintZ);
+                return;
+            }
+
+            float footprint = Mathf.Clamp(storageTargetHeight * 1.1f, 1.1f, 2.0f);
+            float heightFallback = Mathf.Clamp(storageTargetHeight * 1.1f, 0.9f, 1.8f);
+            box.center = new Vector3(0f, heightFallback * 0.5f, 0f);
+            box.size = new Vector3(footprint, heightFallback, footprint);
+        }
+
+        void ConfigureBarrierCollider(GameObject root, float length)
+        {
+            if (root == null)
+                return;
+
+            var box = root.GetComponent<BoxCollider>();
+            if (box == null)
+                box = root.AddComponent<BoxCollider>();
+
+            float thickness = Mathf.Clamp(fenceVisualThickness * 3.2f, 0.28f, 0.6f);
+            float height = Mathf.Clamp(fenceTargetHeight * 0.92f, 1.1f, 2.0f);
+            box.center = new Vector3(0f, height * 0.5f, 0f);
+            box.size = new Vector3(thickness, height, Mathf.Max(0.5f, length * 0.96f));
+        }
+
+        void ConfigureCornerCollider(GameObject root)
+        {
+            if (root == null)
+                return;
+
+            var box = root.GetComponent<BoxCollider>();
+            if (box == null)
+                box = root.AddComponent<BoxCollider>();
+
+            float footprint = Mathf.Clamp(fenceCornerFootprint * 0.65f, 0.7f, 1.2f);
+            float height = Mathf.Clamp(fenceTargetHeight * 0.92f, 1.1f, 2.0f);
+            box.center = new Vector3(0f, height * 0.5f, 0f);
+            box.size = new Vector3(footprint, height, footprint);
+        }
+
+        void RemoveVisualColliders(GameObject root, GameObject visual)
+        {
+            var colliders = visual.GetComponentsInChildren<Collider>(true);
+            for (int i = 0; i < colliders.Length; i++)
+            {
+                var collider = colliders[i];
+                if (collider == null || collider.gameObject == root)
+                    continue;
+#if UNITY_EDITOR
+                if (!Application.isPlaying)
+                    DestroyImmediate(collider);
+                else
+                    Destroy(collider);
+#else
+                Destroy(collider);
+#endif
+            }
         }
 
         void ApplyTextureToRenderers(GameObject visual, Texture2D texture, string materialKey)

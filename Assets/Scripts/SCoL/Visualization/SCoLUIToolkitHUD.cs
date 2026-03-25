@@ -1,6 +1,10 @@
+using System.Collections.Generic;
+using System.IO;
 using System.Text;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.EventSystems;
+using UnityEngine.InputSystem;
 using SCoL.Inventory;
 using SCoL.Combat;
 using SCoL.InputLayer;
@@ -75,10 +79,41 @@ namespace SCoL.Visualization
         private Image _healthFill;
         private Image _hurtOverlay;
         private Text _invulnerableLabel;
+        private CanvasGroup _introOverlayGroup;
+        private Text _introTitleLabel;
+        private Text _introBodyLabel;
+        private Text _introHintLabel;
+        private bool _introOpen = true;
         private CanvasGroup _deathOverlayGroup;
         private Text _deathTitleLabel;
         private Text _deathDetailLabel;
         private Button _respawnButton;
+        private CanvasGroup _storageOverlayGroup;
+        private RectTransform _storageOverlayPanel;
+        private Text _storageTitleLabel;
+        private Text _storageHintLabel;
+        private Button _storageCloseButton;
+        private RectTransform _storageChestGrid;
+        private RectTransform _storagePlayerGrid;
+        private Button[] _storageChestButtons;
+        private Image[] _storageChestIconImages;
+        private Text[] _storageChestNameLabels;
+        private Text[] _storageChestCountLabels;
+        private Button[] _storagePlayerButtons;
+        private Image[] _storagePlayerIconImages;
+        private Text[] _storagePlayerNameLabels;
+        private Text[] _storagePlayerCountLabels;
+        private RectTransform _storageDragGhost;
+        private Text _storageDragGhostLabel;
+        private Text _storageDragGhostCountLabel;
+        private bool _storageDragActive;
+        private bool _storageDragFromChest;
+        private int _storageDragSlotIndex = -1;
+        private bool _storageDragDropConsumed;
+        private bool _storageSelectedChest = true;
+        private int _storageSelectedSlot;
+        private float _nextStorageNavigateAt;
+        private bool _storageWasOpen;
 
         private SCoLInventory _inventory;
         private PlantVoxelRenderer _plantRenderer;
@@ -94,6 +129,7 @@ namespace SCoL.Visualization
         private float _lastObservedHealth = -1f;
         private float _hurtFlashUntil;
         private readonly StringBuilder _sb = new StringBuilder(256);
+        private readonly Dictionary<string, Sprite> _storageIconCache = new Dictionary<string, Sprite>();
         private static Sprite _fallbackWhiteUISprite;
         private static readonly Color CrosshairIdle = new Color(1f, 1f, 1f, 0.90f);
         private static readonly Color CrosshairHover = new Color(0.35f, 1f, 0.35f, 0.98f);
@@ -143,14 +179,6 @@ namespace SCoL.Visualization
             if (!visible)
                 return;
 
-            if (Time.unscaledTime < _nextUpdateAt)
-            {
-                UpdateHealth();
-                UpdateDeathOverlay();
-                return;
-            }
-            _nextUpdateAt = Time.unscaledTime + Mathf.Max(0.02f, updateInterval);
-
             if (runtime == null) runtime = FindFirstObjectByType<SCoLRuntime>();
             if (cameraSource == null) cameraSource = Camera.main;
             if (_inventory == null) _inventory = FindFirstObjectByType<SCoLInventory>();
@@ -160,6 +188,18 @@ namespace SCoL.Visualization
             EnsurePlayerHealth();
             EnsurePlayerRespawn();
             EnsurePlayerCombatHealth();
+
+            // These overlays need per-frame input polling so short button presses do not get dropped.
+            UpdateIntroductionOverlay();
+            UpdateStorageOverlay();
+
+            if (Time.unscaledTime < _nextUpdateAt)
+            {
+                UpdateHealth();
+                UpdateDeathOverlay();
+                return;
+            }
+            _nextUpdateAt = Time.unscaledTime + Mathf.Max(0.02f, updateInterval);
 
             UpdateStatus();
             UpdateSafeZoneBadge();
@@ -203,7 +243,9 @@ namespace SCoL.Visualization
             BuildCrosshair();
             BuildStylizedHealthBar(_root);
             BuildHurtOverlay(_root);
+            BuildIntroductionOverlay(_root);
             BuildDeathOverlay(_root);
+            BuildStorageOverlay(_root);
         }
 
         private void BuildPanelsAndLabels()
@@ -421,13 +463,13 @@ namespace SCoL.Visualization
                 anchorMin: new Vector2(0.5f, 0f),
                 anchorMax: new Vector2(0.5f, 0f),
                 pivot: new Vector2(0.5f, 0f),
-                anchoredPos: new Vector2(0f, 36f),
-                size: new Vector2(690f, 146f),
-                color: new Color(0.02f, 0.02f, 0.03f, 0.28f)).rectTransform;
+                anchoredPos: new Vector2(0f, 34f),
+                size: new Vector2(628f, 108f),
+                color: new Color(0.02f, 0.03f, 0.05f, 0.18f)).rectTransform;
 
             var panelShadow = panel.gameObject.AddComponent<Shadow>();
             panelShadow.effectColor = new Color(0f, 0f, 0f, 0.45f);
-            panelShadow.effectDistance = new Vector2(0f, -8f);
+            panelShadow.effectDistance = new Vector2(0f, -10f);
 
             _healthFrame = CreateImage(
                 panel,
@@ -435,8 +477,8 @@ namespace SCoL.Visualization
                 anchorMin: new Vector2(0.5f, 0.5f),
                 anchorMax: new Vector2(0.5f, 0.5f),
                 pivot: new Vector2(0.5f, 0.5f),
-                anchoredPos: new Vector2(36f, 0f),
-                size: new Vector2(540f, 86f),
+                anchoredPos: new Vector2(18f, 0f),
+                size: new Vector2(560f, 70f),
                 color: HealthFrameBase);
 
             CreateImage(
@@ -446,8 +488,8 @@ namespace SCoL.Visualization
                 anchorMax: new Vector2(0.5f, 0.5f),
                 pivot: new Vector2(0.5f, 0.5f),
                 anchoredPos: Vector2.zero,
-                size: new Vector2(522f, 68f),
-                color: new Color(0.12f, 0.09f, 0.08f, 0.86f));
+                size: new Vector2(548f, 58f),
+                color: new Color(0.06f, 0.08f, 0.11f, 0.92f));
 
             _healthPulse = CreateImage(
                 _healthFrame.transform,
@@ -456,7 +498,7 @@ namespace SCoL.Visualization
                 anchorMax: new Vector2(0.5f, 0.5f),
                 pivot: new Vector2(0.5f, 0.5f),
                 anchoredPos: Vector2.zero,
-                size: new Vector2(550f, 96f),
+                size: new Vector2(572f, 82f),
                 color: new Color(0.95f, 0.18f, 0.14f, 0f));
 
             var badge = CreateImage(
@@ -465,10 +507,9 @@ namespace SCoL.Visualization
                 anchorMin: new Vector2(0f, 0.5f),
                 anchorMax: new Vector2(0f, 0.5f),
                 pivot: new Vector2(0.5f, 0.5f),
-                anchoredPos: new Vector2(82f, 0f),
-                size: new Vector2(94f, 94f),
-                color: new Color(0.53f, 0.38f, 0.17f, 0.98f));
-            badge.rectTransform.localRotation = Quaternion.Euler(0f, 0f, 45f);
+                anchoredPos: new Vector2(64f, 0f),
+                size: new Vector2(86f, 56f),
+                color: new Color(0.09f, 0.12f, 0.15f, 0.96f));
 
             CreateImage(
                 badge.transform,
@@ -477,8 +518,8 @@ namespace SCoL.Visualization
                 anchorMax: new Vector2(0.5f, 0.5f),
                 pivot: new Vector2(0.5f, 0.5f),
                 anchoredPos: Vector2.zero,
-                size: new Vector2(68f, 68f),
-                color: new Color(0.16f, 0.09f, 0.08f, 0.92f));
+                size: new Vector2(76f, 46f),
+                color: new Color(0.17f, 0.23f, 0.29f, 0.96f));
 
             _healthBadgeLabel = CreateText(
                 badge.transform,
@@ -487,12 +528,11 @@ namespace SCoL.Visualization
                 anchorMax: new Vector2(0.5f, 0.5f),
                 pivot: new Vector2(0.5f, 0.5f),
                 anchoredPos: Vector2.zero,
-                size: new Vector2(96f, 38f),
-                fontSize: 28,
-                color: new Color(0.98f, 0.92f, 0.76f, 0.98f),
+                size: new Vector2(82f, 30f),
+                fontSize: 22,
+                color: new Color(0.80f, 0.91f, 1f, 0.98f),
                 alignment: TextAnchor.MiddleCenter,
                 addOutline: true);
-            _healthBadgeLabel.transform.localRotation = Quaternion.Euler(0f, 0f, -45f);
             SetText(_healthBadgeLabel, "HP");
 
             _healthCaptionLabel = CreateText(
@@ -501,12 +541,12 @@ namespace SCoL.Visualization
                 anchorMin: new Vector2(0f, 1f),
                 anchorMax: new Vector2(0f, 1f),
                 pivot: new Vector2(0f, 1f),
-                anchoredPos: new Vector2(176f, -20f),
+                anchoredPos: new Vector2(126f, -18f),
                 size: new Vector2(260f, 30f),
-                fontSize: 18,
-                color: new Color(0.94f, 0.82f, 0.62f, 0.92f),
+                fontSize: 16,
+                color: new Color(0.63f, 0.79f, 0.88f, 0.92f),
                 alignment: TextAnchor.MiddleLeft);
-            SetText(_healthCaptionLabel, "VITALITY");
+            SetText(_healthCaptionLabel, "PLAYER VITALS");
 
             _healthTrackRect = CreateRect(
                 panel,
@@ -514,7 +554,7 @@ namespace SCoL.Visualization
                 anchorMin: new Vector2(0f, 0.5f),
                 anchorMax: new Vector2(0f, 0.5f),
                 pivot: new Vector2(0f, 0.5f),
-                anchoredPos: new Vector2(176f, 10f),
+                anchoredPos: new Vector2(126f, 0f),
                 size: new Vector2(healthBarWidth, healthBarHeight));
 
             CreateImage(
@@ -525,7 +565,7 @@ namespace SCoL.Visualization
                 pivot: new Vector2(0.5f, 0.5f),
                 anchoredPos: new Vector2(0f, -3f),
                 size: Vector2.zero,
-                color: new Color(0f, 0f, 0f, 0.25f));
+                color: new Color(0f, 0f, 0f, 0.22f));
 
             CreateImage(
                 _healthTrackRect,
@@ -535,7 +575,7 @@ namespace SCoL.Visualization
                 pivot: new Vector2(0.5f, 0.5f),
                 anchoredPos: Vector2.zero,
                 size: Vector2.zero,
-                color: HealthTrackBase);
+                color: new Color(0.08f, 0.11f, 0.14f, 0.96f));
 
             CreateImage(
                 _healthTrackRect,
@@ -544,8 +584,8 @@ namespace SCoL.Visualization
                 anchorMax: new Vector2(1f, 1f),
                 pivot: new Vector2(0.5f, 1f),
                 anchoredPos: new Vector2(0f, -1f),
-                size: new Vector2(0f, 2f),
-                color: new Color(0.96f, 0.88f, 0.66f, 0.22f));
+                size: new Vector2(0f, 3f),
+                color: new Color(0.86f, 0.96f, 1f, 0.12f));
 
             var fillMask = CreateRect(
                 _healthTrackRect,
@@ -586,10 +626,10 @@ namespace SCoL.Visualization
                 anchorMax: new Vector2(1f, 1f),
                 pivot: new Vector2(0.5f, 1f),
                 anchoredPos: new Vector2(0f, -2f),
-                size: new Vector2(0f, 6f),
-                color: new Color(1f, 1f, 1f, 0.18f));
+                size: new Vector2(0f, 5f),
+                color: new Color(1f, 1f, 1f, 0.16f));
 
-            CreateSegmentTicks(_healthTrackRect, 8);
+            CreateSegmentTicks(_healthTrackRect, 10);
 
             _healthLabel = CreateText(
                 panel,
@@ -597,11 +637,11 @@ namespace SCoL.Visualization
                 anchorMin: new Vector2(1f, 0.5f),
                 anchorMax: new Vector2(1f, 0.5f),
                 pivot: new Vector2(1f, 0.5f),
-                anchoredPos: new Vector2(-24f, 10f),
-                size: new Vector2(170f, 46f),
-                fontSize: 30,
+                anchoredPos: new Vector2(-20f, 0f),
+                size: new Vector2(160f, 40f),
+                fontSize: 24,
                 color: new Color(0.97f, 0.95f, 0.90f, 0.98f),
-                alignment: TextAnchor.MiddleCenter,
+                alignment: TextAnchor.MiddleRight,
                 addOutline: true);
         }
 
@@ -866,27 +906,33 @@ namespace SCoL.Visualization
 
             if (_healthFill != null)
             {
-                _healthFill.color = Color.Lerp(HealthFillLow, HealthFillHigh, Mathf.SmoothStep(0f, 1f, t));
+                _healthFill.color = Color.Lerp(
+                    new Color(0.94f, 0.23f, 0.21f, 0.98f),
+                    new Color(0.22f, 0.84f, 0.61f, 0.98f),
+                    Mathf.SmoothStep(0f, 1f, t));
             }
 
             if (_healthLagFill != null)
             {
                 _healthLagFill.color = Color.Lerp(
-                    new Color(0.92f, 0.34f, 0.22f, 0.34f),
-                    HealthLagColor,
+                    new Color(0.95f, 0.42f, 0.30f, 0.30f),
+                    new Color(0.95f, 0.78f, 0.44f, 0.42f),
                     Mathf.SmoothStep(0f, 1f, lagT));
             }
 
             if (_healthFrame != null)
             {
-                _healthFrame.color = Color.Lerp(HealthFrameAlert, HealthFrameBase, Mathf.SmoothStep(0f, 1f, t));
+                _healthFrame.color = Color.Lerp(
+                    new Color(0.58f, 0.14f, 0.15f, 0.98f),
+                    new Color(0.18f, 0.24f, 0.30f, 0.98f),
+                    Mathf.SmoothStep(0f, 1f, t));
             }
 
             if (_healthPulse != null)
             {
                 float low = Mathf.Clamp01((0.33f - t) / 0.33f);
                 float pulse = low * (0.40f + 0.60f * (0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * 6.4f)));
-                _healthPulse.color = new Color(0.95f, 0.14f, 0.12f, pulse * 0.28f);
+                _healthPulse.color = new Color(1f, 0.16f, 0.14f, pulse * 0.24f);
             }
 
             if (_healthLabel != null)
@@ -920,11 +966,15 @@ namespace SCoL.Visualization
             if (_crosshairLeft == null || _crosshairRight == null || _crosshairTop == null || _crosshairBottom == null)
                 return;
 
+            if (_settlementManager != null && _settlementManager.IsStorageUiOpen)
+            {
+                SetCrosshairColor(CrosshairIdle);
+                SetAimPanelVisible(false);
+                return;
+            }
+
             bool hasTarget = FPSAimTargeting.TryResolve(cameraSource, maxDistance, hitMask, runtime, _plantRenderer, out var target)
                              && target.HasActionableTarget;
-
-            if (hasTarget && target.kind == FPSAimTargetKind.SettlementStorage && _settlementManager != null)
-                _settlementManager.PulseStorageOpen(0.12f);
 
             Color cross = hasTarget ? CrosshairHover : CrosshairIdle;
             SetCrosshairColor(cross);
@@ -995,13 +1045,10 @@ namespace SCoL.Visualization
                     case FPSAimTargetKind.SettlementStorage:
                     {
                         title = "Supply Crate";
-                        string toolLabel = _settlementManager != null
-                            ? _settlementManager.GetCurrentToolStorageHint(_fpsInteractor, _inventory)
-                            : "supplies";
                         string summary = _settlementManager != null ? _settlementManager.StorageSummary : "Storage offline";
                         detail = _settlementManager != null && !_settlementManager.IsActivated
                             ? "Offline until the settlement core is activated."
-                            : $"{GetPrimaryPromptRich(HudAccentCool)} Withdraw {toolLabel}\n{GetDropPromptRich(HudAccentGreen)} Store {toolLabel}\n{summary}";
+                            : "<color=#67C8FF><b>F</b></color> Open chest\nMove items between chest and inventory\n" + summary;
                         break;
                     }
                     case FPSAimTargetKind.SettlementBarrier:
@@ -1089,7 +1136,7 @@ namespace SCoL.Visualization
                 case FPSRaycastInteractor.ApplyTool.Fire:
                     return $"{GetSecondaryPromptRich(new Color(1f, 0.56f, 0.38f, 0.98f))} Use: start fire   {GetDropPromptRich(HudAccentGreen)} Drop branch";
                 case FPSRaycastInteractor.ApplyTool.Plant:
-                    return $"{GetPrimaryPromptRich(HudAccentGreen)} Pick plant   {GetSecondaryPromptRich(HudAccentGreen)} Use: feed animal   {GetDropPromptRich(HudAccentGreen)} Drop plant";
+                    return $"{GetPrimaryPromptRich(HudAccentGreen)} Pick plant   {GetSecondaryPromptRich(HudAccentGreen)} Use: feed animal / eat to heal   {GetDropPromptRich(HudAccentGreen)} Drop plant";
                 case FPSRaycastInteractor.ApplyTool.Stone:
                     return $"{GetSecondaryPromptRich(new Color(0.82f, 0.84f, 0.92f, 0.98f))} Use: throw stone   {GetDropPromptRich(HudAccentGreen)} Drop stone";
                 default:
@@ -1145,6 +1192,17 @@ namespace SCoL.Visualization
             if (UseGamepadPrompts())
                 return "Press the <color=#F1D598><b>Y</b></color> button to respawn at a new location with full health.";
             return "Press <color=#F1D598><b>Y</b></color> to respawn at a new location with full health.";
+        }
+
+        private string GetIntroductionBody()
+        {
+            return "Build a safe home, grow flowers, and keep wolves away.\n\n"
+                 + "Left stick moves and right stick looks.\n"
+                 + "RT picks up nearby items and fills the watering can at ponds.\n"
+                 + "LT uses the current item: plant seeds, water ground, start fires, feed animals, throw stones, or eat plants to heal.\n"
+                 + "X drops the current item.\n"
+                 + "LB / RB switches tools. When Seed is active, D-pad left / right cycles seed types.\n"
+                 + "Aim at the chest and press A to open storage.";
         }
 
         private string GetToolSlotKeyLabel(int slotIndex)
@@ -1494,6 +1552,811 @@ namespace SCoL.Visualization
                 if (invulnerable)
                     SetText(_invulnerableLabel, "RECOVERING");
             }
+        }
+
+        private void BuildIntroductionOverlay(RectTransform parent)
+        {
+            var overlay = CreateImage(
+                parent,
+                "IntroductionOverlay",
+                anchorMin: Vector2.zero,
+                anchorMax: Vector2.one,
+                pivot: new Vector2(0.5f, 0.5f),
+                anchoredPos: Vector2.zero,
+                size: Vector2.zero,
+                color: new Color(0.01f, 0.01f, 0.02f, 0.74f));
+            overlay.raycastTarget = true;
+
+            _introOverlayGroup = overlay.gameObject.AddComponent<CanvasGroup>();
+            _introOverlayGroup.alpha = 0f;
+            _introOverlayGroup.interactable = false;
+            _introOverlayGroup.blocksRaycasts = false;
+
+            var card = CreateHudCard(
+                overlay.transform,
+                "IntroductionCard",
+                anchorMin: new Vector2(0.5f, 0.5f),
+                anchorMax: new Vector2(0.5f, 0.5f),
+                pivot: new Vector2(0.5f, 0.5f),
+                anchoredPos: new Vector2(0f, 8f),
+                size: new Vector2(760f, 430f),
+                title: "INTRODUCTION",
+                accent: HudAccentCool);
+
+            _introTitleLabel = CreateText(
+                card,
+                "IntroductionTitle",
+                anchorMin: new Vector2(0f, 1f),
+                anchorMax: new Vector2(1f, 1f),
+                pivot: new Vector2(0.5f, 1f),
+                anchoredPos: new Vector2(0f, -70f),
+                size: new Vector2(-56f, 42f),
+                fontSize: 34,
+                color: HudTextPrimary,
+                alignment: TextAnchor.MiddleCenter,
+                addOutline: true);
+
+            _introBodyLabel = CreateText(
+                card,
+                "IntroductionBody",
+                anchorMin: new Vector2(0f, 0.5f),
+                anchorMax: new Vector2(1f, 0.5f),
+                pivot: new Vector2(0.5f, 0.5f),
+                anchoredPos: new Vector2(0f, 4f),
+                size: new Vector2(-72f, 208f),
+                fontSize: 22,
+                color: HudTextSecondary,
+                alignment: TextAnchor.UpperLeft,
+                addOutline: false);
+
+            _introHintLabel = CreateText(
+                card,
+                "IntroductionHint",
+                anchorMin: new Vector2(0f, 0f),
+                anchorMax: new Vector2(1f, 0f),
+                pivot: new Vector2(0.5f, 0f),
+                anchoredPos: new Vector2(0f, 28f),
+                size: new Vector2(-72f, 44f),
+                fontSize: 21,
+                color: HudAccentWarm,
+                alignment: TextAnchor.MiddleCenter,
+                addOutline: true);
+        }
+
+        private void UpdateIntroductionOverlay()
+        {
+            if (_introOverlayGroup == null)
+                return;
+
+            bool reopenPressed = Gamepad.current != null && Gamepad.current.startButton.wasPressedThisFrame;
+            bool closePressed = Gamepad.current != null && Gamepad.current.buttonEast.wasPressedThisFrame;
+
+            if (!_introOpen && reopenPressed)
+                _introOpen = true;
+            else if (_introOpen && closePressed)
+                _introOpen = false;
+
+            _introOverlayGroup.alpha = _introOpen ? 1f : 0f;
+            _introOverlayGroup.interactable = _introOpen;
+            _introOverlayGroup.blocksRaycasts = _introOpen;
+
+            if (_introTitleLabel != null)
+                SetText(_introTitleLabel, "WELCOME TO YOUR SETTLEMENT");
+            if (_introBodyLabel != null)
+                SetText(_introBodyLabel, GetIntroductionBody());
+            if (_introHintLabel != null)
+                SetText(_introHintLabel, "Press B to close. Press --- to open again.");
+        }
+
+        private void BuildStorageOverlay(RectTransform parent)
+        {
+            var overlay = CreateImage(
+                parent,
+                "StorageOverlay",
+                anchorMin: Vector2.zero,
+                anchorMax: Vector2.one,
+                pivot: new Vector2(0.5f, 0.5f),
+                anchoredPos: Vector2.zero,
+                size: Vector2.zero,
+                color: new Color(0.01f, 0.01f, 0.02f, 0.78f));
+            overlay.raycastTarget = true;
+
+            _storageOverlayGroup = overlay.gameObject.AddComponent<CanvasGroup>();
+            _storageOverlayGroup.alpha = 0f;
+            _storageOverlayGroup.interactable = false;
+            _storageOverlayGroup.blocksRaycasts = false;
+
+            _storageOverlayPanel = CreateHudCard(
+                overlay.transform,
+                "StoragePanel",
+                anchorMin: new Vector2(0.5f, 0.5f),
+                anchorMax: new Vector2(0.5f, 0.5f),
+                pivot: new Vector2(0.5f, 0.5f),
+                anchoredPos: new Vector2(0f, 0f),
+                size: new Vector2(980f, 760f),
+                title: "STORAGE",
+                accent: HudAccentCool);
+            var panelImage = _storageOverlayPanel.GetComponent<Image>();
+            if (panelImage != null)
+                panelImage.raycastTarget = true;
+            var panelDrag = _storageOverlayPanel.gameObject.AddComponent<SCoLUIDraggableWindow>();
+            panelDrag.dragTarget = _storageOverlayPanel;
+
+            _storageTitleLabel = CreateText(
+                _storageOverlayPanel,
+                "StorageTitle",
+                anchorMin: new Vector2(0f, 1f),
+                anchorMax: new Vector2(1f, 1f),
+                pivot: new Vector2(0.5f, 1f),
+                anchoredPos: new Vector2(0f, -58f),
+                size: new Vector2(-180f, 34f),
+                fontSize: 26,
+                color: HudTextPrimary,
+                alignment: TextAnchor.MiddleLeft,
+                addOutline: true);
+
+            _storageHintLabel = CreateText(
+                _storageOverlayPanel,
+                "StorageHint",
+                anchorMin: new Vector2(0f, 1f),
+                anchorMax: new Vector2(1f, 1f),
+                pivot: new Vector2(0.5f, 1f),
+                anchoredPos: new Vector2(0f, -98f),
+                size: new Vector2(-180f, 44f),
+                fontSize: 18,
+                color: HudTextSecondary,
+                alignment: TextAnchor.MiddleLeft,
+                addOutline: false);
+
+            _storageCloseButton = CreateButton(
+                _storageOverlayPanel,
+                "StorageClose",
+                anchorMin: new Vector2(1f, 1f),
+                anchorMax: new Vector2(1f, 1f),
+                pivot: new Vector2(1f, 1f),
+                anchoredPos: new Vector2(-28f, -28f),
+                size: new Vector2(120f, 44f),
+                label: "CLOSE",
+                color: new Color(0.54f, 0.18f, 0.16f, 0.96f));
+            _storageCloseButton.onClick.AddListener(OnStorageCloseClicked);
+
+            var chestLabel = CreateText(
+                _storageOverlayPanel,
+                "ChestSectionLabel",
+                anchorMin: new Vector2(0f, 1f),
+                anchorMax: new Vector2(1f, 1f),
+                pivot: new Vector2(0.5f, 1f),
+                anchoredPos: new Vector2(0f, -154f),
+                size: new Vector2(-64f, 28f),
+                fontSize: 22,
+                color: HudAccentWarm,
+                alignment: TextAnchor.MiddleLeft,
+                addOutline: true);
+            SetText(chestLabel, "Chest");
+
+            _storageChestGrid = CreateRect(
+                _storageOverlayPanel,
+                "ChestGrid",
+                anchorMin: new Vector2(0.5f, 1f),
+                anchorMax: new Vector2(0.5f, 1f),
+                pivot: new Vector2(0.5f, 1f),
+                anchoredPos: new Vector2(0f, -194f),
+                size: new Vector2(860f, 226f));
+            var chestDropSurface = CreateImage(
+                _storageChestGrid,
+                "ChestDropSurface",
+                anchorMin: Vector2.zero,
+                anchorMax: Vector2.one,
+                pivot: new Vector2(0.5f, 0.5f),
+                anchoredPos: Vector2.zero,
+                size: Vector2.zero,
+                color: new Color(0f, 0f, 0f, 0.001f));
+            chestDropSurface.raycastTarget = true;
+            var chestDropZone = chestDropSurface.gameObject.AddComponent<SCoLStorageUIDropZone>();
+            chestDropZone.hud = this;
+            chestDropZone.dropToChest = true;
+
+            var playerLabel = CreateText(
+                _storageOverlayPanel,
+                "PlayerSectionLabel",
+                anchorMin: new Vector2(0f, 0f),
+                anchorMax: new Vector2(1f, 0f),
+                pivot: new Vector2(0.5f, 0f),
+                anchoredPos: new Vector2(0f, 270f),
+                size: new Vector2(-64f, 28f),
+                fontSize: 22,
+                color: HudAccentGreen,
+                alignment: TextAnchor.MiddleLeft,
+                addOutline: true);
+            SetText(playerLabel, "Inventory");
+
+            _storagePlayerGrid = CreateRect(
+                _storageOverlayPanel,
+                "PlayerGrid",
+                anchorMin: new Vector2(0.5f, 0f),
+                anchorMax: new Vector2(0.5f, 0f),
+                pivot: new Vector2(0.5f, 0f),
+                anchoredPos: new Vector2(0f, 48f),
+                size: new Vector2(860f, 226f));
+            var playerDropSurface = CreateImage(
+                _storagePlayerGrid,
+                "PlayerDropSurface",
+                anchorMin: Vector2.zero,
+                anchorMax: Vector2.one,
+                pivot: new Vector2(0.5f, 0.5f),
+                anchoredPos: Vector2.zero,
+                size: Vector2.zero,
+                color: new Color(0f, 0f, 0f, 0.001f));
+            playerDropSurface.raycastTarget = true;
+            var playerDropZone = playerDropSurface.gameObject.AddComponent<SCoLStorageUIDropZone>();
+            playerDropZone.hud = this;
+            playerDropZone.dropToChest = false;
+
+            _storageChestButtons = new Button[12];
+            _storageChestIconImages = new Image[12];
+            _storageChestNameLabels = new Text[12];
+            _storageChestCountLabels = new Text[12];
+            _storagePlayerButtons = new Button[12];
+            _storagePlayerIconImages = new Image[12];
+            _storagePlayerNameLabels = new Text[12];
+            _storagePlayerCountLabels = new Text[12];
+
+            for (int i = 0; i < 12; i++)
+            {
+                int slot = i;
+                CreateStorageSlot(
+                    _storageChestGrid,
+                    $"ChestSlot_{i}",
+                    i,
+                    out _storageChestButtons[i],
+                    out _storageChestIconImages[i],
+                    out _storageChestNameLabels[i],
+                    out _storageChestCountLabels[i],
+                    new Color(0.18f, 0.22f, 0.28f, 0.96f),
+                    new Color(0.32f, 0.54f, 0.78f, 0.92f),
+                    () => OnChestSlotClicked(slot));
+
+                CreateStorageSlot(
+                    _storagePlayerGrid,
+                    $"PlayerSlot_{i}",
+                    i,
+                    out _storagePlayerButtons[i],
+                    out _storagePlayerIconImages[i],
+                    out _storagePlayerNameLabels[i],
+                    out _storagePlayerCountLabels[i],
+                    new Color(0.18f, 0.24f, 0.18f, 0.96f),
+                    new Color(0.36f, 0.70f, 0.40f, 0.92f),
+                    () => OnPlayerSlotClicked(slot));
+            }
+
+            _storageDragGhost = CreateImage(
+                overlay.transform,
+                "StorageDragGhost",
+                anchorMin: new Vector2(0.5f, 0.5f),
+                anchorMax: new Vector2(0.5f, 0.5f),
+                pivot: new Vector2(0.5f, 0.5f),
+                anchoredPos: Vector2.zero,
+                size: new Vector2(196f, 64f),
+                color: new Color(0.14f, 0.16f, 0.20f, 0.92f)).rectTransform;
+            _storageDragGhost.gameObject.SetActive(false);
+            var ghostCanvasGroup = _storageDragGhost.gameObject.AddComponent<CanvasGroup>();
+            ghostCanvasGroup.blocksRaycasts = false;
+            ghostCanvasGroup.interactable = false;
+            CreateImage(
+                _storageDragGhost,
+                "GhostBorder",
+                anchorMin: Vector2.zero,
+                anchorMax: Vector2.one,
+                pivot: new Vector2(0.5f, 0.5f),
+                anchoredPos: Vector2.zero,
+                size: Vector2.zero,
+                color: new Color(0.78f, 0.86f, 0.96f, 0.78f));
+            _storageDragGhostLabel = CreateText(
+                _storageDragGhost,
+                "GhostName",
+                anchorMin: new Vector2(0f, 0f),
+                anchorMax: new Vector2(1f, 1f),
+                pivot: new Vector2(0.5f, 0.5f),
+                anchoredPos: new Vector2(0f, 8f),
+                size: new Vector2(-18f, -18f),
+                fontSize: 16,
+                color: HudTextPrimary,
+                alignment: TextAnchor.MiddleLeft,
+                addOutline: true);
+            _storageDragGhostCountLabel = CreateText(
+                _storageDragGhost,
+                "GhostCount",
+                anchorMin: new Vector2(1f, 0f),
+                anchorMax: new Vector2(1f, 0f),
+                pivot: new Vector2(1f, 0f),
+                anchoredPos: new Vector2(-10f, 8f),
+                size: new Vector2(72f, 20f),
+                fontSize: 18,
+                color: HudAccentWarm,
+                alignment: TextAnchor.LowerRight,
+                addOutline: true);
+        }
+
+        private void CreateStorageSlot(
+            Transform parent,
+            string name,
+            int index,
+            out Button button,
+            out Image iconImage,
+            out Text nameLabel,
+            out Text countLabel,
+            Color fillColor,
+            Color borderColor,
+            UnityEngine.Events.UnityAction onClick)
+        {
+            int columns = 4;
+            int row = index / columns;
+            int column = index % columns;
+            const float slotWidth = 196f;
+            const float slotHeight = 64f;
+            const float stepX = 214f;
+            const float stepY = 74f;
+            float x = -stepX * 1.5f + column * stepX;
+            float y = -row * stepY;
+
+            var root = CreateImage(
+                parent,
+                name,
+                anchorMin: new Vector2(0.5f, 1f),
+                anchorMax: new Vector2(0.5f, 1f),
+                pivot: new Vector2(0.5f, 1f),
+                anchoredPos: new Vector2(x, y),
+                size: new Vector2(slotWidth, slotHeight),
+                color: fillColor);
+            root.raycastTarget = true;
+
+            button = root.gameObject.AddComponent<Button>();
+            button.targetGraphic = root;
+            var colors = button.colors;
+            colors.normalColor = fillColor;
+            colors.highlightedColor = Color.Lerp(fillColor, Color.white, 0.12f);
+            colors.pressedColor = Color.Lerp(fillColor, Color.black, 0.16f);
+            colors.selectedColor = colors.highlightedColor;
+            colors.disabledColor = new Color(fillColor.r * 0.45f, fillColor.g * 0.45f, fillColor.b * 0.45f, 0.52f);
+            button.colors = colors;
+            button.onClick.AddListener(onClick);
+
+            var dragSlot = root.gameObject.AddComponent<SCoLStorageUIDragSlot>();
+            dragSlot.hud = this;
+            dragSlot.slotIndex = index;
+            dragSlot.fromChest = name.StartsWith("ChestSlot_");
+
+            var dropZone = root.gameObject.AddComponent<SCoLStorageUIDropZone>();
+            dropZone.hud = this;
+            dropZone.dropToChest = name.StartsWith("ChestSlot_");
+
+            var border = CreateImage(
+                root.transform,
+                "Border",
+                anchorMin: Vector2.zero,
+                anchorMax: Vector2.one,
+                pivot: new Vector2(0.5f, 0.5f),
+                anchoredPos: Vector2.zero,
+                size: Vector2.zero,
+                color: borderColor);
+            border.raycastTarget = false;
+            border.type = Image.Type.Sliced;
+            border.sprite = ResolveBuiltinUISprite();
+
+            var inner = CreateImage(
+                root.transform,
+                "Inner",
+                anchorMin: new Vector2(0f, 0f),
+                anchorMax: new Vector2(1f, 1f),
+                pivot: new Vector2(0.5f, 0.5f),
+                anchoredPos: Vector2.zero,
+                size: new Vector2(-6f, -6f),
+                color: fillColor * 0.78f);
+            inner.raycastTarget = false;
+
+            iconImage = CreateImage(
+                root.transform,
+                "Icon",
+                anchorMin: new Vector2(0f, 0.5f),
+                anchorMax: new Vector2(0f, 0.5f),
+                pivot: new Vector2(0f, 0.5f),
+                anchoredPos: new Vector2(12f, 0f),
+                size: new Vector2(46f, 46f),
+                color: new Color(1f, 1f, 1f, 0.96f));
+            iconImage.raycastTarget = false;
+            iconImage.preserveAspect = true;
+            iconImage.gameObject.SetActive(false);
+
+            nameLabel = CreateText(
+                root.transform,
+                "Name",
+                anchorMin: new Vector2(0f, 0f),
+                anchorMax: new Vector2(1f, 1f),
+                pivot: new Vector2(0.5f, 0.5f),
+                anchoredPos: new Vector2(18f, 8f),
+                size: new Vector2(-72f, -18f),
+                fontSize: 16,
+                color: HudTextPrimary,
+                alignment: TextAnchor.MiddleLeft,
+                addOutline: true);
+            nameLabel.raycastTarget = false;
+
+            countLabel = CreateText(
+                root.transform,
+                "Count",
+                anchorMin: new Vector2(1f, 0f),
+                anchorMax: new Vector2(1f, 0f),
+                pivot: new Vector2(1f, 0f),
+                anchoredPos: new Vector2(-10f, 8f),
+                size: new Vector2(72f, 20f),
+                fontSize: 18,
+                color: HudAccentWarm,
+                alignment: TextAnchor.LowerRight,
+                addOutline: true);
+            countLabel.raycastTarget = false;
+        }
+
+        private void UpdateStorageOverlay()
+        {
+            if (_storageOverlayGroup == null)
+                return;
+
+            bool open = _settlementManager != null && _settlementManager.IsStorageUiOpen;
+            _storageOverlayGroup.alpha = open ? 1f : 0f;
+            _storageOverlayGroup.interactable = open;
+            _storageOverlayGroup.blocksRaycasts = open;
+
+            if (!open)
+            {
+                _storageWasOpen = false;
+                return;
+            }
+
+            if (!_storageWasOpen)
+            {
+                _storageWasOpen = true;
+                _storageSelectedChest = true;
+                _storageSelectedSlot = 0;
+                _nextStorageNavigateAt = 0f;
+            }
+
+            bool closePressed = SCoL.Interaction.SCoLInteractionInput.PausePressed()
+                                || (Gamepad.current != null && Gamepad.current.buttonEast.wasPressedThisFrame);
+            if (closePressed && _settlementManager != null)
+            {
+                _settlementManager.CloseStorageUi();
+                return;
+            }
+
+            UpdateStorageSelectionInput();
+
+            if (_storageTitleLabel != null)
+                SetText(_storageTitleLabel, "Supply Chest");
+            if (_storageHintLabel != null)
+                SetText(_storageHintLabel, $"{GetStorageSelectPromptLabel()} move  {GetStorageConfirmPromptLabel()} transfer  {GetStorageSwitchPromptLabel()} switch side  {GetStorageClosePromptLabel()} closes.");
+
+            for (int i = 0; i < 12; i++)
+            {
+                int chestCount = _settlementManager != null ? _settlementManager.GetStorageSlotCount(i) : 0;
+                string chestLabel = _settlementManager != null ? _settlementManager.GetStorageSlotLabel(i, _inventory) : $"Slot {i + 1}";
+                ApplyStorageSlotState(_storageChestButtons[i], _storageChestIconImages[i], _storageChestNameLabels[i], _storageChestCountLabels[i], chestLabel, chestCount);
+                ApplyStorageSelectionVisual(_storageChestButtons[i], _storageSelectedChest && _storageSelectedSlot == i);
+
+                int playerCount = _settlementManager != null ? _settlementManager.GetPlayerSlotCount(_inventory, i) : 0;
+                string playerLabel = _settlementManager != null ? _settlementManager.GetStorageSlotLabel(i, _inventory) : $"Slot {i + 1}";
+                ApplyStorageSlotState(_storagePlayerButtons[i], _storagePlayerIconImages[i], _storagePlayerNameLabels[i], _storagePlayerCountLabels[i], playerLabel, playerCount);
+                ApplyStorageSelectionVisual(_storagePlayerButtons[i], !_storageSelectedChest && _storageSelectedSlot == i);
+            }
+        }
+
+        private void ApplyStorageSlotState(Button button, Image iconImage, Text nameLabel, Text countLabel, string itemLabel, int count)
+        {
+            Sprite icon = count > 0 ? GetStorageItemIcon(itemLabel) : null;
+            bool hasIcon = icon != null;
+
+            if (iconImage != null)
+            {
+                iconImage.sprite = icon;
+                iconImage.gameObject.SetActive(hasIcon);
+            }
+            if (nameLabel != null)
+            {
+                nameLabel.gameObject.SetActive(!hasIcon);
+                if (!hasIcon)
+                    SetText(nameLabel, itemLabel);
+            }
+            if (countLabel != null)
+                SetText(countLabel, count > 0 ? count.ToString() : "-");
+            if (button != null)
+                button.interactable = count > 0;
+        }
+
+        private Sprite GetStorageItemIcon(string itemLabel)
+        {
+            if (string.IsNullOrWhiteSpace(itemLabel))
+                return null;
+
+            string key = itemLabel.Trim();
+            if (_storageIconCache.TryGetValue(key, out var cached))
+                return cached;
+
+            string fileName = key switch
+            {
+                "Bean" => "FlowerV1_seeds.jpg",
+                "BrownSeed" => "FlowerV1_seeds.jpg",
+                "LightBrownSeed" => "FlowerV2_seeds.jpg",
+                "LongSeed" => "FlowerV3_seeds.jpg",
+                "Seed1" => "FlowerV1_seeds.jpg",
+                "SeedV1" => "FlowerV1.jpg",
+                "SeedV2" => "FlowerV2.jpg",
+                "SeedV3" => "FlowerV3.jpg",
+                "Plant" => "FlowerV3.jpg",
+                _ => null
+            };
+
+            if (string.IsNullOrWhiteSpace(fileName))
+            {
+                _storageIconCache[key] = null;
+                return null;
+            }
+
+            var sprite = LoadStorageIconSprite(fileName);
+            _storageIconCache[key] = sprite;
+            return sprite;
+        }
+
+        private Sprite LoadStorageIconSprite(string fileName)
+        {
+            const string assetFolder = "Assets/Screenshots/Snapshot_of_models";
+#if UNITY_EDITOR
+            string assetPath = $"{assetFolder}/{fileName}";
+            var directSprite = AssetDatabase.LoadAssetAtPath<Sprite>(assetPath);
+            if (directSprite != null)
+                return directSprite;
+
+            var textureAsset = AssetDatabase.LoadAssetAtPath<Texture2D>(assetPath);
+            if (textureAsset != null)
+                return Sprite.Create(textureAsset, new Rect(0f, 0f, textureAsset.width, textureAsset.height), new Vector2(0.5f, 0.5f), 100f);
+#endif
+
+            string fullPath = Path.Combine(Application.dataPath, "Screenshots/Snapshot_of_models", fileName);
+            if (!File.Exists(fullPath))
+                return null;
+
+            byte[] bytes = File.ReadAllBytes(fullPath);
+            if (bytes == null || bytes.Length == 0)
+                return null;
+
+            var texture = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+            if (!texture.LoadImage(bytes))
+            {
+                Destroy(texture);
+                return null;
+            }
+
+            texture.name = $"StorageIcon_{Path.GetFileNameWithoutExtension(fileName)}";
+            return Sprite.Create(texture, new Rect(0f, 0f, texture.width, texture.height), new Vector2(0.5f, 0.5f), 100f);
+        }
+
+        private void OnChestSlotClicked(int slot)
+        {
+            if (_settlementManager == null || _inventory == null)
+                return;
+
+            if (_settlementManager.TryWithdrawStorageSlot(_inventory, slot, out string message))
+                DayNightLightingController.PlayInteractionSfx(DayNightLightingController.InteractionSfx.PickupItem);
+            else if (!string.IsNullOrWhiteSpace(message))
+                Debug.Log($"[SCoLUIToolkitHUD] {message}");
+        }
+
+        private void OnPlayerSlotClicked(int slot)
+        {
+            if (_settlementManager == null || _inventory == null)
+                return;
+
+            if (_settlementManager.TryStoreInventorySlot(_inventory, slot, out string message))
+                DayNightLightingController.PlayInteractionSfx(DayNightLightingController.InteractionSfx.PickupItem);
+            else if (!string.IsNullOrWhiteSpace(message))
+                Debug.Log($"[SCoLUIToolkitHUD] {message}");
+        }
+
+        private void OnStorageCloseClicked()
+        {
+            if (_settlementManager == null)
+                return;
+
+            _settlementManager.CloseStorageUi();
+        }
+
+        void UpdateStorageSelectionInput()
+        {
+            if (Time.unscaledTime >= _nextStorageNavigateAt && TryReadStorageNavigate(out int dx, out int dy))
+            {
+                MoveStorageSelection(dx, dy);
+                _nextStorageNavigateAt = Time.unscaledTime + 0.16f;
+            }
+
+            var keyboard = Keyboard.current;
+            if (keyboard != null && keyboard.tabKey.wasPressedThisFrame)
+                _storageSelectedChest = !_storageSelectedChest;
+
+            bool confirmPressed = SCoL.Interaction.SCoLInteractionInput.ChestPressed()
+                                  || (Gamepad.current != null && Gamepad.current.buttonSouth.wasPressedThisFrame);
+            if (!confirmPressed || _settlementManager == null || _inventory == null)
+                return;
+
+            bool success = _storageSelectedChest
+                ? _settlementManager.TryWithdrawStorageSlot(_inventory, _storageSelectedSlot, out _)
+                : _settlementManager.TryStoreInventorySlot(_inventory, _storageSelectedSlot, out _);
+            if (success)
+                DayNightLightingController.PlayInteractionSfx(DayNightLightingController.InteractionSfx.PickupItem);
+        }
+
+        bool TryReadStorageNavigate(out int dx, out int dy)
+        {
+            dx = 0;
+            dy = 0;
+
+            var keyboard = Keyboard.current;
+            if (keyboard != null)
+            {
+                if (keyboard.leftArrowKey.wasPressedThisFrame || keyboard.aKey.wasPressedThisFrame) dx = -1;
+                else if (keyboard.rightArrowKey.wasPressedThisFrame || keyboard.dKey.wasPressedThisFrame) dx = 1;
+
+                if (keyboard.upArrowKey.wasPressedThisFrame || keyboard.wKey.wasPressedThisFrame) dy = -1;
+                else if (keyboard.downArrowKey.wasPressedThisFrame || keyboard.sKey.wasPressedThisFrame) dy = 1;
+            }
+
+            if (dx != 0 || dy != 0)
+                return true;
+
+            var gamepad = Gamepad.current;
+            if (gamepad == null)
+                return false;
+
+            Vector2 stick = gamepad.rightStick.ReadValue();
+            if (Mathf.Abs(stick.x) >= 0.6f)
+                dx = stick.x > 0f ? 1 : -1;
+            else if (Mathf.Abs(stick.y) >= 0.6f)
+                dy = stick.y > 0f ? -1 : 1;
+
+            if (dx == 0 && dy == 0)
+            {
+                if (gamepad.dpad.left.wasPressedThisFrame) dx = -1;
+                else if (gamepad.dpad.right.wasPressedThisFrame) dx = 1;
+                else if (gamepad.dpad.up.wasPressedThisFrame) dy = -1;
+                else if (gamepad.dpad.down.wasPressedThisFrame) dy = 1;
+            }
+
+            return dx != 0 || dy != 0;
+        }
+
+        void MoveStorageSelection(int dx, int dy)
+        {
+            const int columns = 4;
+            const int rows = 3;
+
+            int row = Mathf.Clamp(_storageSelectedSlot / columns, 0, rows - 1);
+            int column = Mathf.Clamp(_storageSelectedSlot % columns, 0, columns - 1);
+
+            if (dx != 0)
+                column = Mathf.Clamp(column + dx, 0, columns - 1);
+
+            if (dy != 0)
+            {
+                int nextRow = row + dy;
+                if (nextRow < 0 || nextRow >= rows)
+                    _storageSelectedChest = !_storageSelectedChest;
+                else
+                    row = nextRow;
+            }
+
+            _storageSelectedSlot = row * columns + column;
+        }
+
+        void ApplyStorageSelectionVisual(Button button, bool selected)
+        {
+            if (button == null)
+                return;
+
+            var image = button.targetGraphic as Image;
+            if (image != null)
+            {
+                Color baseColor = button.interactable ? button.colors.normalColor : button.colors.disabledColor;
+                image.color = selected ? Color.Lerp(baseColor, Color.white, 0.26f) : baseColor;
+            }
+
+            var border = button.transform.Find("Border");
+            var borderImage = border != null ? border.GetComponent<Image>() : null;
+            if (borderImage != null)
+            {
+                bool chestSlot = button.name.StartsWith("ChestSlot_");
+                borderImage.color = selected
+                    ? new Color(0.98f, 0.94f, 0.60f, 0.98f)
+                    : chestSlot
+                        ? new Color(0.32f, 0.54f, 0.78f, 0.92f)
+                        : new Color(0.36f, 0.70f, 0.40f, 0.92f);
+            }
+        }
+
+        string GetStorageSelectPromptLabel()
+        {
+            return UseGamepadPrompts() ? "Right Stick" : "Arrow Keys";
+        }
+
+        string GetStorageConfirmPromptLabel()
+        {
+            return UseGamepadPrompts() ? "A" : "F";
+        }
+
+        string GetStorageSwitchPromptLabel()
+        {
+            return UseGamepadPrompts() ? "D-Pad Up/Down" : "Tab";
+        }
+
+        string GetStorageClosePromptLabel()
+        {
+            return UseGamepadPrompts() ? "B" : "Esc";
+        }
+
+        public void BeginStorageDrag(bool fromChest, int slotIndex, PointerEventData eventData)
+        {
+            if (_settlementManager == null || _inventory == null || _storageDragGhost == null)
+                return;
+
+            int count = fromChest
+                ? _settlementManager.GetStorageSlotCount(slotIndex)
+                : _settlementManager.GetPlayerSlotCount(_inventory, slotIndex);
+            if (count <= 0)
+                return;
+
+            _storageDragActive = true;
+            _storageDragFromChest = fromChest;
+            _storageDragSlotIndex = slotIndex;
+            _storageDragDropConsumed = false;
+
+            if (_storageDragGhostLabel != null)
+                SetText(_storageDragGhostLabel, _settlementManager.GetStorageSlotLabel(slotIndex, _inventory));
+            if (_storageDragGhostCountLabel != null)
+                SetText(_storageDragGhostCountLabel, count.ToString());
+            _storageDragGhost.gameObject.SetActive(true);
+            UpdateStorageDrag(eventData);
+        }
+
+        public void UpdateStorageDrag(PointerEventData eventData)
+        {
+            if (!_storageDragActive || _storageDragGhost == null || _root == null || eventData == null)
+                return;
+
+            if (RectTransformUtility.ScreenPointToLocalPointInRectangle(_root, eventData.position, eventData.pressEventCamera, out var localPoint))
+                _storageDragGhost.anchoredPosition = localPoint + new Vector2(18f, -18f);
+        }
+
+        public void HandleStorageDrop(bool dropToChest)
+        {
+            if (!_storageDragActive || _storageDragDropConsumed || _settlementManager == null || _inventory == null)
+                return;
+
+            bool success = false;
+            if (_storageDragFromChest && !dropToChest)
+                success = _settlementManager.TryWithdrawStorageSlot(_inventory, _storageDragSlotIndex, out _);
+            else if (!_storageDragFromChest && dropToChest)
+                success = _settlementManager.TryStoreInventorySlot(_inventory, _storageDragSlotIndex, out _);
+
+            if (success)
+            {
+                _storageDragDropConsumed = true;
+                DayNightLightingController.PlayInteractionSfx(DayNightLightingController.InteractionSfx.PickupItem);
+            }
+        }
+
+        public void EndStorageDrag(PointerEventData eventData)
+        {
+            _storageDragActive = false;
+            _storageDragSlotIndex = -1;
+            _storageDragDropConsumed = false;
+            if (_storageDragGhost != null)
+                _storageDragGhost.gameObject.SetActive(false);
         }
 
         private Text CreateText(Transform parent, string name, Vector2 anchorMin, Vector2 anchorMax, Vector2 pivot, Vector2 anchoredPos, Vector2 size, int fontSize, Color color, TextAnchor alignment, bool addOutline = false)

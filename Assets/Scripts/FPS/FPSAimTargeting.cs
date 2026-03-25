@@ -55,6 +55,7 @@ public static class FPSAimTargeting
     const float AnimalAimWorldTolerance = 1.2f;
     const float AnimalAimViewportTolerance = 0.16f;
     const float AnimalAimHeightBias = 0.3f;
+    const float SettlementStorageAimWorldTolerance = 1.1f;
 
     public static bool TryResolve(
         Camera cameraSource,
@@ -67,6 +68,12 @@ public static class FPSAimTargeting
         info = default;
         if (!SCoLInteractionInput.TryGetAimRay(cameraSource, out var ray))
             return false;
+
+        if (TryResolveSettlementStorageNearAim(cameraSource, maxDistance, out var directStorage))
+        {
+            info = directStorage;
+            return true;
+        }
 
         bool hasHit = Physics.Raycast(ray, out var hit, maxDistance, hitMask, QueryTriggerInteraction.Ignore);
         if (hasHit)
@@ -169,6 +176,69 @@ public static class FPSAimTargeting
         info.kind = FPSAimTargetKind.None;
         info.root = null;
         return hasHit;
+    }
+
+    static bool TryResolveSettlementStorageNearAim(
+        Camera cameraSource,
+        float maxDistance,
+        out FPSAimTargetInfo info)
+    {
+        info = default;
+        if (SCoLSettlementManager.Instance != null &&
+            SCoLSettlementManager.Instance.TryGetStorageNearAim(cameraSource, maxDistance, out var managerStorage))
+        {
+            info.kind = FPSAimTargetKind.SettlementStorage;
+            info.settlementInteractable = managerStorage;
+            info.root = managerStorage.transform;
+            info.hit = default;
+            info.hit.point = managerStorage.transform.position;
+            return true;
+        }
+
+        if (!SCoLInteractionInput.TryGetAimRay(cameraSource, out var ray))
+            return false;
+
+        var interactables = Object.FindObjectsByType<SCoLSettlementInteractable>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        SCoLSettlementInteractable best = null;
+        Vector3 bestPoint = default;
+        float bestDistance = float.MaxValue;
+
+        for (int i = 0; i < interactables.Length; i++)
+        {
+            var interactable = interactables[i];
+            if (interactable == null || interactable.kind != SCoLSettlementInteractableKind.Storage)
+                continue;
+
+            var collider = interactable.GetComponent<Collider>();
+            if (collider == null)
+                continue;
+
+            Vector3 center = collider.bounds.center;
+            float alongRay = Vector3.Dot(center - ray.origin, ray.direction);
+            if (alongRay < 0f || alongRay > maxDistance)
+                continue;
+
+            Vector3 rayPoint = ray.origin + ray.direction * alongRay;
+            Vector3 closest = collider.ClosestPoint(rayPoint);
+            float worldDistance = Vector3.Distance(rayPoint, closest);
+            if (worldDistance > SettlementStorageAimWorldTolerance || worldDistance >= bestDistance)
+                continue;
+
+            best = interactable;
+            bestPoint = closest;
+            bestDistance = worldDistance;
+        }
+
+        if (best == null)
+            return false;
+
+        info.kind = FPSAimTargetKind.SettlementStorage;
+        info.settlementInteractable = best;
+        info.root = best.transform;
+        info.hit = default;
+        info.hit.point = bestPoint;
+        info.hit.distance = Vector3.Distance(ray.origin, bestPoint);
+        return true;
     }
 
     public static bool TryResolveAnimalNearAim(

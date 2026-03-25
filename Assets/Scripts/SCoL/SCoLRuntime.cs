@@ -993,6 +993,9 @@ namespace SCoL
         public void PlaceSeedAt(Vector3 world, int flowerVariantIndex)
         {
             if (IsWinterSeasonActive()) return;
+            if (SCoL.Settlement.SCoLSettlementManager.Instance != null &&
+                SCoL.Settlement.SCoLSettlementManager.Instance.IsInsideTentNoPlantZone(world))
+                return;
             if (!TryWorldToCell(world, out int x, out int y)) return;
 
             var c = Grid.Get(x, y);
@@ -1054,6 +1057,9 @@ namespace SCoL
         public bool CanPlaceSeedAtWorld(Vector3 world)
         {
             if (IsWinterSeasonActive())
+                return false;
+            if (SCoL.Settlement.SCoLSettlementManager.Instance != null &&
+                SCoL.Settlement.SCoLSettlementManager.Instance.IsInsideTentNoPlantZone(world))
                 return false;
             if (!TryWorldToCell(world, out int x, out int y))
                 return false;

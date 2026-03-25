@@ -24,6 +24,7 @@ namespace SCoL.InputLayer
         [Header("Look Processing")]
         [Range(0.01f, 5f)] public float lookSensitivityX = 1f;
         [Range(0.01f, 5f)] public float lookSensitivityY = 1f;
+        [Range(0.1f, 30f)] public float gamepadLookMultiplier = 25f;
         public bool enableLookSmoothing = false;
         [Range(0f, 30f)] public float lookSmoothing = 14f;
 
@@ -137,6 +138,8 @@ namespace SCoL.InputLayer
         {
             Vector2 moveInput = ReadVector2(_move);
             Vector2 rawLook = ReadVector2(_look);
+            if (_look != null && _look.activeControl != null && _look.activeControl.device is Gamepad)
+                rawLook *= Mathf.Max(0.1f, gamepadLookMultiplier);
             rawLook = new Vector2(rawLook.x * lookSensitivityX, rawLook.y * lookSensitivityY);
             float dt = Mathf.Max(0.0001f, Time.unscaledDeltaTime);
             if (!enableLookSmoothing || lookSmoothing <= 0f)
