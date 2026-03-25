@@ -13,7 +13,11 @@ namespace SCoL.Interaction
         public static Vector2 Move() => GameplayInputFacade.Player != null ? GameplayInputFacade.Player.Move : Vector2.zero;
         public static Vector2 LookDelta() => GameplayInputFacade.Player != null ? GameplayInputFacade.Player.Look : Vector2.zero;
         public static float TurnDegreesThisFrame() => GameplayInputFacade.Player != null ? GameplayInputFacade.Player.TurnDegreesThisFrame : 0f;
-        public static bool JumpPressed() => GameplayInputFacade.Player != null && GameplayInputFacade.Player.JumpPressedThisFrame;
+        public static bool JumpPressed()
+        {
+            return (GameplayInputFacade.Player != null && GameplayInputFacade.Player.JumpPressedThisFrame)
+                   || (Gamepad.current != null && Gamepad.current.buttonSouth.wasPressedThisFrame);
+        }
         public static bool SprintHeld() => GameplayInputFacade.Player != null && GameplayInputFacade.Player.SprintHeld;
 
         static bool KeyThisFrame(Key key)
