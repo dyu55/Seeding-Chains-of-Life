@@ -250,30 +250,26 @@ namespace SCoL.XR
 
         private void UseToolAt(Vector3 worldPoint)
         {
-            if (runtime == null || runtime.Grid == null) return;
-            if (!runtime.TryWorldToCell(worldPoint, out int x, out int y)) return;
-
-            var cell = runtime.Grid.Get(x, y);
+            if (runtime == null) return;
 
             switch (currentTool)
             {
                 case Tool.Seed:
-                    // Allow planting on empty OR burnt/scorched tiles.
-                    if (cell.PlantStage != SCoL.PlantStage.Empty && cell.PlantStage != SCoL.PlantStage.Burnt)
-                        return;
-                    if (!inventory.TryConsume(SCoL.Inventory.SCoLItemType.Seed, 1)) return;
-                    runtime.PlaceSeedAt(worldPoint);
+                    if (inventory != null && inventory.Get(SCoL.Inventory.SCoLItemType.Seed) < 1) return;
+                    if (!runtime.TryPlaceSeedAt(worldPoint, -1)) return;
+                    if (inventory != null) inventory.TryConsume(SCoL.Inventory.SCoLItemType.Seed, 1);
                     break;
 
                 case Tool.Water:
-                    // Water always provides visible darkening feedback.
-                    if (!inventory.TryConsume(SCoL.Inventory.SCoLItemType.Water, 1)) return;
-                    runtime.AddWaterAt(worldPoint, waterAmount);
+                    if (inventory != null && inventory.Get(SCoL.Inventory.SCoLItemType.Water) < 1) return;
+                    if (!runtime.TryAddWaterAt(worldPoint, waterAmount)) return;
+                    if (inventory != null) inventory.TryConsume(SCoL.Inventory.SCoLItemType.Water, 1);
                     break;
 
                 case Tool.Fire:
-                    if (!inventory.TryConsume(SCoL.Inventory.SCoLItemType.Fire, 1)) return;
-                    runtime.IgniteAt(worldPoint, 1.0f);
+                    if (inventory != null && inventory.Get(SCoL.Inventory.SCoLItemType.Fire) < 1) return;
+                    if (!runtime.TryIgniteAt(worldPoint, 1.0f)) return;
+                    if (inventory != null) inventory.TryConsume(SCoL.Inventory.SCoLItemType.Fire, 1);
                     break;
             }
 

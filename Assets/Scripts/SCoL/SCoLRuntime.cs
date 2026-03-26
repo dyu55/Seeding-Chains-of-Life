@@ -26,6 +26,7 @@ namespace SCoL
 
         private EcosystemRenderer _renderer;
         private Transform _renderRoot;
+        private Coroutine _activeFireSpreadRoutine;
 
         private VoxelWorld _voxelWorld;
         private PlantVoxelRenderer _plantRenderer;
@@ -468,7 +469,7 @@ namespace SCoL
                     var cur = Grid.Get(x, y);
                     var n = next[Grid.Index(x, y)];
 
-                    StepFire(x, y, cur, n);
+                    StepFire(x, y, cur, n, next);
                     StepGrowth(x, y, cur, n);
 
                     // clamp continuous vars
@@ -641,7 +642,7 @@ namespace SCoL
             }
         }
 
-        private void StepFire(int x, int y, CellState cur, CellState n)
+        private void StepFire(int x, int y, CellState cur, CellState n, CellState[] next)
         {
             if (!cur.IsOnFire) return;
 
@@ -678,9 +679,7 @@ namespace SCoL
 
                     if (_rng.NextDouble() < Config.fireSpreadChance)
                     {
-                        var neighborNext = n; // (we only have current cell's next; neighbor updated elsewhere)
-                        // We cannot directly write to neighbor here without indexing; handled by IgniteAt in practice.
-                        IgniteCell(nx, ny, fuel: 0.6f);
+                        IgniteCell(next[Grid.Index(nx, ny)], fuel: 0.6f);
                     }
                 }
             }
@@ -1024,22 +1023,22 @@ namespace SCoL
             cell.PlantOffsetZ = Mathf.Clamp(world.z - center.z, -maxOffset, maxOffset);
         }
 
-        public void PlaceSeedAt(Vector3 world, int flowerVariantIndex)
+        public bool TryPlaceSeedAt(Vector3 world, int flowerVariantIndex)
         {
-            if (IsWinterSeasonActive()) return;
+            if (IsWinterSeasonActive()) return false;
             if (SCoL.Settlement.SCoLSettlementManager.Instance != null &&
                 SCoL.Settlement.SCoLSettlementManager.Instance.IsInsideTentNoPlantZone(world))
-                return;
-            if (!TryWorldToCell(world, out int x, out int y)) return;
+                return false;
+            if (!TryWorldToCell(world, out int x, out int y)) return false;
 
             var c = Grid.Get(x, y);
 
             // Terrain hard rule: only dry grass columns are valid.
             if (!IsPlantableColumn(x, y))
-                return;
+                return false;
 
             // Allow planting on empty OR burnt/scorched tiles.
-            if (c.PlantStage != PlantStage.Empty && c.PlantStage != PlantStage.Burnt) return;
+            if (c.PlantStage != PlantStage.Empty && c.PlantStage != PlantStage.Burnt) return false;
 
             // Simple: seed always succeeds (visual green immediately)
             c.PlantStage = PlantStage.SmallPlant;
@@ -1078,6 +1077,12 @@ namespace SCoL
 
             _renderer?.Render(Grid);
             _plantRenderer?.RenderNow();
+            return true;
+        }
+
+        public void PlaceSeedAt(Vector3 world, int flowerVariantIndex)
+        {
+            TryPlaceSeedAt(world, flowerVariantIndex);
         }
 
         /// <summary>
@@ -1085,7 +1090,7 @@ namespace SCoL
         /// </summary>
         public void PlaceSeedAt(Vector3 world)
         {
-            PlaceSeedAt(world, -1);
+            TryPlaceSeedAt(world, -1);
         }
 
         public bool CanPlaceSeedAtWorld(Vector3 world)
@@ -1109,8 +1114,7 @@ namespace SCoL
             if (!CanPlaceSeedAtWorld(world))
                 return false;
 
-            PlaceSeedAt(world, flowerVariantIndex);
-            return true;
+            return TryPlaceSeedAt(world, flowerVariantIndex);
         }
 
         public bool TryDestroyPlantAtCell(int x, int y)
@@ -1269,14 +1273,24 @@ namespace SCoL
 
         public void AddWaterAt(Vector3 world, float amount = 0.25f)
         {
-            if (!TryWorldToCell(world, out int x, out int y)) return;
-            AddWaterAtCell(x, y, amount);
+            TryAddWaterAt(world, amount);
         }
 
         public void AddWaterAtCell(int x, int y, float amount = 0.25f)
         {
+            TryAddWaterAtCell(x, y, amount);
+        }
+
+        public bool TryAddWaterAt(Vector3 world, float amount = 0.25f)
+        {
+            if (!TryWorldToCell(world, out int x, out int y)) return false;
+            return TryAddWaterAtCell(x, y, amount);
+        }
+
+        public bool TryAddWaterAtCell(int x, int y, float amount = 0.25f)
+        {
             if (Grid == null || !Grid.InBounds(x, y))
-                return;
+                return false;
             var cell = Grid.Get(x, y);
 
             // Keep sim var
@@ -1292,6 +1306,7 @@ namespace SCoL
 
             _renderer?.Render(Grid);
             _plantRenderer?.RenderNow();
+            return true;
         }
 
         public int AddWaterAroundWorld(Vector3 world, float radius = 1.5f, float amount = 0.25f)
@@ -1338,7 +1353,14 @@ namespace SCoL
 
         public void IgniteAt(Vector3 world, float fuel = 0.8f)
         {
-            if (!TryWorldToCell(world, out int x, out int y)) return;
+            TryIgniteAt(world, fuel);
+        }
+
+        public bool TryIgniteAt(Vector3 world, float fuel = 0.8f)
+        {
+            if (!TryWorldToCell(world, out int x, out int y)) return false;
+
+            StopActiveFireSpread();
 
             var c = Grid.Get(x, y);
             if (c != null && c.HasPlant)
@@ -1348,19 +1370,18 @@ namespace SCoL
                 OverlayFire = true;
                 _renderer?.Render(Grid);
                 _plantRenderer?.RenderNow();
-                return;
+                return true;
             }
 
             // Ensure readable view
             ViewMode = GridViewMode.Stage;
             OverlayFire = true;
 
-            // Stop any previous spread
-            StopAllCoroutines();
-            StartCoroutine(FireSpreadSimple.Spread(this, x, y, maxDistance: 3, secondsPerStep: 1f));
+            _activeFireSpreadRoutine = StartCoroutine(RunFireSpread(x, y));
 
             _renderer?.Render(Grid);
             _plantRenderer?.RenderNow();
+            return true;
         }
 
         public int IgniteAroundWorld(Vector3 world, float radius = 1.25f, float fuel = 0.8f)
@@ -2631,11 +2652,36 @@ namespace SCoL
             return false;
         }
 
+        private static void IgniteCell(CellState cell, float fuel)
+        {
+            if (cell == null)
+                return;
+
+            cell.IsOnFire = true;
+            cell.FireFuel = Mathf.Clamp01(Mathf.Max(cell.FireFuel, fuel));
+        }
+
         private void IgniteCell(int x, int y, float fuel)
         {
-            var c = Grid.Get(x, y);
-            c.IsOnFire = true;
-            c.FireFuel = Mathf.Clamp01(Mathf.Max(c.FireFuel, fuel));
+            if (Grid == null || !Grid.InBounds(x, y))
+                return;
+
+            IgniteCell(Grid.Get(x, y), fuel);
+        }
+
+        private void StopActiveFireSpread()
+        {
+            if (_activeFireSpreadRoutine == null)
+                return;
+
+            StopCoroutine(_activeFireSpreadRoutine);
+            _activeFireSpreadRoutine = null;
+        }
+
+        private System.Collections.IEnumerator RunFireSpread(int x, int y)
+        {
+            yield return FireSpreadSimple.Spread(this, x, y, maxDistance: 3, secondsPerStep: 1f);
+            _activeFireSpreadRoutine = null;
         }
 
         private bool IsPlantableColumn(int x, int z)
