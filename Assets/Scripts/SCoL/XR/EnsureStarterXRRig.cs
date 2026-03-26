@@ -1,4 +1,5 @@
 using UnityEngine;
+using Unity.XR.CoreUtils;
 
 #if UNITY_EDITOR
 using UnityEditor;
@@ -38,6 +39,26 @@ namespace SCoL.XR
 
         private static bool s_spawned;
 
+        private bool TryGetExistingNonLegacyRig(out GameObject rig)
+        {
+            rig = null;
+
+            var origins = FindObjectsByType<XROrigin>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+            foreach (var origin in origins)
+            {
+                if (origin == null)
+                    continue;
+
+                if (origin.gameObject.name == disableLegacyRigName)
+                    continue;
+
+                rig = origin.gameObject;
+                return true;
+            }
+
+            return false;
+        }
+
         private void Awake()
         {
             if (s_spawned) return;
@@ -45,10 +66,15 @@ namespace SCoL.XR
             if (onlyInPlayMode && !Application.isPlaying)
                 return;
 
-            // Disable legacy rig if present
             var legacy = GameObject.Find(disableLegacyRigName);
-            if (legacy != null)
-                legacy.SetActive(false);
+
+            if (TryGetExistingNonLegacyRig(out _))
+            {
+                if (legacy != null)
+                    legacy.SetActive(false);
+                s_spawned = true;
+                return;
+            }
 
             // Resolve prefab
             var prefab = rigPrefab;
@@ -96,6 +122,9 @@ namespace SCoL.XR
                 }
                 return;
             }
+
+            if (legacy != null)
+                legacy.SetActive(false);
 
             var rig = Instantiate(prefab);
             rig.name = "XR Origin (XR Rig)";

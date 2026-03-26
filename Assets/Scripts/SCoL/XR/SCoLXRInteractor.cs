@@ -353,35 +353,26 @@ namespace SCoL.XR
 
         private void ApplyTool(Vector3 worldPoint)
         {
-            // If an inventory exists, enforce consumption.
-            // (This keeps behavior consistent with SCoLToolController.)
-            if (inventory != null)
-            {
-                switch (currentTool)
-                {
-                    case Tool.Seed:
-                        if (!inventory.TryConsume(SCoL.Inventory.SCoLItemType.Seed, 1)) return;
-                        break;
-                    case Tool.Water:
-                        if (!inventory.TryConsume(SCoL.Inventory.SCoLItemType.Water, 1)) return;
-                        break;
-                    case Tool.Fire:
-                        if (!inventory.TryConsume(SCoL.Inventory.SCoLItemType.Fire, 1)) return;
-                        break;
-                }
-            }
+            if (runtime == null)
+                return;
 
             switch (currentTool)
             {
                 case Tool.Seed:
-                    runtime.PlaceSeedAt(worldPoint);
-                    break;
+                    if (inventory != null && inventory.Get(SCoL.Inventory.SCoLItemType.Seed) < 1) return;
+                    if (!runtime.TryPlaceSeedAt(worldPoint, -1)) return;
+                    if (inventory != null) inventory.TryConsume(SCoL.Inventory.SCoLItemType.Seed, 1);
+                    return;
                 case Tool.Water:
-                    runtime.AddWaterAt(worldPoint, waterAmount);
-                    break;
+                    if (inventory != null && inventory.Get(SCoL.Inventory.SCoLItemType.Water) < 1) return;
+                    if (!runtime.TryAddWaterAt(worldPoint, waterAmount)) return;
+                    if (inventory != null) inventory.TryConsume(SCoL.Inventory.SCoLItemType.Water, 1);
+                    return;
                 case Tool.Fire:
-                    runtime.IgniteAt(worldPoint, fireFuel);
-                    break;
+                    if (inventory != null && inventory.Get(SCoL.Inventory.SCoLItemType.Fire) < 1) return;
+                    if (!runtime.TryIgniteAt(worldPoint, fireFuel)) return;
+                    if (inventory != null) inventory.TryConsume(SCoL.Inventory.SCoLItemType.Fire, 1);
+                    return;
             }
         }
 
