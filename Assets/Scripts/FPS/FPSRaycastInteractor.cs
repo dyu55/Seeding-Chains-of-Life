@@ -57,7 +57,8 @@ public class FPSRaycastInteractor : MonoBehaviour
     [Range(0.01f, 0.5f)] public float blockThickness = 0.06f;
     [Min(0.1f)] public float surfaceProbeHeight = 10f;
     [Min(0f)] public float surfaceOffset = 0.01f;
-    public Color waterSpreadColor = new Color(0.18f, 0.45f, 0.95f, 0.95f);
+    [Tooltip("Tint applied to spawned water visuals.")]
+    public Color waterSpreadColor = new Color(0.12f, 0.42f, 1f, 0.95f);
     public Color fireSpreadColor = new Color(0.95f, 0.18f, 0.14f, 0.95f);
     [Tooltip("Use circular rings (instead of square rings) for temporary water/fire spread VFX.")]
     public bool useCircularSpreadPattern = true;
@@ -86,21 +87,31 @@ public class FPSRaycastInteractor : MonoBehaviour
     public AnimationClip[] firePlaceV1AnimationClips;
     [Tooltip("Optional clips specifically for GroundFireV2.")]
     public AnimationClip[] firePlaceV2AnimationClips;
-    [Header("Water Place Models (optional)")]
-    [Tooltip("If assigned, water spread visuals will instantiate these prefabs instead of primitive decals/blocks.")]
+    [Header("Water Effect")]
+    [Tooltip("If assigned, water visuals will instantiate these prefabs instead of primitive decals/blocks.")]
     public GameObject[] waterPlacePrefabs;
+    [Tooltip("Base scale applied to each spawned water visual before fit/scatter multipliers.")]
     [Range(0.1f, 3f)] public float waterPlacePrefabScale = 0.9f;
-    [Range(0.01f, 80f)] public float waterPlacePrefabSizeMultiplier = 0.12f;
+    [Tooltip("Extra global size multiplier for each spawned water visual.")]
+    [Range(0.01f, 80f)] public float waterPlacePrefabSizeMultiplier = 0.012f;
+    [Tooltip("Additional vertical offset from the hit point.")]
     [Min(0f)] public float waterPlaceSpawnHeight = 0.55f;
     [Tooltip("Additional local/world offset applied to spawned water effects.")]
     public Vector3 waterPlacePositionOffset = new Vector3(0f, 0.55f, 0f);
     [Tooltip("Additional Euler rotation applied after the default downward-facing rotation.")]
     public Vector3 waterPlaceEulerOffset = Vector3.zero;
     [Tooltip("Per-axis scale multiplier applied after fit-to-height and size multiplier.")]
-    public Vector3 waterPlaceScaleMultiplier = Vector3.one;
-    [Min(0.01f)] public float waterPlaceTargetHeight = 0.02f;
-    [Min(0.05f)] public float waterEffectLifetimeSeconds = 0.18f;
-    [Range(0.1f, 4f)] public float waterAnimationSpeed = 2.25f;
+    public Vector3 waterPlaceScaleMultiplier = new Vector3(0.09f, 0.09f, 0.09f);
+    [Tooltip("Target fitted world height for each water visual before final scaling.")]
+    [Min(0.01f)] public float waterPlaceTargetHeight = 0.002f;
+    [Tooltip("How long spawned water visuals remain before cleanup.")]
+    [Min(0.05f)] public float waterEffectLifetimeSeconds = 1.4f;
+    [Tooltip("Playback speed for animated water effects.")]
+    [Range(0.1f, 4f)] public float waterAnimationSpeed = 1f;
+    [Tooltip("How many water particles/effect instances are spawned per use.")]
+    [Min(1)] public int waterSingleEffectCount = 50;
+    [Tooltip("How far the water particles can spread from the hit point.")]
+    [Min(0f)] public float waterSingleEffectScatterRadius = 0.8f;
     [Tooltip("If enabled, spawned water models auto-play imported animation clips.")]
     public bool autoPlayWaterModelAnimation = true;
     [Tooltip("Optional explicit water animation clips. If empty, clips are auto-loaded from waterV2 in editor.")]
@@ -418,14 +429,28 @@ public class FPSRaycastInteractor : MonoBehaviour
                     return;
         }
 
-        const string waterPath = "Assets/Models/Modeling/_Incoming/Water/waterV2.fbx";
+        const string waterAbcPath = "Assets/Models/Modeling/_Incoming/Water/waterV3.abc";
+        const string waterObjPath = "Assets/Models/Modeling/_Incoming/Water/waterObjV3.obj";
+        const string waterFbxPath = "Assets/Models/Modeling/_Incoming/Water/waterV2.fbx";
+
+        string waterPath = waterAbcPath;
         var water = AssetDatabase.LoadAssetAtPath<GameObject>(waterPath);
+        if (water == null)
+        {
+            waterPath = waterObjPath;
+            water = AssetDatabase.LoadAssetAtPath<GameObject>(waterPath);
+        }
+        if (water == null)
+        {
+            waterPath = waterFbxPath;
+            water = AssetDatabase.LoadAssetAtPath<GameObject>(waterPath);
+        }
         if (water == null)
             return;
 
         waterPlacePrefabs = new[] { water };
 
-        if (waterPlaceAnimationClips == null || waterPlaceAnimationClips.Length == 0)
+        if ((waterPlaceAnimationClips == null || waterPlaceAnimationClips.Length == 0) && waterPath == waterFbxPath)
         {
             var clips = new System.Collections.Generic.List<AnimationClip>(4);
             AppendAnimationClipsFromAsset(clips, waterPath);
@@ -632,10 +657,7 @@ public class FPSRaycastInteractor : MonoBehaviour
                         break;
                     }
 
-                    if (targetedCAPlant || targetedLegacyPlant != null)
-                        StartCoroutine(SpawnSingleWaterEffect(waterPoint, waterNormal));
-                    else
-                        StartCoroutine(SpawnTransientSpread(waterPoint, waterNormal, GetWaterSpreadMat(), false, true));
+                    StartCoroutine(SpawnSingleWaterEffect(waterPoint, waterNormal));
                     if (_runtime == null || !_runtime.isActiveAndEnabled)
                         _runtime = FindFirstObjectByType<SCoLRuntime>();
                     if (_runtime != null)
@@ -2379,10 +2401,25 @@ public class FPSRaycastInteractor : MonoBehaviour
 
     System.Collections.IEnumerator SpawnSingleWaterEffect(Vector3 hitPoint, Vector3 hitNormal)
     {
-        var spawned = new System.Collections.Generic.List<GameObject>(1);
-        SpawnBlock(hitPoint, GetWaterSpreadMat(), spawned, burnTargets: false, waterTargets: true);
+        int count = Mathf.Max(1, waterSingleEffectCount);
+        var spawned = new System.Collections.Generic.List<GameObject>(count);
+        for (int i = 0; i < count; i++)
+        {
+            Vector2 offset2 = Random.insideUnitCircle * Mathf.Max(0f, waterSingleEffectScatterRadius);
+            Vector3 offset = new Vector3(offset2.x, 0f, offset2.y);
+            bool applyGameplay = i == 0;
+            SpawnBlock(hitPoint + offset, GetWaterSpreadMat(), spawned, burnTargets: false, waterTargets: true, applyGameplayEffects: applyGameplay);
+        }
 
         float linger = Mathf.Max(0.05f, waterEffectLifetimeSeconds);
+        for (int i = 0; i < spawned.Count; i++)
+        {
+            if (spawned[i] == null)
+                continue;
+            var alembic = spawned[i].GetComponentInChildren<AlembicModelPlayer>(includeInactive: true);
+            if (alembic != null)
+                linger = Mathf.Max(linger, alembic.EstimatedPlaybackSeconds + 0.05f);
+        }
         yield return new WaitForSeconds(linger);
 
         for (int i = 0; i < spawned.Count; i++)
@@ -2415,7 +2452,7 @@ public class FPSRaycastInteractor : MonoBehaviour
         }
     }
 
-    void SpawnBlock(Vector3 pos, Material mat, System.Collections.Generic.List<GameObject> sink, bool burnTargets, bool waterTargets)
+    void SpawnBlock(Vector3 pos, Material mat, System.Collections.Generic.List<GameObject> sink, bool burnTargets, bool waterTargets, bool applyGameplayEffects = true)
     {
         if (waterTargets && waterSpreadJitter > 0f)
         {
@@ -2426,13 +2463,13 @@ public class FPSRaycastInteractor : MonoBehaviour
 
         Vector3 surfacePos = ProjectToSurface(pos, out Vector3 surfaceNormal);
 
-        if (burnTargets)
+        if (burnTargets && applyGameplayEffects)
         {
             float burnRadius = Mathf.Max(0.05f, blockScale * Mathf.Clamp(fireBurnRadiusScale, 0.05f, 1f));
             BurnTargetsAtTile(surfacePos, burnRadius);
             FireAffectSeedGrowthAtTile(surfacePos, burnRadius);
         }
-        else if (waterTargets)
+        else if (waterTargets && applyGameplayEffects)
         {
             WaterAffectSeedGrowthAtTile(surfacePos, Mathf.Max(0.05f, blockScale * 0.55f));
         }
@@ -2447,7 +2484,7 @@ public class FPSRaycastInteractor : MonoBehaviour
         var go = firePrefab != null
             ? Instantiate(firePrefab)
             : (waterPrefab != null
-                ? Instantiate(waterPrefab)
+                ? new GameObject()
                 : GameObject.CreatePrimitive(useSoftDecalSpreadVisuals ? PrimitiveType.Quad : (waterTargets ? PrimitiveType.Sphere : PrimitiveType.Cube)));
         string effectPrefabName = firePrefab != null ? firePrefabName : waterPrefabName;
         go.name = currentTool == ApplyTool.Water
@@ -2464,19 +2501,28 @@ public class FPSRaycastInteractor : MonoBehaviour
         }
         else if (waterPrefab != null)
         {
+            var waterVisual = Instantiate(waterPrefab, go.transform);
             float scale = Mathf.Max(0.1f, waterPlacePrefabScale * blockScale);
             Vector3 waterOffset = waterPlacePositionOffset;
             waterOffset.y += Mathf.Max(0f, waterPlaceSpawnHeight);
             go.transform.position = surfacePos + waterOffset;
-            go.transform.rotation = Quaternion.Euler(180f, Random.Range(0f, 360f), 0f) * Quaternion.Euler(waterPlaceEulerOffset);
+            go.transform.rotation = Quaternion.Euler(0f, Random.Range(0f, 360f), 0f) * Quaternion.Euler(waterPlaceEulerOffset);
+            waterVisual.transform.localRotation = Quaternion.identity;
+            waterVisual.transform.localPosition = Vector3.zero;
+            waterVisual.transform.localScale = Vector3.one;
             go.transform.localScale = go.transform.localScale * scale;
-            FitEffectToTargetHeight(go, Mathf.Max(0.1f, waterPlaceTargetHeight));
-            go.transform.localScale *= Mathf.Max(1f, waterPlacePrefabSizeMultiplier);
-            go.transform.localScale = Vector3.Scale(go.transform.localScale, new Vector3(
+            FitEffectToTargetHeight(waterVisual, Mathf.Max(0.1f, waterPlaceTargetHeight));
+            waterVisual.transform.localScale *= Mathf.Max(1f, waterPlacePrefabSizeMultiplier);
+            waterVisual.transform.localScale = Vector3.Scale(waterVisual.transform.localScale, new Vector3(
                 Mathf.Max(0.01f, waterPlaceScaleMultiplier.x),
                 Mathf.Max(0.01f, waterPlaceScaleMultiplier.y),
                 Mathf.Max(0.01f, waterPlaceScaleMultiplier.z)));
-            TryPlayModelAnimation(go, effectPrefabName, waterTargets: true);
+            // Flip vertically so the motion reads as descending instead of ascending.
+            var flipped = waterVisual.transform.localScale;
+            flipped.y *= -1f;
+            waterVisual.transform.localScale = flipped;
+            TintWaterEffectBlue(waterVisual);
+            TryPlayModelAnimation(waterVisual, effectPrefabName, waterTargets: true);
         }
         else if (useSoftDecalSpreadVisuals)
         {
@@ -2530,6 +2576,9 @@ public class FPSRaycastInteractor : MonoBehaviour
         if (animator != null && animator.runtimeAnimatorController != null)
             return;
 
+        if (TryPlayAlembicModel(fxGO, waterTargets))
+            return;
+
         var clip = waterTargets
             ? PickWaterAnimationClipForModel(sourcePrefabName)
             : PickFireAnimationClipForModel(sourcePrefabName);
@@ -2540,6 +2589,72 @@ public class FPSRaycastInteractor : MonoBehaviour
         if (player == null)
             player = fxGO.AddComponent<FireModelClipPlayer>();
         player.Play(clip, !waterTargets, waterTargets ? waterAnimationSpeed : 1f);
+    }
+
+    bool TryPlayAlembicModel(GameObject fxGO, bool waterTargets)
+    {
+        if (fxGO == null || !waterTargets)
+            return false;
+
+        var alembicPlayer = FindComponentByTypeName(fxGO, "UnityEngine.Formats.Alembic.Importer.AlembicStreamPlayer");
+        if (alembicPlayer == null)
+            return false;
+
+        var player = fxGO.GetComponent<AlembicModelPlayer>();
+        if (player == null)
+            player = fxGO.AddComponent<AlembicModelPlayer>();
+        player.Bind(alembicPlayer, Mathf.Max(0.01f, waterAnimationSpeed), loop: false, reverse: true);
+        return true;
+    }
+
+    static Component FindComponentByTypeName(GameObject root, string fullTypeName)
+    {
+        if (root == null || string.IsNullOrEmpty(fullTypeName))
+            return null;
+
+        var components = root.GetComponentsInChildren<Component>(includeInactive: true);
+        for (int i = 0; i < components.Length; i++)
+        {
+            var c = components[i];
+            if (c == null)
+                continue;
+            var t = c.GetType();
+            if (t != null && t.FullName == fullTypeName)
+                return c;
+        }
+        return null;
+    }
+
+    void TintWaterEffectBlue(GameObject root)
+    {
+        if (root == null)
+            return;
+
+        var renderers = root.GetComponentsInChildren<Renderer>(includeInactive: true);
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            var r = renderers[i];
+            if (r == null)
+                continue;
+
+            var mats = r.materials;
+            for (int j = 0; j < mats.Length; j++)
+            {
+                var mat = mats[j];
+                if (mat == null)
+                    continue;
+
+                if (mat.HasProperty("_BaseColor"))
+                    mat.SetColor("_BaseColor", waterSpreadColor);
+                if (mat.HasProperty("_Color"))
+                    mat.SetColor("_Color", waterSpreadColor);
+                if (mat.HasProperty("_EmissionColor"))
+                {
+                    mat.EnableKeyword("_EMISSION");
+                    mat.SetColor("_EmissionColor", waterSpreadColor * 0.65f);
+                }
+            }
+        }
     }
 
     AnimationClip PickFireAnimationClipForModel(string sourcePrefabName)
@@ -3051,6 +3166,78 @@ public class FPSRaycastInteractor : MonoBehaviour
             if (_graph.IsValid())
                 _graph.Destroy();
             _created = false;
+        }
+    }
+
+    sealed class AlembicModelPlayer : MonoBehaviour
+    {
+        Component _streamPlayer;
+        System.Reflection.PropertyInfo _currentTime;
+        System.Reflection.PropertyInfo _duration;
+        float _speed = 1f;
+        bool _loop;
+        bool _reverse;
+        bool _bound;
+        float _durationSeconds;
+
+        public float EstimatedPlaybackSeconds => _durationSeconds > 0f ? _durationSeconds / Mathf.Max(0.01f, _speed) : 0f;
+
+        public void Bind(Component streamPlayer, float speed, bool loop, bool reverse)
+        {
+            _streamPlayer = streamPlayer;
+            _speed = Mathf.Max(0.01f, speed);
+            _loop = loop;
+            _reverse = reverse;
+            _bound = false;
+            _durationSeconds = 0f;
+            if (_streamPlayer == null)
+                return;
+
+            var type = _streamPlayer.GetType();
+            _currentTime = type.GetProperty("CurrentTime");
+            _duration = type.GetProperty("Duration");
+            if (_currentTime == null || _duration == null || !_currentTime.CanRead || !_currentTime.CanWrite || !_duration.CanRead)
+                return;
+
+            _durationSeconds = ReadFloat(_streamPlayer, _duration);
+            _currentTime.SetValue(_streamPlayer, _reverse ? _durationSeconds : 0f);
+            _bound = true;
+        }
+
+        void Update()
+        {
+            if (!_bound || _streamPlayer == null)
+                return;
+
+            float duration = ReadFloat(_streamPlayer, _duration);
+            if (duration <= 0.0001f)
+                return;
+
+            float t = ReadFloat(_streamPlayer, _currentTime) + (_reverse ? -1f : 1f) * Time.deltaTime * _speed;
+            if (_loop)
+            {
+                while (t < 0f) t += duration;
+                while (t > duration) t -= duration;
+            }
+            else if (_reverse)
+            {
+                if (t < 0f)
+                    t = 0f;
+            }
+            else if (t > duration)
+            {
+                t = duration;
+            }
+
+            _currentTime.SetValue(_streamPlayer, t);
+        }
+
+        static float ReadFloat(Component target, System.Reflection.PropertyInfo property)
+        {
+            if (target == null || property == null)
+                return 0f;
+            object value = property.GetValue(target);
+            return value is float f ? f : 0f;
         }
     }
 

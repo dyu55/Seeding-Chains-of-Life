@@ -67,10 +67,12 @@ public class SimpleFirstPersonController : MonoBehaviour
     [Tooltip("Underwater footstep clip")]
     public AudioClip footstepClipUnderwater;
 
-    [Range(0f, 1f)] public float footstepVolume = 0.5f;
+    [Range(0f, 1f)] public float footstepVolume = 1f;
+    [Min(0f)] public float underwaterFootstepVolumeMultiplier = 2f;
 
     public float stepRate = 0.25f;
 	public float stepCoolDown;
+    [Min(0f)] public float footstepMoveThreshold = 0.01f;
 
     CharacterController _cc;
     float _pitch;
@@ -94,12 +96,23 @@ public class SimpleFirstPersonController : MonoBehaviour
     float _savedFarClip;
     float _lastRescueTime = -999f;
     float _nextStompCheckAt;
+    float _moveInputSqrMagnitude;
+    Vector3 _lastFootstepPosition;
+    bool _hasLastFootstepPosition;
 
     void Awake()
     {
         _cc = GetComponent<CharacterController>();
         if (cameraPivot == null && Camera.main != null) cameraPivot = Camera.main.transform;
         _playerCamera = cameraPivot != null ? cameraPivot.GetComponent<Camera>() : Camera.main;
+        if (footstepAudioSource == null)
+            footstepAudioSource = GetComponentInChildren<AudioSource>(includeInactive: true);
+        if (footstepAudioSource != null)
+        {
+            footstepAudioSource.playOnAwake = false;
+            footstepAudioSource.loop = false;
+            footstepAudioSource.spatialBlend = 0f;
+        }
     }
 
     void OnEnable()
@@ -153,6 +166,7 @@ public class SimpleFirstPersonController : MonoBehaviour
 
         Vector3 move = (transform.right * x + transform.forward * z);
         if (move.sqrMagnitude > 1f) move.Normalize();
+        _moveInputSqrMagnitude = new Vector2(x, z).sqrMagnitude;
 
         bool sprinting = SCoLInteractionInput.SprintHeld();
         float speed = sprinting ? sprintSpeed : walkSpeed;
@@ -343,27 +357,86 @@ public class SimpleFirstPersonController : MonoBehaviour
 
     void applyFootstepAudio()
     {
+        if (footstepAudioSource == null)
+            return;
+
         footstepAudioSource.spatialBlend = 0f; // 2D
-        footstepAudioSource.volume = Mathf.Clamp01(footstepVolume);
-        
-        Vector3 samplePos = cameraPivot != null ? cameraPivot.position : transform.position + Vector3.up * 1.6f;
+        footstepAudioSource.volume = Mathf.Clamp01(footstepVolume) * 4f;
+
+        Vector3 samplePos = GetFootstepSamplePosition();
+        Vector3 planarSample = new Vector3(transform.position.x, 0f, transform.position.z);
 
         stepCoolDown -= Time.deltaTime;
 
-        if ((_cc.velocity != Vector3.zero) && stepCoolDown < 0f && !footstepAudioSource.isPlaying)
+        bool hasMoveInput = _moveInputSqrMagnitude > Mathf.Max(0f, footstepMoveThreshold);
+        bool grounded = _cc != null && _cc.isGrounded;
+        if (!hasMoveInput || !grounded)
         {
-            if (IsUnderwater(samplePos)){
-                footstepAudioSource.clip = footstepClipUnderwater;
-            }
-            else if (IsWinterActive()){
-                footstepAudioSource.clip = footstepClipSnow;
-            }
-            else {
-                footstepAudioSource.clip = footstepClip;
-            }
-        footstepAudioSource.Play();
-        stepCoolDown = stepRate;
+            _hasLastFootstepPosition = false;
+            return;
         }
+
+        if (!_hasLastFootstepPosition)
+        {
+            _lastFootstepPosition = planarSample;
+            _hasLastFootstepPosition = true;
+        }
+
+        float movedSinceLastStep = Vector3.Distance(planarSample, _lastFootstepPosition);
+        if (stepCoolDown >= 0f || movedSinceLastStep < 0.08f)
+            return;
+
+        AudioClip clip = footstepClip;
+        float clipVolumeScale = footstepAudioSource.volume;
+        if (IsFootInWater(samplePos))
+        {
+            clip = footstepClipUnderwater;
+            clipVolumeScale *= Mathf.Max(0f, underwaterFootstepVolumeMultiplier);
+        }
+        else if (IsWinterActive())
+            clip = footstepClipSnow;
+
+        if (clip == null)
+            return;
+
+        footstepAudioSource.PlayOneShot(clip, clipVolumeScale);
+        stepCoolDown = stepRate;
+        _lastFootstepPosition = planarSample;
+    }
+
+    Vector3 GetFootstepSamplePosition()
+    {
+        if (_cc != null)
+            return _cc.bounds.min + Vector3.up * 0.08f;
+        return transform.position + Vector3.up * 0.08f;
+    }
+
+    bool IsFootInWater(Vector3 worldPos)
+    {
+        if (_voxelWorld == null)
+            _voxelWorld = FindFirstObjectByType<VoxelWorld>();
+        if (_voxelWorld == null || _voxelWorld.Config == null)
+            return false;
+        if (!_voxelWorld.TryWorldToColumn(worldPos, out int x, out int z))
+            return false;
+
+        int localY = Mathf.Clamp(
+            Mathf.FloorToInt(worldPos.y - _voxelWorld.OriginWorld.y),
+            0,
+            _voxelWorld.Config.worldHeight - 1);
+
+        // Check the player's foot cell and one block above for shallow shoreline contact.
+        if (_voxelWorld.GetBlock(x, localY, z) == VoxelBlockType.Water)
+            return true;
+        int aboveY = Mathf.Min(_voxelWorld.Config.worldHeight - 1, localY + 1);
+        if (_voxelWorld.GetBlock(x, aboveY, z) == VoxelBlockType.Water)
+            return true;
+
+        if (_voxelWorld.TryGetVisibleWaterSurfaceYAtWorld(worldPos, out float waterSurfaceY))
+            return worldPos.y <= waterSurfaceY + 0.05f;
+
+        int sea = _voxelWorld.Config.seaLevel;
+        return _voxelWorld.GetBlock(x, sea, z) == VoxelBlockType.Water && worldPos.y <= (_voxelWorld.OriginWorld.y + sea + 1f + 0.05f);
     }
 
     static Vector2 DirectionOnCircle(float t)
