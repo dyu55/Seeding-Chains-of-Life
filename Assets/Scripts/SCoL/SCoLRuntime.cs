@@ -6,6 +6,10 @@ using SCoL.Visualization;
 using SCoL.Weather;
 using SCoL.Inventory;
 using Unity.XR.CoreUtils;
+using Object = UnityEngine.Object;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 namespace SCoL
 {
@@ -138,6 +142,28 @@ namespace SCoL
         [Range(0f, 8f)] public float denseFlowerSeedDropGlowIntensity = 1.8f;
         [Min(0.01f)] public float denseFlowerSeedDropHaloSize = 0.45f;
         [Min(0f)] public float denseFlowerSeedDropHaloHeight = 0.18f;
+        [Header("Pollination Bees")]
+        public bool spawnPollinationBees = true;
+        [Min(1)] public int pollinationBeeCount = 6;
+        [Min(0.1f)] public float pollinationBeeRadius = 1.3f;
+        [Min(0f)] public float pollinationBeeHeight = 0.8f;
+        [Min(0.25f)] public float pollinationBeeDurationSeconds = 5f;
+        [Min(1f)] public float pollinationBeeOrbitSpeedDegrees = 95f;
+        [Min(0f)] public float pollinationBeeBobAmplitude = 0.18f;
+        [Min(0.1f)] public float pollinationBeeBobSpeed = 3.2f;
+        [Min(0.01f)] public float pollinationBeeScale = 0.35f;
+        public AudioClip pollinationBeeBuzzClip;
+        [Range(0f, 1f)] public float pollinationBeeBuzzVolume = 0.35f;
+        [Min(0.1f)] public float pollinationBeeBuzzMinDistance = 3f;
+        [Min(0.1f)] public float pollinationBeeBuzzMaxDistance = 14f;
+        public Color pollinationBeeGlowColor = new Color(1f, 0.95f, 0.45f, 1f);
+        [Range(0f, 16f)] public float pollinationBeeGlowIntensity = 4.5f;
+        [Min(0.01f)] public float pollinationBeeGlowRange = 2.2f;
+        [Min(0)] public int pollinationFireflyCount = 18;
+        public Vector2 pollinationFireflySizeRange = new Vector2(0.035f, 0.08f);
+        public Vector2 pollinationFireflySpeedRange = new Vector2(0.08f, 0.24f);
+        [Min(0.1f)] public float pollinationFireflyRadius = 1.6f;
+        [Min(0f)] public float pollinationFireflyHeight = 0.9f;
 
         public GridViewMode ViewMode
         {
@@ -167,6 +193,8 @@ namespace SCoL
         private WeatherSystem _weatherSystem;
         private SeasonSkyboxController _seasonSkybox;
         private SpawnPickups _spawnPickups;
+        private GameObject _pollinationBeePrefab;
+        private AnimationClip _pollinationBeeClip;
         private float _nextSeasonProbeAt;
         private float _windDirectionTimer;
         private Vector2Int _windDirection = new Vector2Int(1, 0);
@@ -1838,6 +1866,9 @@ namespace SCoL
                 SpawnDenseFlowerSeedPickup(dropWorld, flowerVariantIndex);
                 spawned++;
             }
+
+            if (spawned > 0)
+                SpawnPollinationBeeSwarm(clusterPoints, crowdedCount);
         }
 
         int GetDenseFlowerSeedDropCount(int nearbyFlowers)
@@ -1992,6 +2023,89 @@ namespace SCoL
                 (list[i], list[j]) = (list[j], list[i]);
             }
         }
+
+        void SpawnPollinationBeeSwarm(List<Vector3> clusterPoints, int crowdedCount)
+        {
+            if (!spawnPollinationBees)
+                return;
+            if (!TryEnsurePollinationBeeAssets())
+                return;
+
+            Vector3 center = Vector3.zero;
+            int count = 0;
+            if (clusterPoints != null)
+            {
+                for (int i = 0; i < clusterPoints.Count; i++)
+                {
+                    center += clusterPoints[i];
+                    count++;
+                }
+            }
+
+            if (count <= 0)
+                return;
+
+            center /= count;
+
+            var swarmGo = new GameObject($"PollinationBeeSwarm_{Time.frameCount}");
+            swarmGo.transform.position = center + Vector3.up * Mathf.Max(0f, pollinationBeeHeight);
+            var swarm = swarmGo.AddComponent<SCoLPollinationBeeSwarm>();
+            int beeCount = Mathf.Clamp(Mathf.RoundToInt(Mathf.Lerp(3f, pollinationBeeCount, Mathf.InverseLerp(Mathf.Max(2, densePlayerFlowerThreshold), 10f, crowdedCount))), 3, Mathf.Max(3, pollinationBeeCount));
+            swarm.Initialize(
+                _pollinationBeePrefab,
+                _pollinationBeeClip,
+                beeCount,
+                pollinationBeeRadius,
+                pollinationBeeHeight,
+                pollinationBeeDurationSeconds,
+                pollinationBeeOrbitSpeedDegrees,
+                pollinationBeeBobAmplitude,
+                pollinationBeeBobSpeed,
+                pollinationBeeScale,
+                pollinationFireflyCount,
+                pollinationFireflySizeRange,
+                pollinationFireflySpeedRange,
+                pollinationFireflyRadius,
+                pollinationFireflyHeight,
+                pollinationBeeBuzzClip,
+                pollinationBeeBuzzVolume,
+                pollinationBeeBuzzMinDistance,
+                pollinationBeeBuzzMaxDistance,
+                pollinationBeeGlowColor,
+                pollinationBeeGlowIntensity,
+                pollinationBeeGlowRange);
+        }
+
+        bool TryEnsurePollinationBeeAssets()
+        {
+            if (_pollinationBeePrefab == null)
+                _pollinationBeePrefab = Resources.Load<GameObject>("Animals/BeeAnimated/bee");
+            if (_pollinationBeePrefab == null)
+                return false;
+
+            if (_pollinationBeeClip == null)
+            {
+                Object[] beeAssets = Resources.LoadAll("Animals/BeeAnimated/bee");
+                for (int i = 0; i < beeAssets.Length; i++)
+                {
+                    if (beeAssets[i] is AnimationClip clip && !string.Equals(clip.name, "__preview__", StringComparison.OrdinalIgnoreCase))
+                    {
+                        _pollinationBeeClip = clip;
+                        break;
+                    }
+                }
+            }
+
+            return true;
+        }
+
+#if UNITY_EDITOR
+        void OnValidate()
+        {
+            if (pollinationBeeBuzzClip == null)
+                pollinationBeeBuzzClip = AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Sounds/bee.mp3");
+        }
+#endif
 
         Vector3 GetDenseFlowerDropSourceWorld(int x, int y)
         {

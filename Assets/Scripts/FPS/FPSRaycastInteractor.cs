@@ -388,6 +388,55 @@ public class FPSRaycastInteractor : MonoBehaviour
 #endif
     }
 
+    void SoftenSpawnedParticleEffect(GameObject root, Color baseColor)
+    {
+        if (root == null)
+            return;
+
+        var renderers = root.GetComponentsInChildren<ParticleSystemRenderer>(includeInactive: true);
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            var renderer = renderers[i];
+            if (renderer == null)
+                continue;
+
+            renderer.renderMode = ParticleSystemRenderMode.Billboard;
+#if UNITY_EDITOR
+            var glowMat = AssetDatabase.LoadAssetAtPath<Material>("Assets/Material/SpringGlow.mat");
+            if (glowMat != null)
+                renderer.sharedMaterial = glowMat;
+#endif
+
+            var ps = renderer.GetComponent<ParticleSystem>();
+            if (ps == null)
+                continue;
+
+            var main = ps.main;
+            Color tinted = baseColor;
+            tinted.a = 0.72f;
+            main.startColor = tinted;
+
+            var col = ps.colorOverLifetime;
+            col.enabled = true;
+            var gradient = new Gradient();
+            gradient.SetKeys(
+                new[]
+                {
+                    new GradientColorKey(baseColor, 0f),
+                    new GradientColorKey(Color.Lerp(baseColor, Color.white, 0.35f), 0.55f),
+                    new GradientColorKey(baseColor, 1f),
+                },
+                new[]
+                {
+                    new GradientAlphaKey(0f, 0f),
+                    new GradientAlphaKey(0.9f, 0.2f),
+                    new GradientAlphaKey(0.45f, 0.7f),
+                    new GradientAlphaKey(0f, 1f),
+                });
+            col.color = new ParticleSystem.MinMaxGradient(gradient);
+        }
+    }
+
     private void AutoAssignFirePlacePrefabs()
     {
 #if UNITY_EDITOR
@@ -2389,6 +2438,7 @@ public class FPSRaycastInteractor : MonoBehaviour
             return;
 
         var go = Instantiate(prefab, position, rotation);
+        SoftenSpawnedParticleEffect(go, new Color(1f, 0.65f, 0.9f, 1f));
         Destroy(go, Mathf.Max(0.1f, lifetime));
     }
 
