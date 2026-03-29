@@ -22,6 +22,7 @@ namespace SCoL
         public float FireFuel = 0f; // 0..1
         public float BurntAutoClearSeconds = 0f;
         public float SpreadBlockSeconds = 0f;
+        public float BurnScarSeconds = 0f;
 
         // Simple prototype: allows water to darken the cell color without relying on view modes
         public float WaterVisual = 0f; // 0..1

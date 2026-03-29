@@ -102,6 +102,9 @@ namespace SCoL
         [Tooltip("If true, cellular spread and plant growth are paused during Winter.")]
         public bool pausePlantGrowthInWinter = true;
 
+        [Header("Burn Scars")]
+        [Min(0f)] public float burnScarSeconds = 28f;
+
         [Header("Player Flower Seed Drops")]
         public bool dropSeedPickupsNearDensePlayerFlowers = true;
         [Min(2)] public int densePlayerFlowerThreshold = 3;
@@ -666,6 +669,7 @@ namespace SCoL
                 n.PlantHealth = 0f;
                 n.StompHits = 0;
                 n.ClearPlantPlacementOffset();
+                n.BurnScarSeconds = Mathf.Max(0f, cur.BurnScarSeconds - Mathf.Max(0.01f, Config.tickSeconds));
                 if (cur.BurntAutoClearSeconds > 0f)
                 {
                     float remain = Mathf.Max(0f, cur.BurntAutoClearSeconds - Mathf.Max(0.01f, Config.tickSeconds));
@@ -686,6 +690,7 @@ namespace SCoL
                         n.StompHits = 0;
                         n.ClearPlantPlacementOffset();
                         n.BurntAutoClearSeconds = 0f;
+                        n.BurnScarSeconds = Mathf.Max(n.BurnScarSeconds, Mathf.Max(0f, cur.BurnScarSeconds));
                     }
                     return;
                 }
@@ -769,6 +774,7 @@ namespace SCoL
                 n.StompHits = 0;
                 n.ClearPlantPlacementOffset();
                 n.SpreadBlockSeconds = spreadBlockRemain;
+                n.BurnScarSeconds = Mathf.Max(0f, cur.BurnScarSeconds - Mathf.Max(0.01f, Config.tickSeconds));
 
                 if (!IsPlantableColumn(x, y))
                     return;
@@ -1552,6 +1558,92 @@ namespace SCoL
             return c.FlowerVariantIndex >= 0;
         }
 
+        public int CountMaturePlantsAroundWorld(Vector3 worldPos, float radius, bool lineageOnly = false)
+        {
+            if (Grid == null || radius <= 0f)
+                return 0;
+            if (!TryWorldToCell(worldPos, out int cx, out int cy))
+                return 0;
+
+            float cellSize = Mathf.Max(0.01f, Grid.CellSize);
+            int cellRadius = Mathf.Max(1, Mathf.CeilToInt(radius / cellSize));
+            float radiusSqr = radius * radius;
+            int count = 0;
+
+            for (int y = cy - cellRadius; y <= cy + cellRadius; y++)
+            for (int x = cx - cellRadius; x <= cx + cellRadius; x++)
+            {
+                if (!Grid.InBounds(x, y))
+                    continue;
+
+                Vector3 p = Grid.CellCenterWorld(x, y);
+                p.y = worldPos.y;
+                if ((p - worldPos).sqrMagnitude > radiusSqr)
+                    continue;
+
+                var c = Grid.Get(x, y);
+                if (c == null || !c.HasPlant || c.PlantStage == PlantStage.Burnt || c.PlantStage < PlantStage.MediumTree)
+                    continue;
+                if (lineageOnly && !c.IsPlayerSeedLineage)
+                    continue;
+                count++;
+            }
+
+            return count;
+        }
+
+        public int CountAllMaturePlants(bool lineageOnly = false)
+        {
+            if (Grid == null)
+                return 0;
+
+            int count = 0;
+            Grid.ForEach((x, y, c) =>
+            {
+                if (c == null || !c.HasPlant || c.PlantStage == PlantStage.Burnt || c.PlantStage < PlantStage.MediumTree)
+                    return;
+                if (lineageOnly && !c.IsPlayerSeedLineage)
+                    return;
+                count++;
+            });
+            return count;
+        }
+
+        public bool TryFindPlantDensityHotspot(Vector3 origin, float searchRadius, float sampleRadius, out Vector3 hotspot, out int score, bool lineageOnly = false)
+        {
+            hotspot = origin;
+            score = 0;
+            if (Grid == null || searchRadius <= 0f || sampleRadius <= 0f)
+                return false;
+            if (!TryWorldToCell(origin, out int cx, out int cy))
+                return false;
+
+            float cellSize = Mathf.Max(0.01f, Grid.CellSize);
+            int searchCells = Mathf.Max(1, Mathf.CeilToInt(searchRadius / cellSize));
+            float searchRadiusSqr = searchRadius * searchRadius;
+
+            for (int y = cy - searchCells; y <= cy + searchCells; y++)
+            for (int x = cx - searchCells; x <= cx + searchCells; x++)
+            {
+                if (!Grid.InBounds(x, y))
+                    continue;
+
+                Vector3 candidate = Grid.CellCenterWorld(x, y);
+                candidate.y = origin.y;
+                if ((candidate - origin).sqrMagnitude > searchRadiusSqr)
+                    continue;
+
+                int candidateScore = CountMaturePlantsAroundWorld(candidate, sampleRadius, lineageOnly);
+                if (candidateScore <= score)
+                    continue;
+
+                score = candidateScore;
+                hotspot = candidate;
+            }
+
+            return score > 0;
+        }
+
         private bool ScorchCell(int x, int y, float autoClearSeconds = 0f)
         {
             if (Grid == null || !Grid.InBounds(x, y))
@@ -1566,6 +1658,7 @@ namespace SCoL
             c.FireFuel = 0f;
             c.FlowerVariantIndex = -1;
             c.BurntAutoClearSeconds = Mathf.Max(0f, autoClearSeconds);
+            c.BurnScarSeconds = Mathf.Max(c.BurnScarSeconds, Mathf.Max(0f, burnScarSeconds));
             c.PlantAgeSeconds = 0f;
             c.PlantHealth = 0f;
             c.StompHits = 0;

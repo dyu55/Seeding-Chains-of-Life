@@ -1,5 +1,6 @@
 using System.Collections;
 using UnityEngine;
+using SCoL;
 using SCoL.Voxels;
 using SCoL.Combat;
 #if UNITY_EDITOR
@@ -53,6 +54,15 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
     public bool maintainPopulationByRespawning = true;
     [Min(0f)] public float respawnDelaySeconds = 4.5f;
 
+    [Header("Ecology Population")]
+    public bool enableEcologyPopulationPressure = true;
+    [Min(1f)] public float populationCheckIntervalSeconds = 12f;
+    [Min(1)] public int maxHerbivorePopulation = 48;
+    [Min(0)] public int maxWolfPopulation = 12;
+    [Min(1)] public int maturePlantsPerExtraHerbivore = 18;
+    [Min(1)] public int herbivoresPerExtraWolf = 5;
+    [Min(0)] public int ecologySpawnBurstLimit = 2;
+
     [Header("Death Feedback")]
     public bool enableDeathFeedback = true;
     public GameObject animalDeathEffectPrefab;
@@ -67,6 +77,8 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
     GameObject[] _stoneDropPrefabs;
     GameObject[] _seedDropPrefabs;
     GameObject[] _plantDropPrefabs;
+    float _nextPopulationCheckAt;
+    SCoLRuntime _runtime;
 
     IEnumerator Start()
     {
@@ -132,6 +144,19 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
 
         if (logSpawnInfo)
             Debug.Log($"[VoxBoxAnimalSchoolSpawner] Spawned {spawnedCount}/{totalTarget} animals (wolves={hostileWolves}).", this);
+
+        _nextPopulationCheckAt = Time.time + Mathf.Max(1f, populationCheckIntervalSeconds);
+    }
+
+    void Update()
+    {
+        if (!Application.isPlaying || !maintainPopulationByRespawning || !enableEcologyPopulationPressure)
+            return;
+        if (Time.time < _nextPopulationCheckAt)
+            return;
+
+        _nextPopulationCheckAt = Time.time + Mathf.Max(1f, populationCheckIntervalSeconds);
+        MaintainEcologyDrivenPopulation();
     }
 
     GameObject SpawnAnimal(GameObject prefab, Vector3 position, Quaternion rotation, int index, bool spawnWolf)
@@ -298,13 +323,21 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
         TryAutoAssignAnimalPrefabs();
         EnsureFoxAndDeerPrefabs();
 
+        int desiredHerbivores = GetDesiredHerbivoreTargetCount();
+        int desiredWolves = GetDesiredWolfTargetCount();
+        GetCurrentPopulationCounts(out int currentHerbivores, out int currentWolves);
+        if (spawnWolf && currentWolves >= desiredWolves)
+            yield break;
+        if (!spawnWolf && currentHerbivores >= desiredHerbivores)
+            yield break;
+
         GameObject spawned = null;
         int tries = Mathf.Max(4, maxSpawnAttemptsPerAnimal * 2);
-        int herbivoreTarget = GetHerbivoreTargetCount();
+        int herbivoreTarget = desiredHerbivores;
         for (int i = 0; i < tries; i++)
         {
             Vector3 pos;
-            if (!TryPickSpawnPoint(Random.Range(0, Mathf.Max(1, herbivoreTarget + Mathf.Max(0, wolfCount))), Mathf.Max(1, herbivoreTarget + Mathf.Max(0, wolfCount)), out pos))
+            if (!TryPickSpawnPoint(Random.Range(0, Mathf.Max(1, herbivoreTarget + Mathf.Max(0, desiredWolves))), Mathf.Max(1, herbivoreTarget + Mathf.Max(0, desiredWolves)), out pos))
                 continue;
 
             var prefab = PickRespawnPrefab(spawnWolf, herbivoreTarget);
@@ -324,6 +357,105 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
         if (enforceMinimumAnimalCount)
             herbivoreTarget = Mathf.Max(herbivoreTarget, Mathf.Max(1, minimumAnimalCount));
         return herbivoreTarget;
+    }
+
+    int GetDesiredHerbivoreTargetCount()
+    {
+        int baseTarget = GetHerbivoreTargetCount();
+        if (!enableEcologyPopulationPressure)
+            return baseTarget;
+
+        if (_runtime == null)
+            _runtime = FindFirstObjectByType<SCoLRuntime>();
+
+        int maturePlants = _runtime != null
+            ? _runtime.CountAllMaturePlants(lineageOnly: false)
+            : 0;
+        int extra = maturePlantsPerExtraHerbivore > 0
+            ? maturePlants / Mathf.Max(1, maturePlantsPerExtraHerbivore)
+            : 0;
+        return Mathf.Clamp(baseTarget + extra, 1, Mathf.Max(1, maxHerbivorePopulation));
+    }
+
+    int GetDesiredWolfTargetCount()
+    {
+        int baseTarget = Mathf.Max(0, wolfCount);
+        if (!enableEcologyPopulationPressure)
+            return baseTarget;
+
+        GetCurrentPopulationCounts(out int currentHerbivores, out _);
+        int extra = herbivoresPerExtraWolf > 0
+            ? currentHerbivores / Mathf.Max(1, herbivoresPerExtraWolf)
+            : 0;
+        return Mathf.Clamp(baseTarget + extra, 0, Mathf.Max(baseTarget, maxWolfPopulation));
+    }
+
+    void GetCurrentPopulationCounts(out int herbivores, out int wolves)
+    {
+        herbivores = 0;
+        wolves = 0;
+
+        for (int i = _spawned.Count - 1; i >= 0; i--)
+        {
+            var go = _spawned[i];
+            if (go == null)
+            {
+                _spawned.RemoveAt(i);
+                continue;
+            }
+
+            var boid = go.GetComponent<FPSBoidAgent>();
+            if (boid == null)
+                continue;
+
+            if (boid.role == FPSBoidAgent.BoidRole.Predator)
+                wolves++;
+            else
+                herbivores++;
+        }
+    }
+
+    void MaintainEcologyDrivenPopulation()
+    {
+        if (voxelWorld == null)
+            voxelWorld = FindFirstObjectByType<VoxelWorld>();
+        TryAutoAssignAnimalPrefabs();
+        EnsureFoxAndDeerPrefabs();
+
+        int desiredHerbivores = GetDesiredHerbivoreTargetCount();
+        int desiredWolves = GetDesiredWolfTargetCount();
+        GetCurrentPopulationCounts(out int currentHerbivores, out int currentWolves);
+
+        int herbivoresToSpawn = Mathf.Clamp(desiredHerbivores - currentHerbivores, 0, Mathf.Max(0, ecologySpawnBurstLimit));
+        int wolvesToSpawn = Mathf.Clamp(desiredWolves - currentWolves, 0, Mathf.Max(0, ecologySpawnBurstLimit));
+
+        for (int i = 0; i < herbivoresToSpawn; i++)
+            TrySpawnSingleAnimal(false, desiredHerbivores, desiredWolves);
+        for (int i = 0; i < wolvesToSpawn; i++)
+            TrySpawnSingleAnimal(true, desiredHerbivores, desiredWolves);
+
+        if (logSpawnInfo && (herbivoresToSpawn > 0 || wolvesToSpawn > 0))
+        {
+            Debug.Log($"[VoxBoxAnimalSchoolSpawner] Ecology target herbivores={desiredHerbivores}, wolves={desiredWolves}; spawned herbivores={herbivoresToSpawn}, wolves={wolvesToSpawn}.", this);
+        }
+    }
+
+    bool TrySpawnSingleAnimal(bool spawnWolf, int herbivoreTarget, int wolfTarget)
+    {
+        int tries = Mathf.Max(4, maxSpawnAttemptsPerAnimal * 2);
+        for (int i = 0; i < tries; i++)
+        {
+            if (!TryPickSpawnPoint(Random.Range(0, Mathf.Max(1, herbivoreTarget + wolfTarget)), Mathf.Max(1, herbivoreTarget + wolfTarget), out var pos))
+                continue;
+
+            var prefab = PickRespawnPrefab(spawnWolf, herbivoreTarget);
+            var rot = Quaternion.Euler(0f, Random.Range(0f, 360f), 0f);
+            var spawned = SpawnAnimal(prefab, pos, rot, _spawnSerial++, spawnWolf);
+            if (spawned != null)
+                return true;
+        }
+
+        return false;
     }
 
     GameObject PickRespawnPrefab(bool spawnWolf, int herbivoreTarget)

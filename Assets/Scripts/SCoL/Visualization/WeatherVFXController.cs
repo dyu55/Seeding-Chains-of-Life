@@ -81,10 +81,10 @@ namespace SCoL.Visualization
         [Range(100, 20000)] public int snowMaxParticles = 4000;
 
         [Tooltip("Emission rate (particles/sec) at full snow intensity.")]
-        [Range(0f, 5000f)] public float snowEmissionRate = 600f;
+        [Range(0f, 5000f)] public float snowEmissionRate = 900f;
 
         [Tooltip("Area size around camera where snow spawns.")]
-        public Vector3 snowBoxSize = new Vector3(25f, 8f, 25f);
+        public Vector3 snowBoxSize = new Vector3(28f, 10f, 28f);
 
         [Tooltip("Fall speed range (m/s).")]
         public Vector2 snowFallSpeedRange = new Vector2(1.5f, 3.5f);
@@ -93,7 +93,7 @@ namespace SCoL.Visualization
         public Vector2 snowLifetimeRange = new Vector2(2.5f, 4.5f);
 
         [Tooltip("Particle size range.")]
-        public Vector2 snowSizeRange = new Vector2(0.08f, 0.18f);
+        public Vector2 snowSizeRange = new Vector2(0.10f, 0.22f);
 
         [Header("Firefly VFX (optional)")]
         [Tooltip("Optional ParticleSystem for fireflies. If null, one will be created at runtime.")]
@@ -612,13 +612,22 @@ namespace SCoL.Visualization
 
         void EnsureSnowSystem()
         {
-            if (snowParticleSystem != null) return;
+            if (snowParticleSystem == null)
+            {
+                var go = new GameObject("SnowVFX (Runtime)");
+                go.transform.SetParent(transform, worldPositionStays: false);
+                snowParticleSystem = go.AddComponent<ParticleSystem>();
+            }
 
-            var go = new GameObject("SnowVFX (Runtime)");
-            go.transform.SetParent(transform, worldPositionStays: false);
-            snowParticleSystem = go.AddComponent<ParticleSystem>();
+            ConfigureSnowSystem(snowParticleSystem);
+        }
 
-            var main = snowParticleSystem.main;
+        void ConfigureSnowSystem(ParticleSystem system)
+        {
+            if (system == null)
+                return;
+
+            var main = system.main;
             main.loop = true;
             main.playOnAwake = false;
             main.simulationSpace = ParticleSystemSimulationSpace.World;
@@ -628,17 +637,17 @@ namespace SCoL.Visualization
             main.startSize = new ParticleSystem.MinMaxCurve(snowSizeRange.x, snowSizeRange.y);
             main.startColor = new Color(1f, 1f, 1f, 0.95f);
 
-            var emission = snowParticleSystem.emission;
+            var emission = system.emission;
             emission.enabled = true;
             emission.rateOverTime = 0f;
 
-            var shape = snowParticleSystem.shape;
+            var shape = system.shape;
             shape.enabled = true;
             shape.shapeType = ParticleSystemShapeType.Box;
             shape.scale = snowBoxSize;
 
             // Give snow a gentle drift.
-            var velocity = snowParticleSystem.velocityOverLifetime;
+            var velocity = system.velocityOverLifetime;
             velocity.enabled = true;
             velocity.space = ParticleSystemSimulationSpace.World;
 
@@ -647,18 +656,21 @@ namespace SCoL.Visualization
             velocity.y = new ParticleSystem.MinMaxCurve(avgFall);
             velocity.z = new ParticleSystem.MinMaxCurve(-0.3f, 0.3f);
 
-            var noise = snowParticleSystem.noise;
+            var noise = system.noise;
             noise.enabled = true;
             noise.strength = 0.35f;
             noise.frequency = 0.25f;
             noise.scrollSpeed = 0.12f;
 
-            var renderer = snowParticleSystem.GetComponent<ParticleSystemRenderer>();
+            var renderer = system.GetComponent<ParticleSystemRenderer>();
             renderer.renderMode = ParticleSystemRenderMode.Billboard;
             if (snowMaterial != null)
                 renderer.sharedMaterial = snowMaterial;
+            renderer.enabled = true;
 
-            snowParticleSystem.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+            system.gameObject.SetActive(true);
+            system.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+            system.Clear(true);
         }
 
         void EnsureFireflySystem()

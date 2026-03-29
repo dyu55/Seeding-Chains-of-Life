@@ -83,7 +83,7 @@ namespace SCoL.Weather
         [Tooltip("Thunderstorm duration (short burst).")]
         public Vector2 thunderDurationRange = new Vector2(4f, 6f);
 
-        public Vector2 snowDurationRange = new Vector2(12f, 20f);
+        public Vector2 snowDurationRange = new Vector2(30f, 45f);
 
         [Header("Behavior")]
         [Tooltip("When currently in the same category, multiply its chance to continue by this factor.")]

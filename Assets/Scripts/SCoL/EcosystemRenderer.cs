@@ -126,6 +126,8 @@ namespace SCoL
 
         private static float StageHeight(CellState c)
         {
+            if (c.PlantStage == PlantStage.Empty && c.BurnScarSeconds > 0f)
+                return 0.06f;
             return c.PlantStage switch
             {
                 PlantStage.Empty => 0.05f,
@@ -162,6 +164,7 @@ namespace SCoL
         private static Color StageColor(CellState c)
         {
             Color soil = new Color(0.25f, 0.2f, 0.15f);
+            Color scarSoil = new Color(0.08f, 0.07f, 0.06f);
 
             Color baseCol = c.PlantStage switch
             {
@@ -173,6 +176,12 @@ namespace SCoL
                 PlantStage.Burnt => new Color(0.18f, 0.08f, 0.08f),
                 _ => soil
             };
+
+            if (c.PlantStage == PlantStage.Empty && c.BurnScarSeconds > 0f)
+            {
+                float scar = Mathf.Clamp01(c.BurnScarSeconds / 20f);
+                baseCol = Color.Lerp(soil, scarSoil, Mathf.Lerp(0.35f, 0.9f, scar));
+            }
 
             // Simple prototype: watering darkens the current color.
             float w = Mathf.Clamp01(c.WaterVisual);

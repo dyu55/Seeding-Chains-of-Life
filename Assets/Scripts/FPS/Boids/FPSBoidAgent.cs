@@ -105,6 +105,20 @@ public class FPSBoidAgent : MonoBehaviour
     [Tooltip("If true, animals can target CA-rendered mature flowers (no collider required).")]
     public bool canEatCARuntimePlants = true;
 
+    [Header("Ecology Response")]
+    public bool seekPlantDensityZones = true;
+    [Min(0.5f)] public float plantDensitySearchRadius = 14f;
+    [Min(0.5f)] public float plantDensitySampleRadius = 4f;
+    [Min(1)] public int plantDensityMinScore = 1;
+    [Min(0f)] public float plantDensitySeekWeight = 4.5f;
+    public bool seekPreyDensityZones = true;
+    [Min(0.5f)] public float preyDensitySearchRadius = 22f;
+    [Min(0.5f)] public float preyDensitySampleRadius = 6f;
+    [Min(1)] public int preyDensityMinScore = 1;
+    [Min(0f)] public float preyDensitySeekWeight = 5.2f;
+    [Min(0f)] public float ecologyHotspotHoldSeconds = 6f;
+    [Min(0.1f)] public float ecologyHotspotArrivalDistance = 2.2f;
+
     [Header("Combat")]
     public bool canAttackPlayer = false;
     public bool canAttackOtherAnimals = false;
@@ -153,6 +167,9 @@ public class FPSBoidAgent : MonoBehaviour
     SCoLRuntime _runtime;
     SCoLCombatHealth _lastCombatTarget;
     float _nextWolfHowlAt;
+    bool _hasEcologyHotspot;
+    Vector3 _ecologyHotspot;
+    float _ecologyHotspotUntil;
 
     void OnEnable()
     {
@@ -380,6 +397,17 @@ public class FPSBoidAgent : MonoBehaviour
             if (toTarget.sqrMagnitude > 0.0001f)
                 accel += SteerTowards(toTarget) * Mathf.Max(0f, attackApproachWeight);
         }
+        else if (role == BoidRole.Predator && seekPreyDensityZones && TryFindRoleDensityHotspot(BoidRole.Prey, preyDensitySearchRadius, preyDensitySampleRadius, preyDensityMinScore, out var preyHotspot, out _))
+        {
+            RememberEcologyHotspot(preyHotspot);
+            var toHotspot = preyHotspot - transform.position;
+            toHotspot.y = 0f;
+            float arrive = Mathf.Max(0.1f, ecologyHotspotArrivalDistance);
+            if (toHotspot.sqrMagnitude > arrive * arrive)
+                accel += SteerTowards(toHotspot) * Mathf.Max(0f, preyDensitySeekWeight);
+            else
+                velocity = Vector3.Lerp(velocity, Vector3.zero, Mathf.Clamp01(4f * Time.deltaTime));
+        }
         else if (canEatMaturePlants && TryEnsureEatTarget())
         {
             var targetPos = GetCurrentEatTargetPoint();
@@ -389,8 +417,35 @@ public class FPSBoidAgent : MonoBehaviour
             if (toTarget.sqrMagnitude > 0.0001f)
                 accel += SteerTowards(toTarget) * Mathf.Max(0f, eatApproachWeight);
         }
+        else if (role == BoidRole.Prey && seekPlantDensityZones && TryFindPlantDensityHotspot(out var plantHotspot, out _))
+        {
+            RememberEcologyHotspot(plantHotspot);
+            var toPlants = plantHotspot - transform.position;
+            toPlants.y = 0f;
+            float arrive = Mathf.Max(0.1f, ecologyHotspotArrivalDistance);
+            if (toPlants.sqrMagnitude > arrive * arrive)
+                accel += SteerTowards(toPlants) * Mathf.Max(0f, plantDensitySeekWeight);
+            else
+                velocity = Vector3.Lerp(velocity, Vector3.zero, Mathf.Clamp01(4f * Time.deltaTime));
+        }
+        else if (_hasEcologyHotspot && Time.time < _ecologyHotspotUntil)
+        {
+            var toHotspot = _ecologyHotspot - transform.position;
+            toHotspot.y = 0f;
+            float arrive = Mathf.Max(0.1f, ecologyHotspotArrivalDistance);
+            if (toHotspot.sqrMagnitude > arrive * arrive)
+            {
+                float w = role == BoidRole.Predator ? preyDensitySeekWeight * 0.8f : plantDensitySeekWeight * 0.8f;
+                accel += SteerTowards(toHotspot) * Mathf.Max(0f, w);
+            }
+            else
+            {
+                velocity = Vector3.Lerp(velocity, Vector3.zero, Mathf.Clamp01(3f * Time.deltaTime));
+            }
+        }
         else if (useWander)
         {
+            _hasEcologyHotspot = false;
             RetargetWanderIfNeeded();
             accel += SteerTowards(_wanderDir) * Mathf.Max(0f, wanderWeight);
         }
@@ -1265,6 +1320,79 @@ public class FPSBoidAgent : MonoBehaviour
         }
 
         return best;
+    }
+
+    bool TryFindPlantDensityHotspot(out Vector3 hotspot, out int score)
+    {
+        hotspot = transform.position;
+        score = 0;
+        if (_runtime == null)
+            _runtime = FindFirstObjectByType<SCoLRuntime>();
+        if (_runtime == null)
+            return false;
+
+        bool found = _runtime.TryFindPlantDensityHotspot(
+            transform.position,
+            Mathf.Max(0.5f, plantDensitySearchRadius),
+            Mathf.Max(0.5f, plantDensitySampleRadius),
+            out hotspot,
+            out score,
+            lineageOnly: false);
+
+        return found && score >= Mathf.Max(1, plantDensityMinScore);
+    }
+
+    bool TryFindRoleDensityHotspot(BoidRole wanted, float searchRadius, float sampleRadius, int minScore, out Vector3 hotspot, out int score)
+    {
+        hotspot = transform.position;
+        score = 0;
+
+        float searchRadiusSqr = Mathf.Max(0.5f, searchRadius);
+        searchRadiusSqr *= searchRadiusSqr;
+        float sampleRadiusSqr = Mathf.Max(0.5f, sampleRadius);
+        sampleRadiusSqr *= sampleRadiusSqr;
+        Vector3 myPos = transform.position;
+
+        for (int i = 0; i < ActiveAgents.Count; i++)
+        {
+            var candidate = ActiveAgents[i];
+            if (candidate == null || candidate == this || candidate.role != wanted)
+                continue;
+
+            Vector3 candidatePos = candidate.transform.position;
+            Vector3 toCandidate = candidatePos - myPos;
+            toCandidate.y = 0f;
+            if (toCandidate.sqrMagnitude > searchRadiusSqr)
+                continue;
+
+            int candidateScore = 0;
+            for (int j = 0; j < ActiveAgents.Count; j++)
+            {
+                var other = ActiveAgents[j];
+                if (other == null || other.role != wanted)
+                    continue;
+
+                Vector3 toOther = other.transform.position - candidatePos;
+                toOther.y = 0f;
+                if (toOther.sqrMagnitude <= sampleRadiusSqr)
+                    candidateScore++;
+            }
+
+            if (candidateScore <= score)
+                continue;
+
+            score = candidateScore;
+            hotspot = candidatePos;
+        }
+
+        return score >= Mathf.Max(1, minScore);
+    }
+
+    void RememberEcologyHotspot(Vector3 hotspot)
+    {
+        _hasEcologyHotspot = true;
+        _ecologyHotspot = hotspot;
+        _ecologyHotspotUntil = Time.time + Mathf.Max(0f, ecologyHotspotHoldSeconds);
     }
 
     void DrawBounds()
