@@ -113,6 +113,11 @@ public class FPSBoidAgent : MonoBehaviour
     [Min(0.1f)] public float attackCooldownSeconds = 1.1f;
     [Min(0f)] public float attackApproachWeight = 4.2f;
 
+    [Header("Predator Audio")]
+    public bool howlWhenPlayerDetected = true;
+    [Min(0f)] public float wolfHowlMaxDistance = 12f;
+    [Min(0f)] public float wolfHowlCooldownSeconds = 8f;
+
     [HideInInspector] public Vector3 velocity;
 
     static readonly List<FPSBoidAgent> ActiveAgents = new List<FPSBoidAgent>(128);
@@ -146,6 +151,8 @@ public class FPSBoidAgent : MonoBehaviour
     int _eatTargetCellY;
     float _eatHoldTimer;
     SCoLRuntime _runtime;
+    SCoLCombatHealth _lastCombatTarget;
+    float _nextWolfHowlAt;
 
     void OnEnable()
     {
@@ -573,6 +580,12 @@ public class FPSBoidAgent : MonoBehaviour
             if (visualSwap != null)
                 visualSwap.TriggerAttack();
 
+            if (target.Faction == SCoLCombatFaction.Player)
+            {
+                SCoL.Visualization.DayNightLightingController.PlayInteractionSfx(SCoL.Visualization.DayNightLightingController.InteractionSfx.ManDamage);
+                SCoL.Visualization.DayNightLightingController.PlayInteractionSfx(SCoL.Visualization.DayNightLightingController.InteractionSfx.ManScream);
+            }
+
             if (target.TryGetComponent<FPSBoidAgent>(out var boid))
                 boid.FeedWithPlant(0.18f, 0.45f, 2);
         }
@@ -582,7 +595,10 @@ public class FPSBoidAgent : MonoBehaviour
     {
         target = null;
         if (!canAttackPlayer && !canAttackOtherAnimals)
+        {
+            _lastCombatTarget = null;
             return false;
+        }
 
         var activeHealths = SCoLCombatHealth.ActiveHealths;
         if (activeHealths == null)
@@ -616,6 +632,25 @@ public class FPSBoidAgent : MonoBehaviour
 
             bestScore = score;
             target = candidate;
+        }
+
+        if (target != _lastCombatTarget)
+        {
+            if (target != null &&
+                role == BoidRole.Predator &&
+                howlWhenPlayerDetected &&
+                target.Faction == SCoLCombatFaction.Player &&
+                Time.time >= _nextWolfHowlAt)
+            {
+                float howlDistance = Mathf.Max(0f, wolfHowlMaxDistance);
+                float playerDistance = Vector3.Distance(transform.position, target.transform.position);
+                if (playerDistance <= howlDistance)
+                {
+                    SCoL.Visualization.DayNightLightingController.PlayInteractionSfx(SCoL.Visualization.DayNightLightingController.InteractionSfx.WolfHowl);
+                    _nextWolfHowlAt = Time.time + Mathf.Max(0f, wolfHowlCooldownSeconds);
+                }
+            }
+            _lastCombatTarget = target;
         }
 
         return target != null;

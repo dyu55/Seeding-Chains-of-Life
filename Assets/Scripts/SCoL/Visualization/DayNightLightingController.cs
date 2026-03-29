@@ -29,7 +29,11 @@ namespace SCoL.Visualization
             PickupItem,
             ThrowStone,
             ChestOpen,
-            ChestClose
+            ChestClose,
+            Slurp,
+            WolfHowl,
+            ManDamage,
+            ManScream
         }
 
         static DayNightLightingController _instance;
@@ -138,7 +142,13 @@ namespace SCoL.Visualization
         public AudioClip throwStoneClip;
         public AudioClip chestOpenClip;
         public AudioClip chestCloseClip;
+        public AudioClip slurpClip;
+        public AudioClip manDamageClip;
+        public AudioClip manScreamClip;
+        public AudioClip wolfHowlClip;
+        public AudioClip animalDamageClip;
         [Range(0f, 1f)] public float interactionSfxVolume = 1f;
+        [Range(0f, 1f)] public float worldSfxVolume = 1f;
 
         [Header("Thunderstorm Lightning Flash (optional)")]
         public bool enableThunderFlash = true;
@@ -233,6 +243,20 @@ namespace SCoL.Visualization
             _instance.StopInteractionSfxLocal();
         }
 
+        public static void PlayWolfHowlAt(Vector3 worldPosition, float volumeScale = 1f)
+        {
+            if (_instance == null || _instance.wolfHowlClip == null)
+                return;
+            _instance.PlayWorldSfxAtLocal(worldPosition, _instance.wolfHowlClip, volumeScale);
+        }
+
+        public static void PlayAnimalDamageAt(Vector3 worldPosition, float volumeScale = 1f)
+        {
+            if (_instance == null || _instance.animalDamageClip == null)
+                return;
+            _instance.PlayWorldSfxAtLocal(worldPosition, _instance.animalDamageClip, volumeScale);
+        }
+
         void PlayInteractionSfxLocal(InteractionSfx sfx)
         {
             var src = interactionAudioSource != null ? interactionAudioSource : weatherAudioSource;
@@ -251,6 +275,10 @@ namespace SCoL.Visualization
                 InteractionSfx.ThrowStone => throwStoneClip,
                 InteractionSfx.ChestOpen => chestOpenClip,
                 InteractionSfx.ChestClose => chestCloseClip,
+                InteractionSfx.Slurp => slurpClip,
+                InteractionSfx.WolfHowl => wolfHowlClip,
+                InteractionSfx.ManDamage => manDamageClip,
+                InteractionSfx.ManScream => manScreamClip,
                 _ => null
             };
             if (clip == null) return;
@@ -265,6 +293,26 @@ namespace SCoL.Visualization
             if (src == null) return;
             if (src.isPlaying)
                 src.Stop();
+        }
+
+        void PlayWorldSfxAtLocal(Vector3 worldPosition, AudioClip clip, float volumeScale)
+        {
+            if (clip == null)
+                return;
+
+            var go = new GameObject($"WorldSfx_{clip.name}");
+            go.transform.position = worldPosition;
+            var src = go.AddComponent<AudioSource>();
+            src.playOnAwake = false;
+            src.loop = false;
+            src.spatialBlend = 1f;
+            src.minDistance = 3f;
+            src.maxDistance = 30f;
+            src.rolloffMode = AudioRolloffMode.Linear;
+            src.volume = Mathf.Clamp01(worldSfxVolume * volumeScale);
+            src.clip = clip;
+            src.Play();
+            Destroy(go, Mathf.Max(1f, clip.length + 0.1f));
         }
 
         void Start()
@@ -326,6 +374,16 @@ namespace SCoL.Visualization
                 chestOpenClip = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Sounds/chestopen.mp3");
             if (chestCloseClip == null)
                 chestCloseClip = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Sounds/chestclose.mp3");
+            if (slurpClip == null)
+                slurpClip = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Sounds/slurp.mp3");
+            if (manDamageClip == null)
+                manDamageClip = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Sounds/mandamage.mp3");
+            if (manScreamClip == null)
+                manScreamClip = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Sounds/manscream.mp3");
+            if (wolfHowlClip == null)
+                wolfHowlClip = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Sounds/wolfhowl.mp3");
+            if (animalDamageClip == null)
+                animalDamageClip = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Sounds/animaldamage.mp3");
             if (bgmLoop == null)
                 bgmLoop = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Sounds/BGM_Loop_Final.wav");
 

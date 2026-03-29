@@ -55,6 +55,8 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
 
     [Header("Death Feedback")]
     public bool enableDeathFeedback = true;
+    public GameObject animalDeathEffectPrefab;
+    [Min(0.1f)] public float animalDeathEffectLifetime = 2.5f;
     public bool enableDeathDrops = true;
     [Min(1)] public int wolfStoneDropAmount = 2;
     [Min(1)] public int herbivorePlantDropAmount = 1;
@@ -68,6 +70,7 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
 
     IEnumerator Start()
     {
+        AutoAssignAnimalDeathEffectPrefab();
         if (!spawnOnStart) yield break;
         yield return SpawnWhenReady();
     }
@@ -81,6 +84,7 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
 
     IEnumerator SpawnWhenReady()
     {
+        AutoAssignAnimalDeathEffectPrefab();
         float timeoutAt = Time.realtimeSinceStartup + 6f;
         while (Time.realtimeSinceStartup < timeoutAt)
         {
@@ -335,6 +339,11 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
     void PlayDeathFeedback(Vector3 worldPos, bool spawnWolf)
     {
         Vector3 burstPos = worldPos + Vector3.up * (spawnWolf ? 0.45f : 0.3f);
+        if (animalDeathEffectPrefab != null)
+        {
+            var fx = Instantiate(animalDeathEffectPrefab, burstPos, Quaternion.identity);
+            Destroy(fx, Mathf.Max(0.1f, animalDeathEffectLifetime));
+        }
         FPSGameFeel.VoxelBurst(
             burstPos,
             count: spawnWolf ? 18 : 12,
@@ -962,6 +971,15 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
         if (wolf != null) list.Add(wolf);
         if (list.Count > 0)
             animalPrefabs = list.ToArray();
+    }
+
+    void AutoAssignAnimalDeathEffectPrefab()
+    {
+#if UNITY_EDITOR
+        if (animalDeathEffectPrefab != null)
+            return;
+        animalDeathEffectPrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Material/DeathEffect.prefab");
+#endif
     }
 
     bool TryFindNamedPrefab(string contains, out GameObject prefab)

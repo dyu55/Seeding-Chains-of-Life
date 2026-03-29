@@ -154,6 +154,8 @@ public class FPSRaycastInteractor : MonoBehaviour
     [Min(0.05f)] public float feedJumpHeight = 0.35f;
     [Min(0.2f)] public float feedReactionDuration = 1.2f;
     [Min(1)] public int feedJumpCount = 3;
+    public GameObject animalFeedEffectPrefab;
+    [Min(0.1f)] public float animalFeedEffectLifetime = 2f;
     [Min(0f)] public float fireDamageToAnimals = 20f;
 
     [Header("Stone Throw (RMB)")]
@@ -278,6 +280,7 @@ public class FPSRaycastInteractor : MonoBehaviour
         AutoAssignWaterPlacePrefabs();
         AutoAssignHeldWaterCanPrefab();
         AutoAssignHeldFirePrefab();
+        AutoAssignAnimalFeedEffectPrefab();
 
         _inventory = FindFirstObjectByType<SCoL.Inventory.SCoLInventory>();
         if (_inventory == null)
@@ -373,6 +376,15 @@ public class FPSRaycastInteractor : MonoBehaviour
         heldFirePrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Models/Modeling/_Incoming/stick1/stick1.obj");
         if (heldFirePrefab == null)
             heldFirePrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Models/Modeling/_Incoming/stick2/stick2.obj");
+#endif
+    }
+
+    private void AutoAssignAnimalFeedEffectPrefab()
+    {
+#if UNITY_EDITOR
+        if (animalFeedEffectPrefab != null)
+            return;
+        animalFeedEffectPrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Material/AnimalFeedEffect.prefab");
 #endif
     }
 
@@ -707,7 +719,12 @@ public class FPSRaycastInteractor : MonoBehaviour
                     {
                         var health = animal.GetComponent<SCoL.Combat.SCoLCombatHealth>();
                         if (health != null)
+                        {
+                            bool wasAlive = !health.IsDead;
                             health.ApplyDamage(fireDamageToAnimals);
+                            if (wasAlive && health.IsDead && (health.Faction == SCoLCombatFaction.Animal || health.Faction == SCoLCombatFaction.Wolf))
+                                DayNightLightingController.PlayAnimalDamageAt(animal.transform.position, 1f);
+                        }
                     }
 
                     TryBurnTintTarget(hit);
@@ -770,6 +787,8 @@ public class FPSRaycastInteractor : MonoBehaviour
                     }
 
                     animal.FeedWithPlant(feedJumpHeight, feedReactionDuration, feedJumpCount);
+                    DayNightLightingController.PlayInteractionSfx(DayNightLightingController.InteractionSfx.Slurp);
+                    SpawnTransientEffect(animalFeedEffectPrefab, feedPoint, animal.transform.rotation, animalFeedEffectLifetime);
                     FPSGameFeel.VoxelBurst(feedPoint, count: 10, spread: 0.8f, life: 0.6f, cubeSize: 0.045f);
                     FPSGameFeel.Shake(0.04f, 0.08f);
                     if (logHits) Debug.Log($"[FPSRaycastInteractor] Fed animal: {animal.name}", animal);
@@ -2362,6 +2381,15 @@ public class FPSRaycastInteractor : MonoBehaviour
         if (_stoneTrailMat.HasProperty("_Color"))
             _stoneTrailMat.SetColor("_Color", new Color(0.92f, 0.92f, 0.98f, 0.85f));
         return _stoneTrailMat;
+    }
+
+    void SpawnTransientEffect(GameObject prefab, Vector3 position, Quaternion rotation, float lifetime)
+    {
+        if (prefab == null)
+            return;
+
+        var go = Instantiate(prefab, position, rotation);
+        Destroy(go, Mathf.Max(0.1f, lifetime));
     }
 
     System.Collections.IEnumerator SpawnTransientSpread(

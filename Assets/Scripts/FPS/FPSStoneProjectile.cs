@@ -380,7 +380,12 @@ public sealed class FPSStoneProjectile : MonoBehaviour
         var root = collider != null ? collider.transform : null;
         var health = root != null ? root.GetComponentInParent<SCoLCombatHealth>() : null;
         if (health != null)
+        {
+            bool wasAlive = !health.IsDead;
             health.ApplyDamage(damage);
+            if (wasAlive && health.IsDead && (health.Faction == SCoLCombatFaction.Animal || health.Faction == SCoLCombatFaction.Wolf))
+                SCoL.Visualization.DayNightLightingController.PlayAnimalDamageAt(health.transform.position, 1f);
+        }
 
         var boid = root != null ? root.GetComponentInParent<FPSBoidAgent>() : null;
         if (boid != null)
