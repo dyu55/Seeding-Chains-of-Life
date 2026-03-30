@@ -202,9 +202,14 @@ public class FPSRaycastInteractor : MonoBehaviour
     public GameObject heldWaterCanPrefab;
     public Vector3 heldWaterCanLocalPosition = new Vector3(0.32f, -0.28f, 0.62f);
     public Vector3 heldWaterCanLocalEuler = new Vector3(12f, -24f, -12f);
+    public Vector3 heldWaterCanFacingEulerOffset = new Vector3(0f, 180f, 0f);
+    public Vector3 heldWaterCanPourEulerOffset = new Vector3(42f, 0f, 30f);
     [Min(0.05f)] public float heldWaterCanScale = 0.42f;
     public Color heldWaterCanTint = new Color(0.24f, 0.68f, 0.96f, 1f);
     [Range(0f, 2f)] public float heldWaterCanEmission = 0.18f;
+    [Min(0.01f)] public float heldWaterCanPourInDuration = 0.08f;
+    [Min(0.01f)] public float heldWaterCanPourOutDuration = 0.16f;
+    [Min(0.05f)] public float heldWaterCanPourHoldDuration = 0.24f;
     public GameObject heldFirePrefab;
     public Vector3 heldFireLocalPosition = new Vector3(0.34f, -0.30f, 0.58f);
     public Vector3 heldFireLocalEuler = new Vector3(18f, -32f, -18f);
@@ -251,6 +256,8 @@ public class FPSRaycastInteractor : MonoBehaviour
     SCoLSettlementManager _settlementManager;
     GameObject _heldToolInstance;
     GameObject _heldToolSourcePrefab;
+    float _heldWaterCanPourUntil;
+    float _heldWaterCanPourBlend;
     struct PlantDestroyClickState
     {
         public int count;
@@ -711,6 +718,8 @@ public class FPSRaycastInteractor : MonoBehaviour
                         if (logHits) Debug.Log("[FPSRaycastInteractor] No water to place");
                         return;
                     }
+
+                    TriggerHeldWaterCanPour();
 
                     if (TryExtinguishActiveFire(waterPoint))
                     {
@@ -1832,7 +1841,7 @@ public class FPSRaycastInteractor : MonoBehaviour
                 break;
             case ApplyTool.Water:
                 t.localPosition = heldWaterCanLocalPosition;
-                t.localRotation = Quaternion.Euler(heldWaterCanLocalEuler);
+                t.localRotation = GetHeldWaterCanRotation();
                 t.localScale = Vector3.one * Mathf.Max(0.05f, heldWaterCanScale);
                 break;
             case ApplyTool.Fire:
@@ -1894,6 +1903,29 @@ public class FPSRaycastInteractor : MonoBehaviour
             default:
                 return null;
         }
+    }
+
+    Quaternion GetHeldWaterCanRotation()
+    {
+        UpdateHeldWaterCanPourBlend();
+        Vector3 euler = heldWaterCanLocalEuler + heldWaterCanFacingEulerOffset;
+        if (_heldWaterCanPourBlend > 0.001f)
+            euler += heldWaterCanPourEulerOffset * _heldWaterCanPourBlend;
+        return Quaternion.Euler(euler);
+    }
+
+    void TriggerHeldWaterCanPour()
+    {
+        _heldWaterCanPourUntil = Time.time + Mathf.Max(0.05f, heldWaterCanPourHoldDuration);
+    }
+
+    void UpdateHeldWaterCanPourBlend()
+    {
+        float target = Time.time < _heldWaterCanPourUntil ? 1f : 0f;
+        float speed = target > _heldWaterCanPourBlend
+            ? 1f / Mathf.Max(0.01f, heldWaterCanPourInDuration)
+            : 1f / Mathf.Max(0.01f, heldWaterCanPourOutDuration);
+        _heldWaterCanPourBlend = Mathf.MoveTowards(_heldWaterCanPourBlend, target, Time.deltaTime * speed);
     }
 
     GameObject ResolveHeldSeedPrefab()

@@ -57,14 +57,36 @@ namespace SCoL.Visualization
         private CanvasGroup _safeZoneBadgeGroup;
         private Image _safeZoneBadgeFill;
         private Text _safeZoneBadgeLabel;
+        private RectTransform _statusPanel;
         private RectTransform _aimPanel;
         private CanvasGroup _aimCanvasGroup;
         private Text _aimTitleLabel;
         private Text _aimDetailLabel;
+        private RectTransform _inventoryPanel;
         private Text _inventoryLabel;
+        private Image _inventoryHeldIcon;
+        private Text _inventoryHeldLabel;
+        private Image _inventorySeedIcon;
+        private Text _inventorySeedLabel;
+        private Image _inventoryWaterIcon;
+        private Text _inventoryWaterLabel;
+        private Image _inventoryFireIcon;
+        private Text _inventoryFireLabel;
+        private Image _inventoryPlantIcon;
+        private Text _inventoryPlantLabel;
+        private Image _inventoryStoneIcon;
+        private Text _inventoryStoneLabel;
+        private Text _inventoryTypesLabel;
+        private Text _inventoryStorageLabel;
+        private RectTransform _toolArcPanel;
+        private Image _toolArcBase;
+        private Image _toolActiveFrame;
+        private Image _toolActiveIcon;
         private Text _toolSummaryLabel;
         private Image[] _toolSlotBorders;
         private Image[] _toolSlotFills;
+        private Image[] _toolSlotActiveFrames;
+        private Image[] _toolIconImages;
         private Text[] _toolSlotKeyLabels;
         private Text[] _toolSlotNameLabels;
         private RectTransform _healthTrackRect;
@@ -73,6 +95,7 @@ namespace SCoL.Visualization
         private Text _healthLabel;
         private Text _healthCaptionLabel;
         private Text _healthBadgeLabel;
+        private RectTransform _healthPanel;
         private Image _healthFrame;
         private Image _healthPulse;
         private Image _healthLagFill;
@@ -90,11 +113,20 @@ namespace SCoL.Visualization
         private Button _respawnButton;
         private CanvasGroup _storageOverlayGroup;
         private RectTransform _storageOverlayPanel;
+        private Image _storagePanelArt;
+        private bool _useCustomStorageSkin;
         private Text _storageTitleLabel;
         private Text _storageHintLabel;
         private Button _storageCloseButton;
+        private Image _storageCloseIcon;
+        private RectTransform _storageDetailPanel;
+        private Text _storageDetailTitleLabel;
+        private Text _storageDetailCountLabel;
+        private Text _storageDetailBodyLabel;
         private RectTransform _storageChestGrid;
         private RectTransform _storagePlayerGrid;
+        private RectTransform _storageChestBoard;
+        private RectTransform _storagePlayerBoard;
         private Button[] _storageChestButtons;
         private Image[] _storageChestIconImages;
         private Text[] _storageChestNameLabels;
@@ -129,8 +161,10 @@ namespace SCoL.Visualization
         private float _lastObservedHealth = -1f;
         private float _hurtFlashUntil;
         private readonly StringBuilder _sb = new StringBuilder(256);
+        private readonly Dictionary<string, Sprite> _customUISpriteCache = new Dictionary<string, Sprite>();
         private readonly Dictionary<string, Sprite> _storageIconCache = new Dictionary<string, Sprite>();
         private static Sprite _fallbackWhiteUISprite;
+        private const string CustomUIFolderAssetPath = "Assets/CustomUI";
         private static readonly Color CrosshairIdle = new Color(1f, 1f, 1f, 0.90f);
         private static readonly Color CrosshairHover = new Color(0.35f, 1f, 0.35f, 0.98f);
         private const string SimpleUIKitPanelPrefabPath = "Assets/SimpleUIKit/Prefabs/Elements/Parts/Background.prefab";
@@ -151,6 +185,9 @@ namespace SCoL.Visualization
         private static readonly Color HudPanelMuted = new Color(0.07f, 0.08f, 0.10f, 0.82f);
         private static readonly Color HudSlotIdleBorder = new Color(1f, 1f, 1f, 0.10f);
         private static readonly Color HudSlotIdleFill = new Color(0.07f, 0.08f, 0.10f, 0.92f);
+        private static readonly Color BackpackArtTint = new Color(0.10f, 0.12f, 0.11f, 0.96f);
+        private static readonly Color ChestArtTint = new Color(0.98f, 0.97f, 0.94f, 0.96f);
+        private static readonly Color CloseButtonBg = new Color(0.02f, 0.03f, 0.04f, 0.42f);
 
         private void Awake()
         {
@@ -250,39 +287,39 @@ namespace SCoL.Visualization
 
         private void BuildPanelsAndLabels()
         {
-            var statusPanel = CreateHudCard(
+            _statusPanel = CreateHudCard(
                 _root,
                 "StatusPanel",
                 anchorMin: new Vector2(0f, 1f),
                 anchorMax: new Vector2(0f, 1f),
                 pivot: new Vector2(0f, 1f),
-                anchoredPos: new Vector2(26f, -26f),
-                size: new Vector2(452f, 204f),
+                anchoredPos: new Vector2(34f, -30f),
+                size: new Vector2(484f, 236f),
                 title: "WORLD LOOP",
                 accent: HudAccentWarm);
 
             _statusHeroLabel = CreateText(
-                statusPanel,
+                _statusPanel,
                 "StatusHero",
                 anchorMin: new Vector2(0f, 1f),
                 anchorMax: new Vector2(1f, 1f),
                 pivot: new Vector2(0.5f, 1f),
-                anchoredPos: new Vector2(0f, -54f),
-                size: new Vector2(-40f, 38f),
-                fontSize: 29,
+                anchoredPos: new Vector2(0f, -64f),
+                size: new Vector2(-42f, 34f),
+                fontSize: 19,
                 color: HudTextPrimary,
                 alignment: TextAnchor.MiddleLeft,
                 addOutline: true);
 
             _statusLabel = CreateText(
-                statusPanel,
+                _statusPanel,
                 "StatusText",
                 anchorMin: new Vector2(0f, 0f),
-                anchorMax: new Vector2(1f, 0.68f),
-                pivot: new Vector2(0.5f, 0.5f),
-                anchoredPos: new Vector2(0f, -8f),
-                size: new Vector2(-40f, -16f),
-                fontSize: 19,
+                anchorMax: new Vector2(1f, 1f),
+                pivot: new Vector2(0.5f, 1f),
+                anchoredPos: new Vector2(0f, -104f),
+                size: new Vector2(-42f, -116f),
+                fontSize: 14,
                 color: HudTextSecondary,
                 alignment: TextAnchor.UpperLeft);
 
@@ -292,8 +329,8 @@ namespace SCoL.Visualization
                 anchorMin: new Vector2(1f, 1f),
                 anchorMax: new Vector2(1f, 1f),
                 pivot: new Vector2(1f, 1f),
-                anchoredPos: new Vector2(-28f, -26f),
-                size: new Vector2(222f, 54f),
+                anchoredPos: new Vector2(-34f, -30f),
+                size: new Vector2(252f, 62f),
                 color: new Color(0.10f, 0.15f, 0.12f, 0.92f)).rectTransform;
             _safeZoneBadgeGroup = _safeZoneBadge.gameObject.AddComponent<CanvasGroup>();
             _safeZoneBadgeGroup.alpha = 0f;
@@ -307,7 +344,7 @@ namespace SCoL.Visualization
                 anchorMax: new Vector2(0.5f, 0.5f),
                 pivot: new Vector2(0.5f, 0.5f),
                 anchoredPos: Vector2.zero,
-                size: new Vector2(214f, 46f),
+                size: new Vector2(244f, 54f),
                 color: new Color(0.22f, 0.72f, 0.38f, 0.96f));
 
             CreateImage(
@@ -317,7 +354,7 @@ namespace SCoL.Visualization
                 anchorMax: new Vector2(0.5f, 0.5f),
                 pivot: new Vector2(0.5f, 0.5f),
                 anchoredPos: Vector2.zero,
-                size: new Vector2(214f, 46f),
+                size: new Vector2(244f, 54f),
                 color: new Color(1f, 1f, 1f, 0.07f));
 
             _safeZoneBadgeLabel = CreateText(
@@ -327,8 +364,8 @@ namespace SCoL.Visualization
                 anchorMax: new Vector2(0.5f, 0.5f),
                 pivot: new Vector2(0.5f, 0.5f),
                 anchoredPos: Vector2.zero,
-                size: new Vector2(190f, 30f),
-                fontSize: 24,
+                size: new Vector2(214f, 34f),
+                fontSize: 27,
                 color: new Color(0.94f, 1f, 0.94f, 0.98f),
                 alignment: TextAnchor.MiddleCenter,
                 addOutline: true);
@@ -339,8 +376,8 @@ namespace SCoL.Visualization
                 anchorMin: new Vector2(1f, 0.5f),
                 anchorMax: new Vector2(1f, 0.5f),
                 pivot: new Vector2(1f, 0.5f),
-                anchoredPos: new Vector2(-28f, 122f),
-                size: new Vector2(430f, 146f),
+                anchoredPos: new Vector2(-76f, -8f),
+                size: new Vector2(420f, 164f),
                 title: "FOCUS",
                 accent: HudAccentCool);
             _aimCanvasGroup = _aimPanel.gameObject.AddComponent<CanvasGroup>();
@@ -352,9 +389,9 @@ namespace SCoL.Visualization
                 anchorMin: new Vector2(0f, 0.50f),
                 anchorMax: new Vector2(1f, 1f),
                 pivot: new Vector2(0.5f, 0.5f),
-                anchoredPos: new Vector2(0f, -14f),
-                size: new Vector2(-34f, -42f),
-                fontSize: 28,
+                anchoredPos: new Vector2(0f, -18f),
+                size: new Vector2(-38f, -58f),
+                fontSize: 26,
                 color: HudTextPrimary,
                 alignment: TextAnchor.MiddleLeft,
                 addOutline: true);
@@ -365,83 +402,176 @@ namespace SCoL.Visualization
                 anchorMin: new Vector2(0f, 0f),
                 anchorMax: new Vector2(1f, 0.54f),
                 pivot: new Vector2(0.5f, 0.5f),
-                anchoredPos: new Vector2(0f, -6f),
-                size: new Vector2(-34f, -20f),
-                fontSize: 19,
+                anchoredPos: new Vector2(0f, -10f),
+                size: new Vector2(-38f, -26f),
+                fontSize: 18,
                 color: HudTextSecondary,
                 alignment: TextAnchor.UpperLeft,
                 addOutline: true);
 
-            var invPanel = CreateHudCard(
+            bool useBackpackSkin = false;
+            _inventoryPanel = CreateHudCard(
                 _root,
                 "InventoryPanel",
                 anchorMin: new Vector2(1f, 0f),
                 anchorMax: new Vector2(1f, 0f),
                 pivot: new Vector2(1f, 0f),
-                anchoredPos: new Vector2(-26f, 26f),
-                size: new Vector2(418f, 222f),
+                anchoredPos: new Vector2(-34f, 34f),
+                size: new Vector2(382f, 210f),
                 title: "RESERVES",
                 accent: HudAccentGreen);
-
             _inventoryLabel = CreateText(
-                invPanel,
+                _inventoryPanel,
                 "InventoryText",
                 anchorMin: new Vector2(0f, 0f),
                 anchorMax: new Vector2(1f, 1f),
                 pivot: new Vector2(0.5f, 0.5f),
                 anchoredPos: new Vector2(0f, -12f),
-                size: new Vector2(-34f, -62f),
-                fontSize: 21,
+                size: new Vector2(-34f, -64f),
+                fontSize: 22,
                 color: HudTextSecondary,
                 alignment: TextAnchor.UpperLeft);
 
-            var toolPanel = CreateHudCard(
-                _root,
-                "ToolbeltPanel",
+            _inventoryHeldIcon = CreateImage(
+                _inventoryPanel,
+                "InventoryHeldIcon",
+                anchorMin: new Vector2(0.5f, 1f),
+                anchorMax: new Vector2(0.5f, 1f),
+                pivot: new Vector2(0.5f, 0.5f),
+                anchoredPos: useBackpackSkin ? new Vector2(0f, -82f) : new Vector2(0f, -58f),
+                size: useBackpackSkin ? new Vector2(34f, 34f) : new Vector2(0f, 0f),
+                color: Color.white);
+            _inventoryHeldIcon.preserveAspect = true;
+            _inventoryHeldIcon.gameObject.SetActive(false);
+
+            _inventoryHeldLabel = CreateText(
+                _inventoryPanel,
+                "InventoryHeldLabel",
+                anchorMin: new Vector2(0.5f, 1f),
+                anchorMax: new Vector2(0.5f, 1f),
+                pivot: new Vector2(0.5f, 1f),
+                anchoredPos: useBackpackSkin ? new Vector2(0f, -102f) : new Vector2(0f, -12f),
+                size: useBackpackSkin ? new Vector2(196f, 34f) : new Vector2(-34f, -62f),
+                fontSize: useBackpackSkin ? 24 : 21,
+                color: new Color(0.95f, 0.96f, 0.92f, 0.98f),
+                alignment: TextAnchor.MiddleCenter,
+                addOutline: true);
+            _inventoryHeldLabel.gameObject.SetActive(false);
+
+            _inventorySeedIcon = CreateImage(_inventoryPanel, "InventorySeedIcon", new Vector2(0.28f, 1f), new Vector2(0.28f, 1f), new Vector2(0.5f, 0.5f), useBackpackSkin ? new Vector2(0f, -166f) : new Vector2(0f, 0f), new Vector2(26f, 26f), Color.white);
+            _inventoryWaterIcon = CreateImage(_inventoryPanel, "InventoryWaterIcon", new Vector2(0.50f, 1f), new Vector2(0.50f, 1f), new Vector2(0.5f, 0.5f), useBackpackSkin ? new Vector2(-28f, -166f) : new Vector2(0f, 0f), new Vector2(24f, 24f), Color.white);
+            _inventoryFireIcon = CreateImage(_inventoryPanel, "InventoryFireIcon", new Vector2(0.50f, 1f), new Vector2(0.50f, 1f), new Vector2(0.5f, 0.5f), useBackpackSkin ? new Vector2(-28f, -212f) : new Vector2(0f, 0f), new Vector2(24f, 24f), Color.white);
+            _inventoryPlantIcon = CreateImage(_inventoryPanel, "InventoryPlantIcon", new Vector2(0.72f, 1f), new Vector2(0.72f, 1f), new Vector2(0.5f, 0.5f), useBackpackSkin ? new Vector2(-28f, -166f) : new Vector2(0f, 0f), new Vector2(24f, 24f), Color.white);
+            _inventoryStoneIcon = CreateImage(_inventoryPanel, "InventoryStoneIcon", new Vector2(0.72f, 1f), new Vector2(0.72f, 1f), new Vector2(0.5f, 0.5f), useBackpackSkin ? new Vector2(-28f, -212f) : new Vector2(0f, 0f), new Vector2(24f, 24f), Color.white);
+
+            _inventorySeedIcon.preserveAspect = _inventoryWaterIcon.preserveAspect = _inventoryFireIcon.preserveAspect = _inventoryPlantIcon.preserveAspect = _inventoryStoneIcon.preserveAspect = true;
+            _inventorySeedIcon.gameObject.SetActive(false);
+            _inventoryWaterIcon.gameObject.SetActive(false);
+            _inventoryFireIcon.gameObject.SetActive(false);
+            _inventoryPlantIcon.gameObject.SetActive(false);
+            _inventoryStoneIcon.gameObject.SetActive(false);
+
+            _inventorySeedLabel = CreateText(_inventoryPanel, "InventorySeedLabel", new Vector2(0.28f, 1f), new Vector2(0.28f, 1f), new Vector2(0.5f, 0.5f), useBackpackSkin ? new Vector2(0f, -196f) : new Vector2(0f, 0f), new Vector2(116f, 44f), 22, HudAccentGreen, TextAnchor.MiddleCenter, true);
+            _inventoryWaterLabel = CreateText(_inventoryPanel, "InventoryWaterLabel", new Vector2(0.50f, 1f), new Vector2(0.50f, 1f), new Vector2(0.5f, 0.5f), useBackpackSkin ? new Vector2(12f, -166f) : new Vector2(0f, 0f), new Vector2(90f, 22f), 18, new Color(0.53f, 0.82f, 1f, 0.98f), TextAnchor.MiddleLeft, true);
+            _inventoryFireLabel = CreateText(_inventoryPanel, "InventoryFireLabel", new Vector2(0.50f, 1f), new Vector2(0.50f, 1f), new Vector2(0.5f, 0.5f), useBackpackSkin ? new Vector2(12f, -212f) : new Vector2(0f, 0f), new Vector2(90f, 22f), 18, new Color(1f, 0.58f, 0.42f, 0.98f), TextAnchor.MiddleLeft, true);
+            _inventoryPlantLabel = CreateText(_inventoryPanel, "InventoryPlantLabel", new Vector2(0.72f, 1f), new Vector2(0.72f, 1f), new Vector2(0.5f, 0.5f), useBackpackSkin ? new Vector2(12f, -166f) : new Vector2(0f, 0f), new Vector2(90f, 22f), 18, new Color(0.54f, 0.90f, 0.56f, 0.98f), TextAnchor.MiddleLeft, true);
+            _inventoryStoneLabel = CreateText(_inventoryPanel, "InventoryStoneLabel", new Vector2(0.72f, 1f), new Vector2(0.72f, 1f), new Vector2(0.5f, 0.5f), useBackpackSkin ? new Vector2(12f, -212f) : new Vector2(0f, 0f), new Vector2(90f, 22f), 18, new Color(0.90f, 0.92f, 0.94f, 0.98f), TextAnchor.MiddleLeft, true);
+
+            _inventoryTypesLabel = CreateText(
+                _inventoryPanel,
+                "InventoryTypesLabel",
+                anchorMin: new Vector2(0.5f, 0f),
+                anchorMax: new Vector2(0.5f, 0f),
+                pivot: new Vector2(0.5f, 1f),
+                anchoredPos: useBackpackSkin ? new Vector2(0f, 108f) : new Vector2(0f, 0f),
+                size: useBackpackSkin ? new Vector2(304f, 84f) : new Vector2(0f, 0f),
+                fontSize: 15,
+                color: new Color(0.92f, 0.93f, 0.95f, 0.94f),
+                alignment: TextAnchor.UpperLeft,
+                addOutline: true);
+
+            _inventoryStorageLabel = CreateText(
+                _inventoryPanel,
+                "InventoryStorageLabel",
                 anchorMin: new Vector2(0.5f, 0f),
                 anchorMax: new Vector2(0.5f, 0f),
                 pivot: new Vector2(0.5f, 0f),
-                anchoredPos: new Vector2(0f, 166f),
-                size: new Vector2(760f, 146f),
-                title: "TOOLS",
-                accent: HudAccentCool);
+                anchoredPos: useBackpackSkin ? new Vector2(0f, 24f) : new Vector2(0f, 0f),
+                size: useBackpackSkin ? new Vector2(304f, 24f) : new Vector2(0f, 0f),
+                fontSize: 14,
+                color: new Color(0.96f, 0.83f, 0.52f, 0.96f),
+                alignment: TextAnchor.MiddleCenter,
+                addOutline: true);
+            _inventorySeedLabel.gameObject.SetActive(false);
+            _inventoryWaterLabel.gameObject.SetActive(false);
+            _inventoryFireLabel.gameObject.SetActive(false);
+            _inventoryPlantLabel.gameObject.SetActive(false);
+            _inventoryStoneLabel.gameObject.SetActive(false);
+            _inventoryTypesLabel.gameObject.SetActive(false);
+            _inventoryStorageLabel.gameObject.SetActive(false);
+
+            _toolArcPanel = CreateRect(
+                _root,
+                "ToolbeltArc",
+                anchorMin: new Vector2(0f, 0f),
+                anchorMax: new Vector2(0f, 0f),
+                pivot: new Vector2(0f, 0f),
+                anchoredPos: new Vector2(18f, 26f),
+                size: new Vector2(232f, 188f));
+
+            var toolArcSprite = GetCustomUISprite("ActiveItem");
+            if (toolArcSprite != null)
+            {
+                _toolArcBase = CreateDecorativeSprite(
+                    _toolArcPanel,
+                    "ToolArcBase",
+                    toolArcSprite,
+                    anchorMin: new Vector2(0f, 0f),
+                    anchorMax: new Vector2(0f, 0f),
+                    pivot: new Vector2(0f, 0f),
+                    anchoredPos: Vector2.zero,
+                    size: new Vector2(208f, 208f),
+                    color: new Color(0.28f, 0.66f, 0.82f, 0.30f));
+            }
 
             _toolSummaryLabel = CreateText(
-                toolPanel,
+                _toolArcPanel,
                 "ToolSummary",
-                anchorMin: new Vector2(0f, 1f),
-                anchorMax: new Vector2(1f, 1f),
-                pivot: new Vector2(0.5f, 1f),
-                anchoredPos: new Vector2(0f, -36f),
-                size: new Vector2(-40f, 20f),
-                fontSize: 15,
-                color: HudTextSecondary,
-                alignment: TextAnchor.MiddleCenter);
+                anchorMin: new Vector2(0f, 0f),
+                anchorMax: new Vector2(0f, 0f),
+                pivot: new Vector2(0f, 0f),
+                anchoredPos: new Vector2(22f, 10f),
+                size: new Vector2(150f, 22f),
+                fontSize: 16,
+                color: new Color(0.90f, 0.95f, 0.97f, 0.92f),
+                alignment: TextAnchor.MiddleLeft,
+                addOutline: true);
 
-            int toolCount = System.Enum.GetValues(typeof(FPSRaycastInteractor.ApplyTool)).Length;
-            _toolSlotBorders = new Image[toolCount];
-            _toolSlotFills = new Image[toolCount];
-            _toolSlotKeyLabels = new Text[toolCount];
-            _toolSlotNameLabels = new Text[toolCount];
-
-            var slotRow = CreateRect(
-                toolPanel,
-                "ToolSlots",
-                anchorMin: new Vector2(0.5f, 0f),
-                anchorMax: new Vector2(0.5f, 0f),
-                pivot: new Vector2(0.5f, 0f),
-                anchoredPos: new Vector2(0f, 18f),
-                size: new Vector2(toolCount * 124f + Mathf.Max(0, toolCount - 1) * 10f + 32f, 56f));
-
-            const float slotWidth = 124f;
-            const float slotGap = 10f;
-            float totalWidth = (slotWidth * toolCount) + (slotGap * Mathf.Max(0, toolCount - 1));
-            float startX = -totalWidth * 0.5f + (slotWidth * 0.5f);
-            for (int i = 0; i < toolCount; i++)
+            var activeFrameSprite = GetCustomUISprite("ActiveItem");
+            if (activeFrameSprite != null)
             {
-                float x = startX + i * (slotWidth + slotGap);
-                CreateToolSlot(slotRow, i, x, slotWidth);
+                _toolActiveFrame = CreateDecorativeSprite(
+                    _toolArcPanel,
+                    "ToolActiveFrame",
+                    activeFrameSprite,
+                    anchorMin: new Vector2(0f, 0f),
+                    anchorMax: new Vector2(0f, 0f),
+                    pivot: new Vector2(0.5f, 0.5f),
+                    anchoredPos: new Vector2(92f, 82f),
+                    size: new Vector2(108f, 108f),
+                    color: new Color(0.40f, 0.82f, 0.95f, 0.82f));
             }
+
+            _toolActiveIcon = CreateImage(
+                _toolArcPanel,
+                "ToolActiveIcon",
+                anchorMin: new Vector2(0f, 0f),
+                anchorMax: new Vector2(0f, 0f),
+                pivot: new Vector2(0.5f, 0.5f),
+                anchoredPos: new Vector2(92f, 82f),
+                size: new Vector2(46f, 46f),
+                color: Color.white);
+            _toolActiveIcon.preserveAspect = true;
         }
 
         private void BuildCrosshair()
@@ -466,6 +596,7 @@ namespace SCoL.Visualization
                 anchoredPos: new Vector2(0f, 34f),
                 size: new Vector2(628f, 108f),
                 color: new Color(0.02f, 0.03f, 0.05f, 0.18f)).rectTransform;
+            _healthPanel = panel;
 
             var panelShadow = panel.gameObject.AddComponent<Shadow>();
             panelShadow.effectColor = new Color(0f, 0f, 0f, 0.45f);
@@ -737,10 +868,6 @@ namespace SCoL.Visualization
             if (runtime != null)
             {
                 SetText(_statusHeroLabel, $"{runtime.CurrentSeason.ToString().ToUpperInvariant()}  /  {runtime.CurrentWeather.ToString().ToUpperInvariant()}");
-                _sb.Append("<color=#F1D598><b>View</b></color> ");
-                _sb.AppendLine(runtime.ViewMode.ToString().ToUpperInvariant());
-                _sb.Append("<color=#F1D598><b>Fire</b></color> ");
-                _sb.AppendLine(runtime.OverlayFire ? "ACTIVE" : "OFF");
             }
             else
             {
@@ -763,16 +890,35 @@ namespace SCoL.Visualization
                 _sb.Append("<color=#67C8FF><b>Zone</b></color> ");
                 _sb.AppendLine(_settlementManager.StatusLine.ToUpperInvariant());
                 _sb.Append("<color=#8BE39E><b>Goal</b></color> ");
-                _sb.AppendLine(_settlementManager.GoalLine);
+                _sb.AppendLine(ShortenStatusGoal(_settlementManager.GoalLine));
             }
 
             SetText(_statusLabel, _sb.ToString());
+        }
+
+        private static string ShortenStatusGoal(string goalLine)
+        {
+            if (string.IsNullOrWhiteSpace(goalLine))
+                return string.Empty;
+
+            string goal = goalLine.Trim();
+            goal = goal.Replace("animals near home", "animals");
+            goal = goal.Replace("flowers", "flw");
+            goal = goal.Replace("survive", "survive");
+            return goal;
         }
 
         private void UpdateInventory()
         {
             if (_inventoryLabel == null)
                 return;
+
+            bool storageOpen = _settlementManager != null && _settlementManager.IsStorageUiOpen;
+            if (_inventoryPanel != null)
+                _inventoryPanel.gameObject.SetActive(!storageOpen);
+            if (storageOpen)
+                return;
+
             if (_inventory == null)
             {
                 SetText(_inventoryLabel, string.Empty);
@@ -780,29 +926,54 @@ namespace SCoL.Visualization
             }
 
             int selected = _fpsInteractor != null ? _fpsInteractor.GetSelectedSeedVariantIndex() : 0;
+            SetText(_inventoryLabel, BuildCompactInventoryHudText(selected));
+        }
+
+        private string BuildCompactInventoryHudText(int selectedSeedVariant)
+        {
+            if (_inventory == null)
+                return string.Empty;
+
             _sb.Clear();
-            _sb.Append("<size=24><color=#7FD390><b>Seeds</b></color> ");
+            _sb.Append("<size=21><color=#7FD390><b>Seeds</b></color> ");
             _sb.Append(_inventory.seeds);
             _sb.AppendLine("</size>");
-            _sb.Append("<color=#F4DFA2><b>Types</b></color> ");
-            _sb.AppendLine(_inventory.GetSeedTypeSummary());
             _sb.Append("<color=#7FD390><b>Held</b></color> ");
-            _sb.AppendLine(_inventory.GetSeedTypeDisplayName(selected));
+            _sb.AppendLine(_inventory.GetSeedTypeDisplayName(selectedSeedVariant));
             _sb.Append("<color=#67C8FF><b>Water</b></color> ");
             _sb.Append(_inventory.water);
-            _sb.Append("    <color=#FF8E62><b>Fire</b></color> ");
-            _sb.Append(_inventory.fire);
-            _sb.Append("    <color=#8BE39E><b>Plants</b></color> ");
+            _sb.Append("   <color=#FF8E62><b>Fire</b></color> ");
+            _sb.AppendLine(_inventory.fire.ToString());
+            _sb.Append("<color=#8BE39E><b>Plants</b></color> ");
             _sb.Append(_inventory.plants);
-            _sb.Append("    <color=#D2D5DE><b>Stone</b></color> ");
-            _sb.Append(_inventory.stones);
-            if (_settlementManager != null)
-            {
-                _sb.AppendLine();
-                _sb.Append("<color=#F4DFA2><b>Storage</b></color> ");
-                _sb.Append(_settlementManager.StorageSummary);
-            }
-            SetText(_inventoryLabel, _sb.ToString());
+            _sb.AppendLine();
+            _sb.Append("<color=#D2D5DE><b>Stone</b></color> ");
+            _sb.Append(_inventory.stones.ToString());
+            return _sb.ToString();
+        }
+
+        private string BuildCompactSeedTypeSummary()
+        {
+            if (_inventory == null)
+                return string.Empty;
+
+            return $"Bean {_inventory.GetSeedTypeCount(0)}  Ember {_inventory.GetSeedTypeCount(1)}  Moon {_inventory.GetSeedTypeCount(2)}\n"
+                 + $"Long {_inventory.GetSeedTypeCount(3)}  Wild {_inventory.GetSeedTypeCount(4)}  Rose {_inventory.GetSeedTypeCount(5)}\n"
+                 + $"Amber {_inventory.GetSeedTypeCount(6)}  Moonpetal {_inventory.GetSeedTypeCount(7)}";
+        }
+
+        private string BuildCompactStorageHudSummary()
+        {
+            if (_settlementManager == null || string.IsNullOrWhiteSpace(_settlementManager.StorageSummary))
+                return string.Empty;
+
+            return _settlementManager.StorageSummary
+                .Replace("Storage ", string.Empty)
+                .Replace("Seed ", "S")
+                .Replace("Water ", " W")
+                .Replace("Fire ", " F")
+                .Replace("Plant ", " P")
+                .Replace("Stone ", " St");
         }
 
         private void UpdateSafeZoneBadge()
@@ -827,32 +998,156 @@ namespace SCoL.Visualization
 
         private void UpdateToolbelt()
         {
-            if (_toolSummaryLabel == null || _toolSlotBorders == null || _toolSlotFills == null)
+            if (_toolActiveIcon == null)
                 return;
 
             var activeTool = _fpsInteractor != null ? _fpsInteractor.currentTool : FPSRaycastInteractor.ApplyTool.Seed;
-            SetText(_toolSummaryLabel, GetToolSummary(activeTool));
+            if (_toolSummaryLabel != null)
+                SetText(_toolSummaryLabel, GetToolLabel(activeTool).ToUpperInvariant());
 
-            for (int i = 0; i < _toolSlotBorders.Length; i++)
+            Color accent = GetToolAccent(activeTool);
+            float pulse = 0.72f + 0.16f * (0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * 4.2f));
+
+            _toolActiveIcon.sprite = GetToolIconSprite(activeTool);
+            _toolActiveIcon.color = Color.white;
+
+            if (_toolActiveFrame != null)
             {
-                var tool = (FPSRaycastInteractor.ApplyTool)i;
-                bool selected = tool == activeTool;
-                Color accent = GetToolAccent(tool);
-                float pulse = selected ? (0.78f + 0.18f * (0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * 4.2f))) : 0f;
+                _toolActiveFrame.color = new Color(accent.r, accent.g, accent.b, pulse);
+                _toolActiveFrame.rectTransform.localScale = Vector3.one * (1.02f + 0.04f * (0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * 4.2f)));
+            }
+        }
 
-                if (_toolSlotBorders[i] != null)
-                    _toolSlotBorders[i].color = selected ? accent : HudSlotIdleBorder;
-                if (_toolSlotFills[i] != null)
-                    _toolSlotFills[i].color = selected
-                        ? new Color(accent.r * 0.22f, accent.g * 0.22f, accent.b * 0.22f, pulse)
-                        : HudSlotIdleFill;
-                if (_toolSlotKeyLabels[i] != null)
-                {
-                    SetText(_toolSlotKeyLabels[i], GetToolSlotKeyLabel(i));
-                    _toolSlotKeyLabels[i].color = selected ? HudTextPrimary : new Color(1f, 1f, 1f, 0.55f);
-                }
-                if (_toolSlotNameLabels[i] != null)
-                    _toolSlotNameLabels[i].color = selected ? HudTextPrimary : HudTextSecondary;
+        private string GetHeldInventoryLabel(int selectedSeedVariant)
+        {
+            if (_inventory == null)
+                return string.Empty;
+
+            if (_fpsInteractor == null)
+                return _inventory.GetSeedTypeDisplayName(selectedSeedVariant);
+
+            if (_fpsInteractor.currentTool == FPSRaycastInteractor.ApplyTool.Seed)
+                return _inventory.GetSeedTypeDisplayName(selectedSeedVariant);
+
+            return TryMapToolToItemType(_fpsInteractor.currentTool, out var itemType)
+                ? _inventory.GetItemDisplayName(itemType, unknownIfUndiscovered: true)
+                : GetToolLabel(_fpsInteractor.currentTool);
+        }
+
+        private Sprite GetHeldInventoryIcon(int selectedSeedVariant)
+        {
+            if (_fpsInteractor == null)
+                return GetSeedVariantIconSprite(selectedSeedVariant);
+
+            return _fpsInteractor.currentTool == FPSRaycastInteractor.ApplyTool.Seed
+                ? GetSeedVariantIconSprite(selectedSeedVariant)
+                : GetToolIconSprite(_fpsInteractor.currentTool);
+        }
+
+        private Sprite GetSeedVariantIconSprite(int variantIndex)
+        {
+            string key = $"SeedVariant_{variantIndex}";
+            if (_customUISpriteCache.TryGetValue(key, out var cached))
+                return cached;
+
+            string assetPath = variantIndex switch
+            {
+                0 => "Assets/Screenshots/Snapshot_of_models/FlowerV1_seeds.png",
+                1 => "Assets/Screenshots/Snapshot_of_models/FlowerV1_seeds.png",
+                2 => "Assets/Screenshots/Snapshot_of_models/FlowerV2_seeds.png",
+                3 => "Assets/Screenshots/Snapshot_of_models/FlowerV3_seeds.png",
+                4 => "Assets/Screenshots/Snapshot_of_models/FlowerV1_seeds.png",
+                5 => "Assets/Screenshots/Snapshot_of_models/FlowerV1.png",
+                6 => "Assets/Screenshots/Snapshot_of_models/FlowerV2.png",
+                7 => "Assets/Screenshots/Snapshot_of_models/FlowerV3.png",
+                _ => "Assets/Screenshots/Snapshot_of_models/FlowerV1_seeds.png"
+            };
+
+            var sprite = LoadProjectSprite(assetPath, $"SeedVariant_{variantIndex}_", removeFlatBackground: true);
+            _customUISpriteCache[key] = sprite;
+            return sprite;
+        }
+
+        private string BuildInventoryTypesGrid()
+        {
+            if (_inventory == null)
+                return string.Empty;
+
+            _sb.Clear();
+            _sb.Append("<b>TYPES</b>\n");
+            int printed = 0;
+            for (int i = 0; i < _inventory.GetSeedTypeVariantCount(); i++)
+            {
+                int count = _inventory.GetSeedTypeCount(i);
+                if (count <= 0)
+                    continue;
+
+                if (printed > 0)
+                    _sb.Append(printed % 2 == 0 ? '\n' : "    ");
+
+                _sb.Append(GetShortSeedTypeLabel(i)).Append(' ').Append(count);
+                printed++;
+            }
+
+            if (printed == 0)
+                _sb.Append("None");
+
+            return _sb.ToString();
+        }
+
+        private string BuildCompactStorageSummary()
+        {
+            if (_settlementManager == null || string.IsNullOrWhiteSpace(_settlementManager.StorageSummary))
+                return string.Empty;
+
+            string summary = _settlementManager.StorageSummary
+                .Replace("Storage ", string.Empty)
+                .Replace("Seed ", "S")
+                .Replace("Water ", " W")
+                .Replace("Fire ", " F")
+                .Replace("Plant ", " P")
+                .Replace("Stone ", " St");
+            return $"STORE {summary}";
+        }
+
+        private string GetShortSeedTypeLabel(int variantIndex)
+        {
+            return variantIndex switch
+            {
+                0 => "Bean",
+                1 => "Brown",
+                2 => "Light",
+                3 => "Long",
+                4 => "Seed1",
+                5 => "V1",
+                6 => "V2",
+                7 => "V3",
+                _ => _inventory != null ? _inventory.GetSeedTypeDisplayName(variantIndex) : $"S{variantIndex + 1}"
+            };
+        }
+
+        private static bool TryMapToolToItemType(FPSRaycastInteractor.ApplyTool tool, out SCoLItemType itemType)
+        {
+            switch (tool)
+            {
+                case FPSRaycastInteractor.ApplyTool.Seed:
+                    itemType = SCoLItemType.Seed;
+                    return true;
+                case FPSRaycastInteractor.ApplyTool.Water:
+                    itemType = SCoLItemType.Water;
+                    return true;
+                case FPSRaycastInteractor.ApplyTool.Fire:
+                    itemType = SCoLItemType.Fire;
+                    return true;
+                case FPSRaycastInteractor.ApplyTool.Plant:
+                    itemType = SCoLItemType.Plant;
+                    return true;
+                case FPSRaycastInteractor.ApplyTool.Stone:
+                    itemType = SCoLItemType.Stone;
+                    return true;
+                default:
+                    itemType = SCoLItemType.Seed;
+                    return false;
             }
         }
 
@@ -1021,7 +1316,7 @@ namespace SCoL.Visualization
                     }
                     case FPSAimTargetKind.Animal:
                     {
-                        title = target.animal != null ? target.animal.name : "Animal";
+                        title = target.animal != null ? GetAnimalDisplayName(target.animal.name) : "Animal";
                         bool plantTool = _fpsInteractor != null && _fpsInteractor.currentTool == FPSRaycastInteractor.ApplyTool.Plant;
                         bool stoneTool = _fpsInteractor != null && _fpsInteractor.currentTool == FPSRaycastInteractor.ApplyTool.Stone;
                         detail = stoneTool
@@ -1044,11 +1339,13 @@ namespace SCoL.Visualization
                     }
                     case FPSAimTargetKind.SettlementStorage:
                     {
+                        if (!IsDirectHoverOnSettlementStorage(target.settlementInteractable))
+                            break;
+
                         title = "Supply Crate";
-                        string summary = _settlementManager != null ? _settlementManager.StorageSummary : "Storage offline";
                         detail = _settlementManager != null && !_settlementManager.IsActivated
                             ? "Offline until the settlement core is activated."
-                            : "<color=#67C8FF><b>F</b></color> Open chest\nMove items between chest and inventory\n" + summary;
+                            : "<color=#67C8FF><b>F</b></color> Open chest\nMove items between chest and pack.";
                         break;
                     }
                     case FPSAimTargetKind.SettlementBarrier:
@@ -1067,6 +1364,21 @@ namespace SCoL.Visualization
                 SetText(_aimTitleLabel, title);
             if (_aimDetailLabel != null)
                 SetText(_aimDetailLabel, detail);
+        }
+
+        private bool IsDirectHoverOnSettlementStorage(SCoLSettlementInteractable storageInteractable)
+        {
+            if (cameraSource == null || storageInteractable == null)
+                return false;
+
+            if (!SCoL.Interaction.SCoLInteractionInput.TryGetAimRay(cameraSource, out var ray))
+                return false;
+
+            if (!Physics.Raycast(ray, out var hit, maxDistance, hitMask, QueryTriggerInteraction.Ignore))
+                return false;
+
+            var hitInteractable = hit.collider != null ? hit.collider.GetComponentInParent<SCoLSettlementInteractable>() : null;
+            return hitInteractable == storageInteractable;
         }
 
         private string ResolvePlantHoverName(FPSAimTargetInfo target)
@@ -1252,64 +1564,59 @@ namespace SCoL.Visualization
 
         private void CreateToolSlot(RectTransform parent, int slotIndex, float anchoredX, float width)
         {
+            const float radius = 110f;
+            const float startAngle = 104f;
+            const float endAngle = 8f;
+            int toolCount = System.Enum.GetValues(typeof(FPSRaycastInteractor.ApplyTool)).Length;
+            float t = toolCount > 1 ? slotIndex / (float)(toolCount - 1) : 0f;
+            float angleDeg = Mathf.Lerp(startAngle, endAngle, t);
+            float angleRad = angleDeg * Mathf.Deg2Rad;
+            Vector2 center = new Vector2(34f, 22f);
+            Vector2 iconPos = center + new Vector2(Mathf.Cos(angleRad), Mathf.Sin(angleRad)) * radius;
+
             var border = CreateImage(
                 parent,
-                $"ToolSlot_{slotIndex + 1}",
-                anchorMin: new Vector2(0.5f, 0f),
-                anchorMax: new Vector2(0.5f, 0f),
-                pivot: new Vector2(0.5f, 0f),
-                anchoredPos: new Vector2(anchoredX, 0f),
-                size: new Vector2(width, 56f),
-                color: HudSlotIdleBorder);
+                $"ToolIcon_{slotIndex + 1}",
+                anchorMin: new Vector2(0f, 0f),
+                anchorMax: new Vector2(0f, 0f),
+                pivot: new Vector2(0.5f, 0.5f),
+                anchoredPos: iconPos,
+                size: new Vector2(54f, 54f),
+                color: new Color(0f, 0f, 0f, 0f));
             _toolSlotBorders[slotIndex] = border;
+            border.rectTransform.localScale = Vector3.one * 0.92f;
 
-            var fill = CreateImage(
+            var activeFrameSprite = GetCustomUISprite("ActiveItem");
+            if (activeFrameSprite != null && _toolSlotActiveFrames != null && slotIndex < _toolSlotActiveFrames.Length)
+            {
+                _toolSlotActiveFrames[slotIndex] = CreateDecorativeSprite(
+                    border.transform,
+                    "ActiveFrame",
+                    activeFrameSprite,
+                    anchorMin: new Vector2(0.5f, 0.5f),
+                    anchorMax: new Vector2(0.5f, 0.5f),
+                    pivot: new Vector2(0.5f, 0.5f),
+                    anchoredPos: Vector2.zero,
+                    size: new Vector2(88f, 88f),
+                    color: new Color(1f, 1f, 1f, 0f));
+                if (_toolSlotActiveFrames[slotIndex] != null)
+                    _toolSlotActiveFrames[slotIndex].enabled = false;
+            }
+
+            _toolIconImages[slotIndex] = CreateDecorativeSprite(
                 border.transform,
-                "Fill",
+                "Icon",
+                GetToolIconSprite((FPSRaycastInteractor.ApplyTool)slotIndex),
                 anchorMin: new Vector2(0.5f, 0.5f),
                 anchorMax: new Vector2(0.5f, 0.5f),
                 pivot: new Vector2(0.5f, 0.5f),
                 anchoredPos: Vector2.zero,
-                size: new Vector2(width - 4f, 52f),
-                color: HudSlotIdleFill);
-            _toolSlotFills[slotIndex] = fill;
+                size: new Vector2(38f, 38f),
+                color: new Color(0.86f, 0.89f, 0.92f, 0.68f));
 
-            CreateImage(
-                fill.transform,
-                "TopRim",
-                anchorMin: new Vector2(0f, 1f),
-                anchorMax: new Vector2(1f, 1f),
-                pivot: new Vector2(0.5f, 1f),
-                anchoredPos: new Vector2(0f, -1f),
-                size: new Vector2(0f, 2f),
-                color: new Color(1f, 1f, 1f, 0.10f));
-
-            _toolSlotKeyLabels[slotIndex] = CreateText(
-                fill.transform,
-                "Key",
-                anchorMin: new Vector2(0f, 1f),
-                anchorMax: new Vector2(0f, 1f),
-                pivot: new Vector2(0f, 1f),
-                anchoredPos: new Vector2(10f, -8f),
-                size: new Vector2(28f, 18f),
-                fontSize: 14,
-                color: new Color(1f, 1f, 1f, 0.55f),
-                alignment: TextAnchor.MiddleLeft);
-            SetText(_toolSlotKeyLabels[slotIndex], GetToolSlotKeyLabel(slotIndex));
-
-            _toolSlotNameLabels[slotIndex] = CreateText(
-                fill.transform,
-                "Name",
-                anchorMin: new Vector2(0.5f, 0.5f),
-                anchorMax: new Vector2(0.5f, 0.5f),
-                pivot: new Vector2(0.5f, 0.5f),
-                anchoredPos: new Vector2(0f, 6f),
-                size: new Vector2(width - 24f, 22f),
-                fontSize: 20,
-                color: HudTextSecondary,
-                alignment: TextAnchor.MiddleCenter,
-                addOutline: true);
-            SetText(_toolSlotNameLabels[slotIndex], GetToolLabel((FPSRaycastInteractor.ApplyTool)slotIndex).ToUpperInvariant());
+            _toolSlotKeyLabels[slotIndex] = null;
+            _toolSlotNameLabels[slotIndex] = null;
+            _toolSlotFills[slotIndex] = null;
         }
 
         private static void SetText(Text label, string value)
@@ -1398,6 +1705,20 @@ namespace SCoL.Visualization
                 alignment: TextAnchor.MiddleLeft).text = title;
 
             return card;
+        }
+
+        private static void StripHudCardChrome(RectTransform card)
+        {
+            if (card == null)
+                return;
+
+            string[] chromeNames = { "CardInset", "AccentBar", "AccentPill", "CardTitle" };
+            for (int i = 0; i < chromeNames.Length; i++)
+            {
+                var child = card.Find(chromeNames[i]);
+                if (child != null)
+                    child.gameObject.SetActive(false);
+            }
         }
 
         private RectTransform CreatePanel(Transform parent, string name, Vector2 anchorMin, Vector2 anchorMax, Vector2 pivot, Vector2 anchoredPos, Vector2 size, Color bg, bool preferInnerStyle = false)
@@ -1578,8 +1899,8 @@ namespace SCoL.Visualization
                 anchorMin: new Vector2(0.5f, 0.5f),
                 anchorMax: new Vector2(0.5f, 0.5f),
                 pivot: new Vector2(0.5f, 0.5f),
-                anchoredPos: new Vector2(0f, 8f),
-                size: new Vector2(760f, 430f),
+                anchoredPos: new Vector2(0f, 18f),
+                size: new Vector2(820f, 500f),
                 title: "INTRODUCTION",
                 accent: HudAccentCool);
 
@@ -1589,8 +1910,8 @@ namespace SCoL.Visualization
                 anchorMin: new Vector2(0f, 1f),
                 anchorMax: new Vector2(1f, 1f),
                 pivot: new Vector2(0.5f, 1f),
-                anchoredPos: new Vector2(0f, -70f),
-                size: new Vector2(-56f, 42f),
+                anchoredPos: new Vector2(0f, -82f),
+                size: new Vector2(-64f, 46f),
                 fontSize: 34,
                 color: HudTextPrimary,
                 alignment: TextAnchor.MiddleCenter,
@@ -1599,12 +1920,12 @@ namespace SCoL.Visualization
             _introBodyLabel = CreateText(
                 card,
                 "IntroductionBody",
-                anchorMin: new Vector2(0f, 0.5f),
-                anchorMax: new Vector2(1f, 0.5f),
-                pivot: new Vector2(0.5f, 0.5f),
-                anchoredPos: new Vector2(0f, 4f),
-                size: new Vector2(-72f, 208f),
-                fontSize: 22,
+                anchorMin: new Vector2(0f, 0f),
+                anchorMax: new Vector2(1f, 1f),
+                pivot: new Vector2(0.5f, 1f),
+                anchoredPos: new Vector2(0f, -136f),
+                size: new Vector2(-76f, -210f),
+                fontSize: 20,
                 color: HudTextSecondary,
                 alignment: TextAnchor.UpperLeft,
                 addOutline: false);
@@ -1615,9 +1936,9 @@ namespace SCoL.Visualization
                 anchorMin: new Vector2(0f, 0f),
                 anchorMax: new Vector2(1f, 0f),
                 pivot: new Vector2(0.5f, 0f),
-                anchoredPos: new Vector2(0f, 28f),
-                size: new Vector2(-72f, 44f),
-                fontSize: 21,
+                anchoredPos: new Vector2(0f, 22f),
+                size: new Vector2(-76f, 52f),
+                fontSize: 20,
                 color: HudAccentWarm,
                 alignment: TextAnchor.MiddleCenter,
                 addOutline: true);
@@ -1673,12 +1994,34 @@ namespace SCoL.Visualization
                 anchorMax: new Vector2(0.5f, 0.5f),
                 pivot: new Vector2(0.5f, 0.5f),
                 anchoredPos: new Vector2(0f, 0f),
-                size: new Vector2(980f, 760f),
-                title: "STORAGE",
+                size: new Vector2(1100f, 820f),
+                title: string.Empty,
                 accent: HudAccentCool);
             var panelImage = _storageOverlayPanel.GetComponent<Image>();
             if (panelImage != null)
+            {
                 panelImage.raycastTarget = true;
+                panelImage.color = new Color(0f, 0f, 0f, 0f);
+            }
+
+            _useCustomStorageSkin = true;
+            StripHudCardChrome(_storageOverlayPanel);
+            var panelShadow = _storageOverlayPanel.GetComponent<Shadow>();
+            if (panelShadow != null)
+            {
+                panelShadow.enabled = true;
+                panelShadow.effectColor = new Color(0f, 0f, 0f, 0.42f);
+                panelShadow.effectDistance = new Vector2(0f, -12f);
+            }
+            CreateImage(
+                _storageOverlayPanel,
+                "StoragePanelInset",
+                anchorMin: new Vector2(0.5f, 0.5f),
+                anchorMax: new Vector2(0.5f, 0.5f),
+                pivot: new Vector2(0.5f, 0.5f),
+                anchoredPos: new Vector2(0f, -8f),
+                size: new Vector2(1060f, 742f),
+                color: new Color(0.06f, 0.07f, 0.10f, 0.90f));
             var panelDrag = _storageOverlayPanel.gameObject.AddComponent<SCoLUIDraggableWindow>();
             panelDrag.dragTarget = _storageOverlayPanel;
 
@@ -1688,11 +2031,11 @@ namespace SCoL.Visualization
                 anchorMin: new Vector2(0f, 1f),
                 anchorMax: new Vector2(1f, 1f),
                 pivot: new Vector2(0.5f, 1f),
-                anchoredPos: new Vector2(0f, -58f),
-                size: new Vector2(-180f, 34f),
-                fontSize: 26,
+                anchoredPos: new Vector2(0f, -30f),
+                size: new Vector2(-120f, 36f),
+                fontSize: 31,
                 color: HudTextPrimary,
-                alignment: TextAnchor.MiddleLeft,
+                alignment: TextAnchor.MiddleCenter,
                 addOutline: true);
 
             _storageHintLabel = CreateText(
@@ -1701,11 +2044,11 @@ namespace SCoL.Visualization
                 anchorMin: new Vector2(0f, 1f),
                 anchorMax: new Vector2(1f, 1f),
                 pivot: new Vector2(0.5f, 1f),
-                anchoredPos: new Vector2(0f, -98f),
-                size: new Vector2(-180f, 44f),
-                fontSize: 18,
-                color: HudTextSecondary,
-                alignment: TextAnchor.MiddleLeft,
+                anchoredPos: new Vector2(0f, -70f),
+                size: new Vector2(-180f, 28f),
+                fontSize: 19,
+                color: new Color(0.88f, 0.90f, 0.92f, 0.90f),
+                alignment: TextAnchor.MiddleCenter,
                 addOutline: false);
 
             _storageCloseButton = CreateButton(
@@ -1714,34 +2057,54 @@ namespace SCoL.Visualization
                 anchorMin: new Vector2(1f, 1f),
                 anchorMax: new Vector2(1f, 1f),
                 pivot: new Vector2(1f, 1f),
-                anchoredPos: new Vector2(-28f, -28f),
-                size: new Vector2(120f, 44f),
-                label: "CLOSE",
-                color: new Color(0.54f, 0.18f, 0.16f, 0.96f));
+                anchoredPos: new Vector2(-24f, -20f),
+                size: new Vector2(84f, 84f),
+                label: string.Empty,
+                color: CloseButtonBg);
+            SetButtonIcon(_storageCloseButton, GetCustomUISprite("CloseInventory"), new Vector2(48f, 48f), new Color(0.98f, 0.97f, 0.92f, 0.98f));
             _storageCloseButton.onClick.AddListener(OnStorageCloseClicked);
 
-            var chestLabel = CreateText(
+            _storageChestBoard = CreateImage(
                 _storageOverlayPanel,
+                "ChestBoard",
+                anchorMin: new Vector2(0.5f, 1f),
+                anchorMax: new Vector2(0.5f, 1f),
+                pivot: new Vector2(0.5f, 1f),
+                anchoredPos: new Vector2(-316f, -118f),
+                size: new Vector2(338f, 620f),
+                color: new Color(0.13f, 0.12f, 0.10f, 0.96f)).rectTransform;
+            CreateImage(
+                _storageChestBoard,
+                "ChestBoardInner",
+                anchorMin: new Vector2(0.5f, 0.5f),
+                anchorMax: new Vector2(0.5f, 0.5f),
+                pivot: new Vector2(0.5f, 0.5f),
+                anchoredPos: Vector2.zero,
+                size: new Vector2(316f, 596f),
+                color: new Color(0.18f, 0.16f, 0.13f, 0.98f));
+
+            var chestLabel = CreateText(
+                _storageChestBoard,
                 "ChestSectionLabel",
                 anchorMin: new Vector2(0f, 1f),
                 anchorMax: new Vector2(1f, 1f),
                 pivot: new Vector2(0.5f, 1f),
-                anchoredPos: new Vector2(0f, -154f),
-                size: new Vector2(-64f, 28f),
-                fontSize: 22,
+                anchoredPos: new Vector2(0f, -22f),
+                size: new Vector2(-28f, 32f),
+                fontSize: 24,
                 color: HudAccentWarm,
-                alignment: TextAnchor.MiddleLeft,
+                alignment: TextAnchor.MiddleCenter,
                 addOutline: true);
             SetText(chestLabel, "Chest");
 
             _storageChestGrid = CreateRect(
-                _storageOverlayPanel,
+                _storageChestBoard,
                 "ChestGrid",
                 anchorMin: new Vector2(0.5f, 1f),
                 anchorMax: new Vector2(0.5f, 1f),
                 pivot: new Vector2(0.5f, 1f),
-                anchoredPos: new Vector2(0f, -194f),
-                size: new Vector2(860f, 226f));
+                anchoredPos: new Vector2(0f, -88f),
+                size: new Vector2(294f, 500f));
             var chestDropSurface = CreateImage(
                 _storageChestGrid,
                 "ChestDropSurface",
@@ -1756,28 +2119,47 @@ namespace SCoL.Visualization
             chestDropZone.hud = this;
             chestDropZone.dropToChest = true;
 
-            var playerLabel = CreateText(
+            _storagePlayerBoard = CreateImage(
                 _storageOverlayPanel,
+                "PlayerBoard",
+                anchorMin: new Vector2(0.5f, 1f),
+                anchorMax: new Vector2(0.5f, 1f),
+                pivot: new Vector2(0.5f, 1f),
+                anchoredPos: new Vector2(32f, -118f),
+                size: new Vector2(338f, 620f),
+                color: new Color(0.09f, 0.12f, 0.10f, 0.96f)).rectTransform;
+            CreateImage(
+                _storagePlayerBoard,
+                "PlayerBoardInner",
+                anchorMin: new Vector2(0.5f, 0.5f),
+                anchorMax: new Vector2(0.5f, 0.5f),
+                pivot: new Vector2(0.5f, 0.5f),
+                anchoredPos: Vector2.zero,
+                size: new Vector2(316f, 596f),
+                color: new Color(0.13f, 0.18f, 0.14f, 0.98f));
+
+            var playerLabel = CreateText(
+                _storagePlayerBoard,
                 "PlayerSectionLabel",
-                anchorMin: new Vector2(0f, 0f),
-                anchorMax: new Vector2(1f, 0f),
-                pivot: new Vector2(0.5f, 0f),
-                anchoredPos: new Vector2(0f, 270f),
-                size: new Vector2(-64f, 28f),
-                fontSize: 22,
+                anchorMin: new Vector2(0f, 1f),
+                anchorMax: new Vector2(1f, 1f),
+                pivot: new Vector2(0.5f, 1f),
+                anchoredPos: new Vector2(0f, -22f),
+                size: new Vector2(-28f, 32f),
+                fontSize: 24,
                 color: HudAccentGreen,
-                alignment: TextAnchor.MiddleLeft,
+                alignment: TextAnchor.MiddleCenter,
                 addOutline: true);
             SetText(playerLabel, "Inventory");
 
             _storagePlayerGrid = CreateRect(
-                _storageOverlayPanel,
+                _storagePlayerBoard,
                 "PlayerGrid",
-                anchorMin: new Vector2(0.5f, 0f),
-                anchorMax: new Vector2(0.5f, 0f),
-                pivot: new Vector2(0.5f, 0f),
-                anchoredPos: new Vector2(0f, 48f),
-                size: new Vector2(860f, 226f));
+                anchorMin: new Vector2(0.5f, 1f),
+                anchorMax: new Vector2(0.5f, 1f),
+                pivot: new Vector2(0.5f, 1f),
+                anchoredPos: new Vector2(0f, -88f),
+                size: new Vector2(294f, 500f));
             var playerDropSurface = CreateImage(
                 _storagePlayerGrid,
                 "PlayerDropSurface",
@@ -1791,6 +2173,64 @@ namespace SCoL.Visualization
             var playerDropZone = playerDropSurface.gameObject.AddComponent<SCoLStorageUIDropZone>();
             playerDropZone.hud = this;
             playerDropZone.dropToChest = false;
+
+            _storageDetailPanel = CreateImage(
+                overlay.transform,
+                "StorageDetailPanel",
+                anchorMin: new Vector2(0.5f, 1f),
+                anchorMax: new Vector2(0.5f, 1f),
+                pivot: new Vector2(0.5f, 1f),
+                anchoredPos: new Vector2(380f, -396f),
+                size: new Vector2(282f, 250f),
+                color: new Color(0.07f, 0.08f, 0.11f, 0.94f)).rectTransform;
+            var detailShadow = _storageDetailPanel.gameObject.AddComponent<Shadow>();
+            detailShadow.effectColor = new Color(0f, 0f, 0f, 0.44f);
+            detailShadow.effectDistance = new Vector2(0f, -10f);
+            CreateImage(
+                _storageDetailPanel,
+                "StorageDetailInset",
+                anchorMin: new Vector2(0.5f, 0.5f),
+                anchorMax: new Vector2(0.5f, 0.5f),
+                pivot: new Vector2(0.5f, 0.5f),
+                anchoredPos: Vector2.zero,
+                size: new Vector2(262f, 230f),
+                color: new Color(0.12f, 0.13f, 0.17f, 0.98f));
+            _storageDetailTitleLabel = CreateText(
+                _storageDetailPanel,
+                "StorageDetailTitle",
+                anchorMin: new Vector2(0f, 1f),
+                anchorMax: new Vector2(1f, 1f),
+                pivot: new Vector2(0.5f, 1f),
+                anchoredPos: new Vector2(0f, -18f),
+                size: new Vector2(-32f, 30f),
+                fontSize: 24,
+                color: HudTextPrimary,
+                alignment: TextAnchor.MiddleLeft,
+                addOutline: true);
+            _storageDetailCountLabel = CreateText(
+                _storageDetailPanel,
+                "StorageDetailCount",
+                anchorMin: new Vector2(0f, 1f),
+                anchorMax: new Vector2(1f, 1f),
+                pivot: new Vector2(0.5f, 1f),
+                anchoredPos: new Vector2(0f, -54f),
+                size: new Vector2(-32f, 26f),
+                fontSize: 18,
+                color: HudAccentWarm,
+                alignment: TextAnchor.MiddleLeft,
+                addOutline: true);
+            _storageDetailBodyLabel = CreateText(
+                _storageDetailPanel,
+                "StorageDetailBody",
+                anchorMin: new Vector2(0f, 0f),
+                anchorMax: new Vector2(1f, 1f),
+                pivot: new Vector2(0.5f, 1f),
+                anchoredPos: new Vector2(0f, -92f),
+                size: new Vector2(-32f, -108f),
+                fontSize: 17,
+                color: HudTextSecondary,
+                alignment: TextAnchor.UpperLeft,
+                addOutline: false);
 
             _storageChestButtons = new Button[12];
             _storageChestIconImages = new Image[12];
@@ -1836,7 +2276,7 @@ namespace SCoL.Visualization
                 anchorMax: new Vector2(0.5f, 0.5f),
                 pivot: new Vector2(0.5f, 0.5f),
                 anchoredPos: Vector2.zero,
-                size: new Vector2(196f, 64f),
+                size: new Vector2(236f, 78f),
                 color: new Color(0.14f, 0.16f, 0.20f, 0.92f)).rectTransform;
             _storageDragGhost.gameObject.SetActive(false);
             var ghostCanvasGroup = _storageDragGhost.gameObject.AddComponent<CanvasGroup>();
@@ -1858,8 +2298,8 @@ namespace SCoL.Visualization
                 anchorMax: new Vector2(1f, 1f),
                 pivot: new Vector2(0.5f, 0.5f),
                 anchoredPos: new Vector2(0f, 8f),
-                size: new Vector2(-18f, -18f),
-                fontSize: 16,
+                size: new Vector2(-22f, -22f),
+                fontSize: 19,
                 color: HudTextPrimary,
                 alignment: TextAnchor.MiddleLeft,
                 addOutline: true);
@@ -1869,9 +2309,9 @@ namespace SCoL.Visualization
                 anchorMin: new Vector2(1f, 0f),
                 anchorMax: new Vector2(1f, 0f),
                 pivot: new Vector2(1f, 0f),
-                anchoredPos: new Vector2(-10f, 8f),
-                size: new Vector2(72f, 20f),
-                fontSize: 18,
+                anchoredPos: new Vector2(-12f, 10f),
+                size: new Vector2(86f, 24f),
+                fontSize: 21,
                 color: HudAccentWarm,
                 alignment: TextAnchor.LowerRight,
                 addOutline: true);
@@ -1889,15 +2329,27 @@ namespace SCoL.Visualization
             Color borderColor,
             UnityEngine.Events.UnityAction onClick)
         {
-            int columns = 4;
-            int row = index / columns;
-            int column = index % columns;
-            const float slotWidth = 196f;
-            const float slotHeight = 64f;
-            const float stepX = 214f;
-            const float stepY = 74f;
-            float x = -stepX * 1.5f + column * stepX;
-            float y = -row * stepY;
+            bool useMinimalSkin = _useCustomStorageSkin;
+            bool chestSide = name.StartsWith("ChestSlot_");
+
+            float slotWidth = useMinimalSkin ? 138f : 196f;
+            float slotHeight = useMinimalSkin ? 90f : 64f;
+            Vector2 slotPos;
+            if (useMinimalSkin)
+            {
+                slotPos = GetCustomStorageSlotPosition(chestSide, index);
+            }
+            else
+            {
+                int columns = 4;
+                int row = index / columns;
+                int column = index % columns;
+                const float stepX = 214f;
+                const float stepY = 74f;
+                float x = -stepX * 1.5f + column * stepX;
+                float y = -row * stepY;
+                slotPos = new Vector2(x, y);
+            }
 
             var root = CreateImage(
                 parent,
@@ -1905,19 +2357,21 @@ namespace SCoL.Visualization
                 anchorMin: new Vector2(0.5f, 1f),
                 anchorMax: new Vector2(0.5f, 1f),
                 pivot: new Vector2(0.5f, 1f),
-                anchoredPos: new Vector2(x, y),
+                anchoredPos: slotPos,
                 size: new Vector2(slotWidth, slotHeight),
-                color: fillColor);
+                color: useMinimalSkin ? new Color(0f, 0f, 0f, 0.001f) : fillColor);
             root.raycastTarget = true;
 
             button = root.gameObject.AddComponent<Button>();
             button.targetGraphic = root;
             var colors = button.colors;
-            colors.normalColor = fillColor;
-            colors.highlightedColor = Color.Lerp(fillColor, Color.white, 0.12f);
-            colors.pressedColor = Color.Lerp(fillColor, Color.black, 0.16f);
+            colors.normalColor = useMinimalSkin ? new Color(0f, 0f, 0f, 0.001f) : fillColor;
+            colors.highlightedColor = useMinimalSkin ? new Color(1f, 1f, 1f, 0.06f) : Color.Lerp(fillColor, Color.white, 0.12f);
+            colors.pressedColor = useMinimalSkin ? new Color(1f, 1f, 1f, 0.12f) : Color.Lerp(fillColor, Color.black, 0.16f);
             colors.selectedColor = colors.highlightedColor;
-            colors.disabledColor = new Color(fillColor.r * 0.45f, fillColor.g * 0.45f, fillColor.b * 0.45f, 0.52f);
+            colors.disabledColor = useMinimalSkin
+                ? new Color(1f, 1f, 1f, 0.015f)
+                : new Color(fillColor.r * 0.45f, fillColor.g * 0.45f, fillColor.b * 0.45f, 0.52f);
             button.colors = colors;
             button.onClick.AddListener(onClick);
 
@@ -1930,38 +2384,41 @@ namespace SCoL.Visualization
             dropZone.hud = this;
             dropZone.dropToChest = name.StartsWith("ChestSlot_");
 
-            var border = CreateImage(
+            Image selectionFrame = CreateImage(
                 root.transform,
-                "Border",
+                "SelectionFrame",
                 anchorMin: Vector2.zero,
                 anchorMax: Vector2.one,
                 pivot: new Vector2(0.5f, 0.5f),
                 anchoredPos: Vector2.zero,
-                size: Vector2.zero,
-                color: borderColor);
-            border.raycastTarget = false;
-            border.type = Image.Type.Sliced;
-            border.sprite = ResolveBuiltinUISprite();
+                size: useMinimalSkin ? new Vector2(8f, 8f) : Vector2.zero,
+                color: useMinimalSkin ? new Color(1f, 1f, 1f, 0f) : borderColor);
+            selectionFrame.raycastTarget = false;
+            selectionFrame.type = Image.Type.Sliced;
+            selectionFrame.sprite = ResolveBuiltinUISprite();
 
-            var inner = CreateImage(
-                root.transform,
-                "Inner",
-                anchorMin: new Vector2(0f, 0f),
-                anchorMax: new Vector2(1f, 1f),
-                pivot: new Vector2(0.5f, 0.5f),
-                anchoredPos: Vector2.zero,
-                size: new Vector2(-6f, -6f),
-                color: fillColor * 0.78f);
-            inner.raycastTarget = false;
+            if (!useMinimalSkin)
+            {
+                var inner = CreateImage(
+                    root.transform,
+                    "Inner",
+                    anchorMin: new Vector2(0f, 0f),
+                    anchorMax: new Vector2(1f, 1f),
+                    pivot: new Vector2(0.5f, 0.5f),
+                    anchoredPos: Vector2.zero,
+                    size: new Vector2(-6f, -6f),
+                    color: fillColor * 0.78f);
+                inner.raycastTarget = false;
+            }
 
             iconImage = CreateImage(
                 root.transform,
                 "Icon",
-                anchorMin: new Vector2(0f, 0.5f),
-                anchorMax: new Vector2(0f, 0.5f),
-                pivot: new Vector2(0f, 0.5f),
-                anchoredPos: new Vector2(12f, 0f),
-                size: new Vector2(46f, 46f),
+                anchorMin: new Vector2(0.5f, 0.5f),
+                anchorMax: new Vector2(0.5f, 0.5f),
+                pivot: new Vector2(0.5f, 0.5f),
+                anchoredPos: new Vector2(0f, useMinimalSkin ? 0f : 0f),
+                size: useMinimalSkin ? new Vector2(76f, 56f) : new Vector2(46f, 46f),
                 color: new Color(1f, 1f, 1f, 0.96f));
             iconImage.raycastTarget = false;
             iconImage.preserveAspect = true;
@@ -1970,28 +2427,30 @@ namespace SCoL.Visualization
             nameLabel = CreateText(
                 root.transform,
                 "Name",
-                anchorMin: new Vector2(0f, 0f),
-                anchorMax: new Vector2(1f, 1f),
-                pivot: new Vector2(0.5f, 0.5f),
-                anchoredPos: new Vector2(18f, 8f),
-                size: new Vector2(-72f, -18f),
-                fontSize: 16,
-                color: HudTextPrimary,
+                anchorMin: useMinimalSkin ? new Vector2(0f, 1f) : new Vector2(0f, 0f),
+                anchorMax: useMinimalSkin ? new Vector2(1f, 1f) : new Vector2(1f, 1f),
+                pivot: useMinimalSkin ? new Vector2(0f, 1f) : new Vector2(0.5f, 0.5f),
+                anchoredPos: useMinimalSkin ? new Vector2(10f, -10f) : new Vector2(18f, 8f),
+                size: useMinimalSkin ? new Vector2(-20f, 20f) : new Vector2(-72f, -18f),
+                fontSize: useMinimalSkin ? 11 : 16,
+                color: useMinimalSkin ? new Color(0.95f, 0.95f, 0.90f, 0.98f) : HudTextPrimary,
                 alignment: TextAnchor.MiddleLeft,
                 addOutline: true);
             nameLabel.raycastTarget = false;
+            if (useMinimalSkin)
+                nameLabel.gameObject.SetActive(false);
 
             countLabel = CreateText(
                 root.transform,
                 "Count",
-                anchorMin: new Vector2(1f, 0f),
-                anchorMax: new Vector2(1f, 0f),
-                pivot: new Vector2(1f, 0f),
-                anchoredPos: new Vector2(-10f, 8f),
-                size: new Vector2(72f, 20f),
-                fontSize: 18,
-                color: HudAccentWarm,
-                alignment: TextAnchor.LowerRight,
+                anchorMin: new Vector2(1f, 1f),
+                anchorMax: new Vector2(1f, 1f),
+                pivot: new Vector2(1f, 1f),
+                anchoredPos: new Vector2(-12f, -10f),
+                size: useMinimalSkin ? new Vector2(74f, 28f) : new Vector2(72f, 20f),
+                fontSize: useMinimalSkin ? 20 : 18,
+                color: useMinimalSkin ? new Color(0.95f, 0.78f, 0.34f, 0.98f) : HudAccentWarm,
+                alignment: TextAnchor.UpperRight,
                 addOutline: true);
             countLabel.raycastTarget = false;
         }
@@ -2005,6 +2464,36 @@ namespace SCoL.Visualization
             _storageOverlayGroup.alpha = open ? 1f : 0f;
             _storageOverlayGroup.interactable = open;
             _storageOverlayGroup.blocksRaycasts = open;
+            if (open)
+            {
+                _introOpen = false;
+                if (_introOverlayGroup != null)
+                {
+                    _introOverlayGroup.alpha = 0f;
+                    _introOverlayGroup.interactable = false;
+                    _introOverlayGroup.blocksRaycasts = false;
+                }
+            }
+            if (_inventoryPanel != null)
+            {
+                _inventoryPanel.gameObject.SetActive(!open);
+                var invCanvas = _inventoryPanel.GetComponent<CanvasGroup>();
+                if (invCanvas == null)
+                    invCanvas = _inventoryPanel.gameObject.AddComponent<CanvasGroup>();
+                invCanvas.alpha = open ? 0f : 1f;
+                invCanvas.interactable = !open;
+                invCanvas.blocksRaycasts = !open;
+            }
+            if (_statusPanel != null)
+                _statusPanel.gameObject.SetActive(!open);
+            if (_toolArcPanel != null)
+                _toolArcPanel.gameObject.SetActive(!open);
+            if (_aimPanel != null)
+                _aimPanel.gameObject.SetActive(!open);
+            if (_safeZoneBadge != null)
+                _safeZoneBadge.gameObject.SetActive(!open);
+            if (_healthPanel != null)
+                _healthPanel.gameObject.SetActive(!open);
 
             if (!open)
             {
@@ -2047,6 +2536,24 @@ namespace SCoL.Visualization
                 ApplyStorageSlotState(_storagePlayerButtons[i], _storagePlayerIconImages[i], _storagePlayerNameLabels[i], _storagePlayerCountLabels[i], playerLabel, playerCount);
                 ApplyStorageSelectionVisual(_storagePlayerButtons[i], !_storageSelectedChest && _storageSelectedSlot == i);
             }
+
+            UpdateStorageDetailPanel();
+        }
+
+        private void UpdateStorageDetailPanel()
+        {
+            if (_storageDetailTitleLabel == null || _settlementManager == null || _inventory == null)
+                return;
+
+            int slot = Mathf.Clamp(_storageSelectedSlot, 0, 11);
+            string label = _settlementManager.GetStorageSlotLabel(slot, _inventory);
+            int count = _storageSelectedChest
+                ? _settlementManager.GetStorageSlotCount(slot)
+                : _settlementManager.GetPlayerSlotCount(_inventory, slot);
+
+            SetText(_storageDetailTitleLabel, label);
+            SetText(_storageDetailCountLabel, $"Count: {Mathf.Max(0, count)}");
+            SetText(_storageDetailBodyLabel, GetStorageItemDescription(label));
         }
 
         private void ApplyStorageSlotState(Button button, Image iconImage, Text nameLabel, Text countLabel, string itemLabel, int count)
@@ -2057,12 +2564,16 @@ namespace SCoL.Visualization
             if (iconImage != null)
             {
                 iconImage.sprite = icon;
+                iconImage.color = _useCustomStorageSkin
+                    ? count > 0 ? GetStorageItemIconColor(itemLabel) : new Color(1f, 1f, 1f, 0f)
+                    : new Color(1f, 1f, 1f, 0.96f);
                 iconImage.gameObject.SetActive(hasIcon);
             }
             if (nameLabel != null)
             {
-                nameLabel.gameObject.SetActive(!hasIcon);
-                if (!hasIcon)
+                bool showName = _useCustomStorageSkin ? false : !hasIcon;
+                nameLabel.gameObject.SetActive(showName);
+                if (showName)
                     SetText(nameLabel, itemLabel);
             }
             if (countLabel != null)
@@ -2082,44 +2593,117 @@ namespace SCoL.Visualization
 
             string fileName = key switch
             {
-                "Bean" => "FlowerV1_seeds.jpg",
-                "BrownSeed" => "FlowerV1_seeds.jpg",
-                "LightBrownSeed" => "FlowerV2_seeds.jpg",
-                "LongSeed" => "FlowerV3_seeds.jpg",
-                "Seed1" => "FlowerV1_seeds.jpg",
-                "SeedV1" => "FlowerV1.jpg",
-                "SeedV2" => "FlowerV2.jpg",
-                "SeedV3" => "FlowerV3.jpg",
-                "Plant" => "FlowerV3.jpg",
+                "Bean" => "FlowerV1_seeds.png",
+                "BrownSeed" => "FlowerV1_seeds.png",
+                "Ember Seed" => "FlowerV1_seeds.png",
+                "LightBrownSeed" => "FlowerV2_seeds.png",
+                "Moon Seed" => "FlowerV2_seeds.png",
+                "LongSeed" => "FlowerV3_seeds.png",
+                "Long Seed" => "FlowerV3_seeds.png",
+                "Seed1" => "FlowerV1_seeds.png",
+                "Wild Seed" => "FlowerV1_seeds.png",
+                "SeedV1" => "FlowerV1.png",
+                "Roseglow" => "FlowerV1.png",
+                "SeedV2" => "FlowerV2.png",
+                "Amberbloom" => "FlowerV2.png",
+                "SeedV3" => "FlowerV3.png",
+                "Moonpetal" => "FlowerV3.png",
+                "Plant" => "FlowerV3.png",
                 _ => null
             };
 
-            if (string.IsNullOrWhiteSpace(fileName))
+            Sprite sprite = string.IsNullOrWhiteSpace(fileName) ? key switch
+            {
+                "Water" => GetToolIconSprite(FPSRaycastInteractor.ApplyTool.Water),
+                "Fire" => GetToolIconSprite(FPSRaycastInteractor.ApplyTool.Fire),
+                "Stone" => GetToolIconSprite(FPSRaycastInteractor.ApplyTool.Stone),
+                _ => null
+            } : LoadStorageIconSprite(fileName);
+
+            if (sprite == null)
             {
                 _storageIconCache[key] = null;
                 return null;
             }
 
-            var sprite = LoadStorageIconSprite(fileName);
             _storageIconCache[key] = sprite;
             return sprite;
+        }
+
+        private static Color GetStorageItemIconColor(string itemLabel)
+        {
+            return itemLabel switch
+            {
+                "Water" => new Color(0.52f, 0.85f, 1f, 0.98f),
+                "Fire" => new Color(1f, 0.60f, 0.36f, 0.98f),
+                "Stone" => new Color(0.82f, 0.84f, 0.88f, 0.98f),
+                _ => new Color(1f, 1f, 1f, 0.96f)
+            };
         }
 
         private Sprite LoadStorageIconSprite(string fileName)
         {
             const string assetFolder = "Assets/Screenshots/Snapshot_of_models";
+            return LoadSpriteFromAssetOrDisk(assetFolder, Path.Combine(Application.dataPath, "Screenshots/Snapshot_of_models"), fileName, "StorageIcon_", removeFlatBackground: true);
+        }
+
+        private Sprite GetCustomUISprite(string spriteName)
+        {
+            if (string.IsNullOrWhiteSpace(spriteName))
+                return null;
+
+            if (_customUISpriteCache.TryGetValue(spriteName, out var cached))
+                return cached;
+
+            var sprite = LoadSpriteFromAssetOrDisk(
+                CustomUIFolderAssetPath,
+                Path.Combine(Application.dataPath, "CustomUI"),
+                $"{spriteName}.png",
+                "CustomUI_");
+            _customUISpriteCache[spriteName] = sprite;
+            return sprite;
+        }
+
+        private Sprite GetToolIconSprite(FPSRaycastInteractor.ApplyTool tool)
+        {
+            string key = $"ToolIcon_{tool}";
+            if (_customUISpriteCache.TryGetValue(key, out var cached))
+                return cached;
+
+            Sprite sprite = tool switch
+            {
+                FPSRaycastInteractor.ApplyTool.Seed => LoadProjectSprite("Assets/Screenshots/Snapshot_of_models/FlowerV1_seeds.png", "ToolSeed_", removeFlatBackground: true),
+                FPSRaycastInteractor.ApplyTool.Water => LoadEditorAssetPreviewSprite("Assets/Models/Modeling/_Incoming/watercan/watercan.obj", "ToolWater_")
+                                                          ?? LoadProjectSprite("Assets/Screenshots/Snapshot_of_models/FlowerV2_seeds.png", "ToolWaterFallback_", removeFlatBackground: true),
+                FPSRaycastInteractor.ApplyTool.Fire => LoadProjectSprite("Assets/SimpleUIKit/Images/ItemIcons/Examples/Wand.png", "ToolFireFallback_")
+                                                         ?? LoadProjectSprite("Assets/Screenshots/Snapshot_of_models/Stick1.png", "ToolFireFallback2_", removeFlatBackground: true),
+                FPSRaycastInteractor.ApplyTool.Plant => LoadProjectSprite("Assets/Screenshots/Snapshot_of_models/FlowerV3.png", "ToolPlant_", removeFlatBackground: true),
+                FPSRaycastInteractor.ApplyTool.Stone => LoadProjectSprite("Assets/SimpleUIKit/Images/ItemIcons/Examples/Coins.png", "ToolStoneFallback_")
+                                                          ?? LoadProjectSprite("Assets/Screenshots/Snapshot_of_models/Stick2.png", "ToolStoneFallback2_", removeFlatBackground: true),
+                _ => null
+            };
+
+            _customUISpriteCache[key] = sprite;
+            return sprite;
+        }
+
+        private static Sprite LoadProjectSprite(string assetPath, string textureNamePrefix, bool removeFlatBackground = false)
+        {
+            if (string.IsNullOrWhiteSpace(assetPath))
+                return null;
+
 #if UNITY_EDITOR
-            string assetPath = $"{assetFolder}/{fileName}";
             var directSprite = AssetDatabase.LoadAssetAtPath<Sprite>(assetPath);
-            if (directSprite != null)
+            if (directSprite != null && !removeFlatBackground)
                 return directSprite;
 
             var textureAsset = AssetDatabase.LoadAssetAtPath<Texture2D>(assetPath);
-            if (textureAsset != null)
+            if (textureAsset != null && !removeFlatBackground)
                 return Sprite.Create(textureAsset, new Rect(0f, 0f, textureAsset.width, textureAsset.height), new Vector2(0.5f, 0.5f), 100f);
 #endif
 
-            string fullPath = Path.Combine(Application.dataPath, "Screenshots/Snapshot_of_models", fileName);
+            string relativePath = assetPath.StartsWith("Assets/") ? assetPath.Substring("Assets/".Length) : assetPath;
+            string fullPath = Path.Combine(Application.dataPath, relativePath);
             if (!File.Exists(fullPath))
                 return null;
 
@@ -2134,8 +2718,94 @@ namespace SCoL.Visualization
                 return null;
             }
 
-            texture.name = $"StorageIcon_{Path.GetFileNameWithoutExtension(fileName)}";
+            if (removeFlatBackground)
+                RemoveFlatBackground(texture);
+
+            texture.name = $"{textureNamePrefix}{Path.GetFileNameWithoutExtension(assetPath)}";
             return Sprite.Create(texture, new Rect(0f, 0f, texture.width, texture.height), new Vector2(0.5f, 0.5f), 100f);
+        }
+
+        private static Sprite LoadEditorAssetPreviewSprite(string assetPath, string textureNamePrefix)
+        {
+#if UNITY_EDITOR
+            var asset = AssetDatabase.LoadAssetAtPath<Object>(assetPath);
+            if (asset == null)
+                return null;
+
+            var preview = AssetPreview.GetAssetPreview(asset);
+            if (preview == null)
+                preview = AssetPreview.GetMiniThumbnail(asset);
+            if (preview == null)
+                return null;
+
+            return Sprite.Create(preview, new Rect(0f, 0f, preview.width, preview.height), new Vector2(0.5f, 0.5f), 100f);
+#else
+            return null;
+#endif
+        }
+
+        private static Sprite LoadSpriteFromAssetOrDisk(string assetFolder, string diskFolder, string fileName, string textureNamePrefix, bool removeFlatBackground = false)
+        {
+#if UNITY_EDITOR
+            string assetPath = $"{assetFolder}/{fileName}";
+            var directSprite = AssetDatabase.LoadAssetAtPath<Sprite>(assetPath);
+            if (directSprite != null && !removeFlatBackground)
+                return directSprite;
+
+            var textureAsset = AssetDatabase.LoadAssetAtPath<Texture2D>(assetPath);
+            if (textureAsset != null && !removeFlatBackground)
+                return Sprite.Create(textureAsset, new Rect(0f, 0f, textureAsset.width, textureAsset.height), new Vector2(0.5f, 0.5f), 100f);
+#endif
+
+            string fullPath = Path.Combine(diskFolder, fileName);
+            if (!File.Exists(fullPath))
+                return null;
+
+            byte[] bytes = File.ReadAllBytes(fullPath);
+            if (bytes == null || bytes.Length == 0)
+                return null;
+
+            var texture = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+            if (!texture.LoadImage(bytes))
+            {
+                Destroy(texture);
+                return null;
+            }
+
+            if (removeFlatBackground)
+                RemoveFlatBackground(texture);
+
+            texture.name = $"{textureNamePrefix}{Path.GetFileNameWithoutExtension(fileName)}";
+            return Sprite.Create(texture, new Rect(0f, 0f, texture.width, texture.height), new Vector2(0.5f, 0.5f), 100f);
+        }
+
+        private static void RemoveFlatBackground(Texture2D texture)
+        {
+            if (texture == null || !texture.isReadable)
+                return;
+
+            int w = texture.width;
+            int h = texture.height;
+            if (w < 2 || h < 2)
+                return;
+
+            Color bg = (
+                texture.GetPixel(0, 0) +
+                texture.GetPixel(w - 1, 0) +
+                texture.GetPixel(0, h - 1) +
+                texture.GetPixel(w - 1, h - 1)) * 0.25f;
+
+            var pixels = texture.GetPixels();
+            for (int i = 0; i < pixels.Length; i++)
+            {
+                Color c = pixels[i];
+                float diff = Mathf.Abs(c.r - bg.r) + Mathf.Abs(c.g - bg.g) + Mathf.Abs(c.b - bg.b);
+                if (diff <= 0.18f)
+                    pixels[i].a = 0f;
+            }
+
+            texture.SetPixels(pixels);
+            texture.Apply(updateMipmaps: false, makeNoLongerReadable: false);
         }
 
         private void OnChestSlotClicked(int slot)
@@ -2166,6 +2836,69 @@ namespace SCoL.Visualization
                 return;
 
             _settlementManager.CloseStorageUi();
+        }
+
+        private static Vector2 GetCustomStorageSlotPosition(bool chestSide, int index)
+        {
+            Vector2[] layout =
+            {
+                new Vector2(-78f, 0f),    new Vector2(78f, 0f),
+                new Vector2(-78f, -82f),  new Vector2(78f, -82f),
+                new Vector2(-78f, -164f), new Vector2(78f, -164f),
+                new Vector2(-78f, -246f), new Vector2(78f, -246f),
+                new Vector2(-78f, -328f), new Vector2(78f, -328f),
+                new Vector2(-78f, -410f), new Vector2(78f, -410f),
+            };
+
+            if (index < 0 || index >= layout.Length)
+                return Vector2.zero;
+            return layout[index];
+        }
+
+        private static string GetAnimalDisplayName(string rawName)
+        {
+            if (string.IsNullOrWhiteSpace(rawName))
+                return "Animal";
+
+            string lower = rawName.ToLowerInvariant();
+            if (lower.Contains("wolf")) return "Wolf";
+            if (lower.Contains("deer")) return "Deer";
+            if (lower.Contains("fox")) return "Fox";
+            if (lower.Contains("rabbit")) return "Rabbit";
+            if (lower.Contains("dog")) return "Dog";
+            if (lower.Contains("cat")) return "Cat";
+            if (lower.Contains("horse")) return "Horse";
+            if (lower.Contains("bear")) return "Bear";
+            if (lower.Contains("bison")) return "Bison";
+            if (lower.Contains("giraffe")) return "Giraffe";
+            if (lower.Contains("elephant")) return "Elephant";
+            if (lower.Contains("lion")) return "Lion";
+            if (lower.Contains("tiger")) return "Tiger";
+            if (lower.Contains("cheetah")) return "Cheetah";
+            return "Animal";
+        }
+
+        private string GetStorageItemDescription(string itemLabel)
+        {
+            if (string.IsNullOrWhiteSpace(itemLabel))
+                return "No item selected.";
+
+            return itemLabel switch
+            {
+                "Bean" => "A hardy starter seed. Good for early planting and steady growth.",
+                "Ember Seed" => "A warm-climate seed that grows into a brighter flower variant.",
+                "Moon Seed" => "A cooler-toned seed with a softer bloom silhouette.",
+                "Long Seed" => "A slender seed that grows into a taller flower profile.",
+                "Wild Seed" => "A rough field seed collected from older growth lines.",
+                "Roseglow" => "A curated flower line with a vivid bloom and reliable spread.",
+                "Amberbloom" => "A golden flower line suited for brighter garden patches.",
+                "Moonpetal" => "A pale flower line with a softer, cooler palette.",
+                "Water" => "Used to water soil, support growth, and calm flames.",
+                "Fire" => "Used to ignite targets and control hostile threats.",
+                "Plant" => "Harvested plant matter. Feed it to nearby animals.",
+                "Stone" => "A throwable resource used to distract or damage animals.",
+                _ => "Stored resource ready to move between the chest and your pack."
+            };
         }
 
         void UpdateStorageSelectionInput()
@@ -2214,41 +2947,34 @@ namespace SCoL.Visualization
             if (gamepad == null)
                 return false;
 
-            Vector2 stick = gamepad.rightStick.ReadValue();
-            if (Mathf.Abs(stick.x) >= 0.6f)
-                dx = stick.x > 0f ? 1 : -1;
-            else if (Mathf.Abs(stick.y) >= 0.6f)
-                dy = stick.y > 0f ? -1 : 1;
-
-            if (dx == 0 && dy == 0)
-            {
-                if (gamepad.dpad.left.wasPressedThisFrame) dx = -1;
-                else if (gamepad.dpad.right.wasPressedThisFrame) dx = 1;
-                else if (gamepad.dpad.up.wasPressedThisFrame) dy = -1;
-                else if (gamepad.dpad.down.wasPressedThisFrame) dy = 1;
-            }
+            if (gamepad.dpad.left.wasPressedThisFrame) dx = -1;
+            else if (gamepad.dpad.right.wasPressedThisFrame) dx = 1;
+            else if (gamepad.dpad.up.wasPressedThisFrame) dy = -1;
+            else if (gamepad.dpad.down.wasPressedThisFrame) dy = 1;
 
             return dx != 0 || dy != 0;
         }
 
         void MoveStorageSelection(int dx, int dy)
         {
-            const int columns = 4;
-            const int rows = 3;
+            const int columns = 2;
+            const int rows = 6;
 
             int row = Mathf.Clamp(_storageSelectedSlot / columns, 0, rows - 1);
             int column = Mathf.Clamp(_storageSelectedSlot % columns, 0, columns - 1);
 
             if (dx != 0)
-                column = Mathf.Clamp(column + dx, 0, columns - 1);
+            {
+                int nextColumn = column + dx;
+                if (nextColumn < 0 || nextColumn >= columns)
+                    _storageSelectedChest = !_storageSelectedChest;
+                else
+                    column = nextColumn;
+            }
 
             if (dy != 0)
             {
-                int nextRow = row + dy;
-                if (nextRow < 0 || nextRow >= rows)
-                    _storageSelectedChest = !_storageSelectedChest;
-                else
-                    row = nextRow;
+                row = Mathf.Clamp(row + dy, 0, rows - 1);
             }
 
             _storageSelectedSlot = row * columns + column;
@@ -2263,25 +2989,31 @@ namespace SCoL.Visualization
             if (image != null)
             {
                 Color baseColor = button.interactable ? button.colors.normalColor : button.colors.disabledColor;
-                image.color = selected ? Color.Lerp(baseColor, Color.white, 0.26f) : baseColor;
+                image.color = _useCustomStorageSkin
+                    ? baseColor
+                    : selected ? Color.Lerp(baseColor, Color.white, 0.26f) : baseColor;
             }
 
-            var border = button.transform.Find("Border");
+            var border = button.transform.Find("SelectionFrame");
             var borderImage = border != null ? border.GetComponent<Image>() : null;
             if (borderImage != null)
             {
                 bool chestSlot = button.name.StartsWith("ChestSlot_");
-                borderImage.color = selected
-                    ? new Color(0.98f, 0.94f, 0.60f, 0.98f)
-                    : chestSlot
-                        ? new Color(0.32f, 0.54f, 0.78f, 0.92f)
-                        : new Color(0.36f, 0.70f, 0.40f, 0.92f);
+                borderImage.color = _useCustomStorageSkin
+                    ? selected
+                        ? new Color(0.98f, 0.94f, 0.60f, 0.92f)
+                        : new Color(1f, 1f, 1f, 0f)
+                    : selected
+                        ? new Color(0.98f, 0.94f, 0.60f, 0.98f)
+                        : chestSlot
+                            ? new Color(0.32f, 0.54f, 0.78f, 0.92f)
+                            : new Color(0.36f, 0.70f, 0.40f, 0.92f);
             }
         }
 
         string GetStorageSelectPromptLabel()
         {
-            return UseGamepadPrompts() ? "Right Stick" : "Arrow Keys";
+            return UseGamepadPrompts() ? "D-Pad" : "Arrow Keys";
         }
 
         string GetStorageConfirmPromptLabel()
@@ -2291,7 +3023,7 @@ namespace SCoL.Visualization
 
         string GetStorageSwitchPromptLabel()
         {
-            return UseGamepadPrompts() ? "D-Pad Up/Down" : "Tab";
+            return UseGamepadPrompts() ? "D-Pad Left/Right" : "Tab";
         }
 
         string GetStorageClosePromptLabel()
@@ -2447,6 +3179,19 @@ namespace SCoL.Visualization
             return image;
         }
 
+        private Image CreateDecorativeSprite(Transform parent, string name, Sprite sprite, Vector2 anchorMin, Vector2 anchorMax, Vector2 pivot, Vector2 anchoredPos, Vector2 size, Color color)
+        {
+            if (sprite == null)
+                return null;
+
+            var image = CreateImage(parent, name, anchorMin, anchorMax, pivot, anchoredPos, size, color);
+            image.sprite = sprite;
+            image.preserveAspect = true;
+            image.color = color;
+            image.raycastTarget = false;
+            return image;
+        }
+
         private Button CreateButton(Transform parent, string name, Vector2 anchorMin, Vector2 anchorMax, Vector2 pivot, Vector2 anchoredPos, Vector2 size, string label, Color color)
         {
             var image = CreateImage(parent, name, anchorMin, anchorMax, pivot, anchoredPos, size, color);
@@ -2487,6 +3232,34 @@ namespace SCoL.Visualization
                 addOutline: true).text = label;
 
             return button;
+        }
+
+        private void SetButtonIcon(Button button, Sprite iconSprite, Vector2 size, Color color)
+        {
+            if (button == null)
+                return;
+
+            var label = button.transform.Find("ButtonLabel");
+            if (label != null)
+            {
+                var labelText = label.GetComponent<Text>();
+                if (labelText != null)
+                    labelText.text = string.Empty;
+            }
+
+            if (iconSprite == null)
+                return;
+
+            _storageCloseIcon = CreateDecorativeSprite(
+                button.transform,
+                "ButtonIcon",
+                iconSprite,
+                anchorMin: new Vector2(0.5f, 0.5f),
+                anchorMax: new Vector2(0.5f, 0.5f),
+                pivot: new Vector2(0.5f, 0.5f),
+                anchoredPos: Vector2.zero,
+                size: size,
+                color: color);
         }
 
         private void OnRespawnClicked()
