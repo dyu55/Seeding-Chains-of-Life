@@ -662,6 +662,8 @@ MonoBehaviour:
   groundMask:
     serializedVersion: 2
     m_Bits: 4294967295
+  settlementSpawnExclusionPadding: 1.5
+  barrierSpawnCheckRadius: 0.45
   configureBoidBoundsFromWorld: 1
   boundsPadding: 4
   boidBaseSpeed: 2.6
@@ -683,8 +685,8 @@ MonoBehaviour:
   maxHerbivorePopulation: 20
   maxWolfPopulation: 2
   maturePlantsPerExtraHerbivore: 18
-  herbivoresPerExtraWolf: 5
-  ecologySpawnBurstLimit: 2
+  herbivoresPerExtraWolf: 12
+  ecologySpawnBurstLimit: 1
   enableDeathFeedback: 1
   animalDeathEffectPrefab: {fileID: 0}
   animalDeathEffectLifetime: 2.5
@@ -18021,9 +18023,14 @@ MonoBehaviour:
   heldWaterCanPrefab: {fileID: 0}
   heldWaterCanLocalPosition: {x: 0.32, y: -0.28, z: 0.62}
   heldWaterCanLocalEuler: {x: 12, y: -24, z: -12}
+  heldWaterCanFacingEulerOffset: {x: 0, y: 180, z: 0}
+  heldWaterCanPourEulerOffset: {x: 42, y: 0, z: 30}
   heldWaterCanScale: 0.42
   heldWaterCanTint: {r: 0.24, g: 0.68, b: 0.96, a: 1}
   heldWaterCanEmission: 0.18
+  heldWaterCanPourInDuration: 0.08
+  heldWaterCanPourOutDuration: 0.16
+  heldWaterCanPourHoldDuration: 0.24
   heldFirePrefab: {fileID: 3846968307174952413, guid: 63ef7ff6d4a13dd49ad607632aa80351, type: 3}
   heldFireLocalPosition: {x: 0.34, y: -0.3, z: 0.58}
   heldFireLocalEuler: {x: 18, y: -32, z: -18}

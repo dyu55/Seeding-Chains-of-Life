@@ -52,7 +52,7 @@ namespace SCoL
         [Min(2)] public int initialFlowerClusterMinFlowers = 4;
         [Min(2)] public int initialFlowerClusterMaxFlowers = 7;
         [Min(0.5f)] public float initialFlowerClusterRadius = 2.4f;
-        public bool initialFlowerClustersCountAsLineage = true;
+        public bool initialFlowerClustersCountAsLineage = false;
 
         [Header("Tree Growth")]
         [Tooltip("Multiplier for promotions into tree stages. 0.33 means about 2/3 fewer new trees.")]

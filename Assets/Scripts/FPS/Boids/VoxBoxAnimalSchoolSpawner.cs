@@ -65,8 +65,8 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
     [Min(1)] public int maxHerbivorePopulation = 20;
     [Min(0)] public int maxWolfPopulation = 2;
     [Min(1)] public int maturePlantsPerExtraHerbivore = 18;
-    [Min(1)] public int herbivoresPerExtraWolf = 5;
-    [Min(0)] public int ecologySpawnBurstLimit = 2;
+    [Min(1)] public int herbivoresPerExtraWolf = 12;
+    [Min(0)] public int ecologySpawnBurstLimit = 1;
 
     [Header("Death Feedback")]
     public bool enableDeathFeedback = true;

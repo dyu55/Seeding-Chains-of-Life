@@ -1052,9 +1052,9 @@ namespace SCoL.Visualization
 
             string assetPath = variantIndex switch
             {
-                0 => "Assets/Screenshots/Snapshot_of_models/Bean.png",
-                1 => "Assets/Screenshots/Snapshot_of_models/EmberSeed.png",
-                2 => "Assets/Screenshots/Snapshot_of_models/moonSeed.png",
+                0 => "Assets/Screenshots/Snapshot_of_models/bean_.png",
+                1 => "Assets/Screenshots/Snapshot_of_models/ember_seed.png",
+                2 => "Assets/Screenshots/Snapshot_of_models/moon_seed.png",
                 3 => "Assets/Screenshots/Snapshot_of_models/LongSeed.png",
                 4 => "Assets/Screenshots/Snapshot_of_models/FlowerV1_seeds.png",
                 5 => "Assets/Screenshots/Snapshot_of_models/FlowerV1.png",
@@ -2601,11 +2601,11 @@ namespace SCoL.Visualization
 
             string fileName = key switch
             {
-                "Bean" => "Bean.png",
-                "BrownSeed" => "EmberSeed.png",
-                "Ember Seed" => "EmberSeed.png",
-                "LightBrownSeed" => "moonSeed.png",
-                "Moon Seed" => "moonSeed.png",
+                "Bean" => "bean_.png",
+                "BrownSeed" => "ember_seed.png",
+                "Ember Seed" => "ember_seed.png",
+                "LightBrownSeed" => "moon_seed.png",
+                "Moon Seed" => "moon_seed.png",
                 "LongSeed" => "LongSeed.png",
                 "Long Seed" => "LongSeed.png",
                 "Seed1" => "FlowerV1_seeds.png",
