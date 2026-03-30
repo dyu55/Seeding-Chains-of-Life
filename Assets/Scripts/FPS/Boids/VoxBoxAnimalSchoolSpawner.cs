@@ -26,6 +26,8 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
     [Min(0.1f)] public float raycastHeight = 120f;
     public Vector2 randomScaleRange = new Vector2(0.35f, 0.65f);
     public LayerMask groundMask = ~0;
+    [Min(0f)] public float settlementSpawnExclusionPadding = 1.5f;
+    [Min(0.05f)] public float barrierSpawnCheckRadius = 0.45f;
 
     [Header("Roaming")]
     [Tooltip("If true, all spawned animals roam within world-sized bounds from VoxelWorld config.")]
@@ -79,6 +81,7 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
     GameObject[] _plantDropPrefabs;
     float _nextPopulationCheckAt;
     SCoLRuntime _runtime;
+    SCoL.Settlement.SCoLSettlementManager _settlementManager;
 
     IEnumerator Start()
     {
@@ -259,6 +262,8 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
 
         if (configureBoidBoundsFromWorld)
             ApplyWorldBounds(boid);
+
+        NudgeAnimalOutOfSettlementIfNeeded(go, boid);
 
         EnsureAnyCollider(go);
         var health = go.GetComponent<SCoLCombatHealth>();
@@ -750,6 +755,8 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
     bool TryPickSpawnPoint(int spawnIndex, int targetCount, out Vector3 pos)
     {
         pos = transform.position;
+        if (_settlementManager == null)
+            _settlementManager = FindFirstObjectByType<SCoL.Settlement.SCoLSettlementManager>();
 
         if (voxelWorld != null && voxelWorld.Config != null)
         {
@@ -757,7 +764,8 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
             {
                 Vector3 top = voxelWorld.ColumnTopWorld(x, z);
                 pos = new Vector3(top.x, top.y + groundOffset, top.z);
-                return true;
+                if (IsValidAnimalSpawnPosition(pos))
+                    return true;
             }
 
             for (int tries = 0; tries < 12; tries++)
@@ -769,7 +777,8 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
 
                 Vector3 top = voxelWorld.ColumnTopWorld(x, z);
                 pos = new Vector3(top.x, top.y + groundOffset, top.z);
-                return true;
+                if (IsValidAnimalSpawnPosition(pos))
+                    return true;
             }
 
             return false;
@@ -781,11 +790,71 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
         if (Physics.Raycast(fallbackOrigin, Vector3.down, out var hit2, raycastHeight * 2f, groundMask, QueryTriggerInteraction.Ignore))
         {
             pos = hit2.point + Vector3.up * groundOffset;
-            return true;
+            return IsValidAnimalSpawnPosition(pos);
         }
 
         pos = transform.position + new Vector3(r.x, 0f, r.y);
+        return IsValidAnimalSpawnPosition(pos);
+    }
+
+    bool IsValidAnimalSpawnPosition(Vector3 worldPos)
+    {
+        if (_settlementManager != null)
+        {
+            float padding = Mathf.Max(0f, settlementSpawnExclusionPadding);
+            if (_settlementManager.DistanceToCenterXZ(worldPos) <= padding)
+                return false;
+        }
+
+        float radius = Mathf.Max(0.05f, barrierSpawnCheckRadius);
+        var hits = Physics.OverlapSphere(worldPos + Vector3.up * 0.6f, radius, ~0, QueryTriggerInteraction.Ignore);
+        for (int i = 0; i < hits.Length; i++)
+        {
+            var hit = hits[i];
+            if (hit == null)
+                continue;
+
+            var interactable = hit.GetComponentInParent<SCoL.Settlement.SCoLSettlementInteractable>();
+            if (interactable != null && interactable.kind == SCoL.Settlement.SCoLSettlementInteractableKind.Barrier)
+                return false;
+        }
+
         return true;
+    }
+
+    void NudgeAnimalOutOfSettlementIfNeeded(GameObject go, FPSBoidAgent boid)
+    {
+        if (go == null)
+            return;
+        if (_settlementManager == null)
+            _settlementManager = FindFirstObjectByType<SCoL.Settlement.SCoLSettlementManager>();
+        if (_settlementManager == null)
+            return;
+
+        if (_settlementManager.DistanceToCenterXZ(go.transform.position) > Mathf.Max(0f, settlementSpawnExclusionPadding))
+            return;
+
+        Vector3 away = _settlementManager.GetSafeZoneRepelDirection(go.transform.position);
+        if (away.sqrMagnitude < 0.0001f)
+            away = Vector3.right;
+        away.y = 0f;
+        away.Normalize();
+
+        float step = Mathf.Max(1f, settlementSpawnExclusionPadding + 0.8f);
+        for (int i = 1; i <= 10; i++)
+        {
+            Vector3 candidate = go.transform.position + away * (step * i);
+            if (voxelWorld != null && voxelWorld.TryGetTerrainSurfaceYAtWorld(candidate + Vector3.up * 4f, out float terrainY, includeWaterSurface: false))
+                candidate.y = terrainY + groundOffset;
+
+            if (!IsValidAnimalSpawnPosition(candidate))
+                continue;
+
+            go.transform.position = candidate;
+            if (boid != null)
+                boid.velocity = away * Mathf.Max(boid.maxSpeed * 0.8f, 1.4f);
+            return;
+        }
     }
 
     bool TryPickDistributedWorldColumn(int spawnIndex, int targetCount, out int x, out int z)
