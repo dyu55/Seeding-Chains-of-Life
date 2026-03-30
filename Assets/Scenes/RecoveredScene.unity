@@ -650,10 +650,10 @@ MonoBehaviour:
   animalPrefabs:
   - {fileID: 3632003745339279683, guid: ce8121766023134429b1dbdcd2cba052, type: 3}
   - {fileID: 7005526952333805016, guid: 7e9232d1122d64b4e873b1598e17f5a6, type: 3}
-  animalCount: 18
+  animalCount: 20
   enforceMinimumAnimalCount: 1
-  minimumAnimalCount: 24
-  wolfCount: 4
+  minimumAnimalCount: 20
+  wolfCount: 2
   spawnOnStart: 1
   maxSpawnAttemptsPerAnimal: 8
   groundOffset: 0.02
@@ -680,8 +680,8 @@ MonoBehaviour:
   respawnDelaySeconds: 4.5
   enableEcologyPopulationPressure: 1
   populationCheckIntervalSeconds: 12
-  maxHerbivorePopulation: 48
-  maxWolfPopulation: 12
+  maxHerbivorePopulation: 20
+  maxWolfPopulation: 2
   maturePlantsPerExtraHerbivore: 18
   herbivoresPerExtraWolf: 5
   ecologySpawnBurstLimit: 2
@@ -707,11 +707,6 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!4 &614420704 stripped
-Transform:
-  m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: c98df9c53f41b423c8043d8cb8c3b24a, type: 3}
-  m_PrefabInstance: {fileID: 2130999034}
-  m_PrefabAsset: {fileID: 0}
 --- !u!1 &627328406
 GameObject:
   m_ObjectHideFlags: 0
@@ -10925,8 +10920,6 @@ Transform:
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 510449418}
-  - {fileID: 614420704}
-  - {fileID: 1894049725}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!114 &900200002
@@ -12715,11 +12708,6 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!4 &1894049725 stripped
-Transform:
-  m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: c98df9c53f41b423c8043d8cb8c3b24a, type: 3}
-  m_PrefabInstance: {fileID: 2130999034}
-  m_PrefabAsset: {fileID: 0}
 --- !u!1 &1962930970
 GameObject:
   m_ObjectHideFlags: 0
@@ -17771,63 +17759,6 @@ MonoBehaviour:
   propCount: 6
   propsCenter: {x: 0.5, y: 1.1, z: 1}
   propsRadius: 0.35
---- !u!1001 &2130999034
-PrefabInstance:
-  m_ObjectHideFlags: 0
-  serializedVersion: 2
-  m_Modification:
-    serializedVersion: 3
-    m_TransformParent: {fileID: 900200001}
-    m_Modifications:
-    - target: {fileID: -8679921383154817045, guid: c98df9c53f41b423c8043d8cb8c3b24a, type: 3}
-      propertyPath: m_LocalPosition.x
-      value: -0.0015182495
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: c98df9c53f41b423c8043d8cb8c3b24a, type: 3}
-      propertyPath: m_LocalPosition.y
-      value: 0.0000000037252903
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: c98df9c53f41b423c8043d8cb8c3b24a, type: 3}
-      propertyPath: m_LocalPosition.z
-      value: -0.0012588501
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: c98df9c53f41b423c8043d8cb8c3b24a, type: 3}
-      propertyPath: m_LocalRotation.w
-      value: -0.00000004371139
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: c98df9c53f41b423c8043d8cb8c3b24a, type: 3}
-      propertyPath: m_LocalRotation.x
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: c98df9c53f41b423c8043d8cb8c3b24a, type: 3}
-      propertyPath: m_LocalRotation.y
-      value: 1
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: c98df9c53f41b423c8043d8cb8c3b24a, type: 3}
-      propertyPath: m_LocalRotation.z
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: c98df9c53f41b423c8043d8cb8c3b24a, type: 3}
-      propertyPath: m_LocalEulerAnglesHint.x
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: c98df9c53f41b423c8043d8cb8c3b24a, type: 3}
-      propertyPath: m_LocalEulerAnglesHint.y
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: c98df9c53f41b423c8043d8cb8c3b24a, type: 3}
-      propertyPath: m_LocalEulerAnglesHint.z
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 919132149155446097, guid: c98df9c53f41b423c8043d8cb8c3b24a, type: 3}
-      propertyPath: m_Name
-      value: CampsiteVisual
-      objectReference: {fileID: 0}
-    m_RemovedComponents: []
-    m_RemovedGameObjects: []
-    m_AddedGameObjects: []
-    m_AddedComponents: []
-  m_SourcePrefab: {fileID: 100100000, guid: c98df9c53f41b423c8043d8cb8c3b24a, type: 3}
 --- !u!1 &9000000001
 GameObject:
   m_ObjectHideFlags: 0

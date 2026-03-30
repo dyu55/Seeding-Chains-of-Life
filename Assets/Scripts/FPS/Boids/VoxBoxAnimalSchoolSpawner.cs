@@ -15,11 +15,11 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
     public GameObject[] animalPrefabs;
 
     [Header("Spawn")]
-    [Min(1)] public int animalCount = 24;
+    [Min(1)] public int animalCount = 20;
     [Tooltip("Guarantee a denser ecosystem even if old scene serialization still stores a lower animalCount.")]
     public bool enforceMinimumAnimalCount = true;
-    [Min(1)] public int minimumAnimalCount = 24;
-    [Min(0)] public int wolfCount = 4;
+    [Min(1)] public int minimumAnimalCount = 20;
+    [Min(0)] public int wolfCount = 2;
     public bool spawnOnStart = true;
     [Min(1)] public int maxSpawnAttemptsPerAnimal = 8;
     [Min(0f)] public float groundOffset = 0.02f;
@@ -32,6 +32,9 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
     [Header("Roaming")]
     [Tooltip("If true, all spawned animals roam within world-sized bounds from VoxelWorld config.")]
     public bool configureBoidBoundsFromWorld = true;
+    [Tooltip("If true, animals are assigned evenly across world partitions and kept near their own partition.")]
+    public bool distributeAnimalsAcrossWorld = true;
+    [Min(0f)] public float distributedBoundsPadding = 2.5f;
     [Min(0f)] public float boundsPadding = 4f;
     [Min(0f)] public float boidBaseSpeed = 1.6f;
     [Min(0f)] public float boidNeighborRadius = 4f;
@@ -59,8 +62,8 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
     [Header("Ecology Population")]
     public bool enableEcologyPopulationPressure = true;
     [Min(1f)] public float populationCheckIntervalSeconds = 12f;
-    [Min(1)] public int maxHerbivorePopulation = 48;
-    [Min(0)] public int maxWolfPopulation = 12;
+    [Min(1)] public int maxHerbivorePopulation = 20;
+    [Min(0)] public int maxWolfPopulation = 2;
     [Min(1)] public int maturePlantsPerExtraHerbivore = 18;
     [Min(1)] public int herbivoresPerExtraWolf = 5;
     [Min(0)] public int ecologySpawnBurstLimit = 2;
@@ -133,7 +136,7 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
 
                 var prefab = PickPrefab(i, herbivoreTarget, hostileWolves, spawnWolf);
                 var rot = Quaternion.Euler(0f, Random.Range(0f, 360f), 0f);
-                var go = SpawnAnimal(prefab, pos, rot, _spawnSerial++, spawnWolf);
+                var go = SpawnAnimal(prefab, pos, rot, _spawnSerial++, spawnWolf, i, totalTarget);
                 if (go == null) continue;
 
                 spawnedCount++;
@@ -162,7 +165,7 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
         MaintainEcologyDrivenPopulation();
     }
 
-    GameObject SpawnAnimal(GameObject prefab, Vector3 position, Quaternion rotation, int index, bool spawnWolf)
+    GameObject SpawnAnimal(GameObject prefab, Vector3 position, Quaternion rotation, int index, bool spawnWolf, int slotIndex, int totalTarget)
     {
         GameObject go = null;
         if (prefab != null)
@@ -260,7 +263,9 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
         boid.attackRange = spawnWolf ? 1.45f : 1.1f;
         boid.attackApproachWeight = spawnWolf ? 5.2f : 0f;
 
-        if (configureBoidBoundsFromWorld)
+        if (distributeAnimalsAcrossWorld)
+            ApplyDistributedRoamBounds(boid, slotIndex, totalTarget);
+        else if (configureBoidBoundsFromWorld)
             ApplyWorldBounds(boid);
 
         NudgeAnimalOutOfSettlementIfNeeded(go, boid);
@@ -292,13 +297,13 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
         var respawnRelay = go.GetComponent<SCoLAnimalRespawnRelay>();
         if (respawnRelay == null)
             respawnRelay = go.AddComponent<SCoLAnimalRespawnRelay>();
-        respawnRelay.Initialize(this, spawnWolf);
+        respawnRelay.Initialize(this, spawnWolf, slotIndex);
 
         _spawned.Add(go);
         return go;
     }
 
-    public void NotifyAnimalDeath(GameObject animalRoot, bool spawnWolf)
+    public void NotifyAnimalDeath(GameObject animalRoot, bool spawnWolf, int slotIndex)
     {
         if (animalRoot != null)
         {
@@ -314,10 +319,10 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
         if (!maintainPopulationByRespawning || !isActiveAndEnabled || !Application.isPlaying)
             return;
 
-        StartCoroutine(RespawnAnimalAfterDelay(spawnWolf));
+        StartCoroutine(RespawnAnimalAfterDelay(spawnWolf, slotIndex));
     }
 
-    IEnumerator RespawnAnimalAfterDelay(bool spawnWolf)
+    IEnumerator RespawnAnimalAfterDelay(bool spawnWolf, int slotIndex)
     {
         if (respawnDelaySeconds > 0f)
             yield return new WaitForSeconds(respawnDelaySeconds);
@@ -342,12 +347,14 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
         for (int i = 0; i < tries; i++)
         {
             Vector3 pos;
-            if (!TryPickSpawnPoint(Random.Range(0, Mathf.Max(1, herbivoreTarget + Mathf.Max(0, desiredWolves))), Mathf.Max(1, herbivoreTarget + Mathf.Max(0, desiredWolves)), out pos))
+            int totalTarget = Mathf.Max(1, herbivoreTarget + Mathf.Max(0, desiredWolves));
+            int resolvedSlotIndex = Mathf.Clamp(slotIndex, 0, totalTarget - 1);
+            if (!TryPickSpawnPoint(resolvedSlotIndex, totalTarget, out pos))
                 continue;
 
             var prefab = PickRespawnPrefab(spawnWolf, herbivoreTarget);
             var rot = Quaternion.Euler(0f, Random.Range(0f, 360f), 0f);
-            spawned = SpawnAnimal(prefab, pos, rot, _spawnSerial++, spawnWolf);
+            spawned = SpawnAnimal(prefab, pos, rot, _spawnSerial++, spawnWolf, resolvedSlotIndex, totalTarget);
             if (spawned != null)
                 yield break;
         }
@@ -448,14 +455,16 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
     bool TrySpawnSingleAnimal(bool spawnWolf, int herbivoreTarget, int wolfTarget)
     {
         int tries = Mathf.Max(4, maxSpawnAttemptsPerAnimal * 2);
+        int totalTarget = Mathf.Max(1, herbivoreTarget + wolfTarget);
         for (int i = 0; i < tries; i++)
         {
-            if (!TryPickSpawnPoint(Random.Range(0, Mathf.Max(1, herbivoreTarget + wolfTarget)), Mathf.Max(1, herbivoreTarget + wolfTarget), out var pos))
+            int slotIndex = Random.Range(0, totalTarget);
+            if (!TryPickSpawnPoint(slotIndex, totalTarget, out var pos))
                 continue;
 
             var prefab = PickRespawnPrefab(spawnWolf, herbivoreTarget);
             var rot = Quaternion.Euler(0f, Random.Range(0f, 360f), 0f);
-            var spawned = SpawnAnimal(prefab, pos, rot, _spawnSerial++, spawnWolf);
+            var spawned = SpawnAnimal(prefab, pos, rot, _spawnSerial++, spawnWolf, slotIndex, totalTarget);
             if (spawned != null)
                 return true;
         }
@@ -1013,6 +1022,48 @@ public class VoxBoxAnimalSchoolSpawner : MonoBehaviour
             Mathf.Max(2f, maxY - minY),
             Mathf.Max(2f, worldD - boundsPadding * 2f)
         );
+    }
+
+    void ApplyDistributedRoamBounds(FPSBoidAgent boid, int slotIndex, int totalTarget)
+    {
+        if (boid == null || voxelWorld == null || voxelWorld.Config == null)
+            return;
+
+        var cfg = voxelWorld.Config;
+        int worldWidth = Mathf.Max(1, cfg.worldWidth);
+        int worldDepth = Mathf.Max(1, cfg.worldDepth);
+        int target = Mathf.Max(1, totalTarget);
+        int slot = Mathf.Clamp(slotIndex, 0, target - 1);
+
+        float aspect = worldWidth / (float)Mathf.Max(1, worldDepth);
+        int gridX = Mathf.Max(1, Mathf.RoundToInt(Mathf.Sqrt(target * Mathf.Max(0.25f, aspect))));
+        int gridZ = Mathf.Max(1, Mathf.CeilToInt(target / (float)gridX));
+
+        int cellX = slot % gridX;
+        int cellZ = Mathf.Min(gridZ - 1, slot / gridX);
+
+        float minX = cellX * worldWidth / (float)gridX;
+        float maxX = (cellX + 1) * worldWidth / (float)gridX;
+        float minZ = cellZ * worldDepth / (float)gridZ;
+        float maxZ = (cellZ + 1) * worldDepth / (float)gridZ;
+        float pad = Mathf.Max(0f, distributedBoundsPadding);
+
+        float boundedMinX = Mathf.Clamp(minX + pad, 0f, worldWidth - 1f);
+        float boundedMaxX = Mathf.Clamp(maxX - pad, boundedMinX + 1f, worldWidth);
+        float boundedMinZ = Mathf.Clamp(minZ + pad, 0f, worldDepth - 1f);
+        float boundedMaxZ = Mathf.Clamp(maxZ - pad, boundedMinZ + 1f, worldDepth);
+
+        float width = Mathf.Max(2f, boundedMaxX - boundedMinX);
+        float depth = Mathf.Max(2f, boundedMaxZ - boundedMinZ);
+        float minY = voxelWorld.OriginWorld.y + 0.2f;
+        float maxY = voxelWorld.OriginWorld.y + Mathf.Max(2f, cfg.worldHeight * 0.35f);
+
+        boid.useBounds = true;
+        boid.boundsCenter = voxelWorld.OriginWorld + new Vector3(
+            boundedMinX + width * 0.5f,
+            (minY + maxY) * 0.5f - voxelWorld.OriginWorld.y,
+            boundedMinZ + depth * 0.5f);
+        boid.boundsSize = new Vector3(width, Mathf.Max(2f, maxY - minY), depth);
     }
 
     GameObject CreateFallbackAnimal(Vector3 position, Quaternion rotation)

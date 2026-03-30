@@ -98,6 +98,7 @@ public class FPSBoidAgent : MonoBehaviour
     public bool instantEjectFromWater = true;
     [Min(1f)] public float waterEjectLerpSpeed = 12f;
     [Min(0f)] public float waterEjectHeightOffset = 0.08f;
+    [Min(0f)] public float waterRecoverySteerSeconds = 0.35f;
 
     [Header("Plant Eating")]
     public bool canEatMaturePlants = false;
@@ -177,6 +178,7 @@ public class FPSBoidAgent : MonoBehaviour
     bool _hasEcologyHotspot;
     Vector3 _ecologyHotspot;
     float _ecologyHotspotUntil;
+    float _waterAvoidRecoveryUntil;
 
     void OnEnable()
     {
@@ -240,9 +242,6 @@ public class FPSBoidAgent : MonoBehaviour
 
         if (constrainToGround)
             SnapToGround();
-
-        if (avoidWaterColumns && hardEjectFromWater)
-            EjectFromWaterIfNeeded();
 
         ApplyFeedReactionHop();
 
@@ -567,6 +566,9 @@ public class FPSBoidAgent : MonoBehaviour
             }
         }
 
+        if (Time.time < _waterAvoidRecoveryUntil && _wanderDir.sqrMagnitude > 0.0001f)
+            accel += SteerTowards(_wanderDir) * Mathf.Max(wanderWeight, waterAvoidWeight * 0.8f);
+
         // clamp
         if (accel.magnitude > maxForce)
             accel = accel.normalized * maxForce;
@@ -621,6 +623,8 @@ public class FPSBoidAgent : MonoBehaviour
     {
         if (!avoidWaterColumns || !hardTurnAtWaterEdge || voxelWorld == null || voxelWorld.Config == null)
             return;
+        if (Time.time < _waterAvoidRecoveryUntil)
+            return;
 
         Vector3 planar = new Vector3(velocity.x, 0f, velocity.z);
         if (planar.sqrMagnitude < 0.0001f)
@@ -647,6 +651,7 @@ public class FPSBoidAgent : MonoBehaviour
 
         _wanderDir = away;
         _nextWanderRetargetAt = Time.time + Mathf.Max(0.2f, wanderRetargetSeconds * 0.6f);
+        _waterAvoidRecoveryUntil = Time.time + Mathf.Max(0f, waterRecoverySteerSeconds);
     }
 
     public static void SetPlantAttractor(Transform target, bool enabled, float radius, float weight, float stopDistance = 1.1f, float frontOffset = 1.4f)
@@ -964,7 +969,11 @@ public class FPSBoidAgent : MonoBehaviour
             velocity.x = dir.x * speed;
             velocity.z = dir.z * speed;
             if (velocity.y > 0f) velocity.y = 0f;
+            _wanderDir = dir;
         }
+
+        _nextWanderRetargetAt = Time.time + Mathf.Max(0.2f, wanderRetargetSeconds * 0.6f);
+        _waterAvoidRecoveryUntil = Time.time + Mathf.Max(0f, waterRecoverySteerSeconds);
     }
 
     bool TryEnsureEatTarget()
