@@ -678,7 +678,16 @@ MonoBehaviour:
   logSpawnInfo: 0
   maintainPopulationByRespawning: 1
   respawnDelaySeconds: 4.5
+  enableEcologyPopulationPressure: 1
+  populationCheckIntervalSeconds: 12
+  maxHerbivorePopulation: 48
+  maxWolfPopulation: 12
+  maturePlantsPerExtraHerbivore: 18
+  herbivoresPerExtraWolf: 5
+  ecologySpawnBurstLimit: 2
   enableDeathFeedback: 1
+  animalDeathEffectPrefab: {fileID: 0}
+  animalDeathEffectLifetime: 2.5
   enableDeathDrops: 1
   wolfStoneDropAmount: 2
   herbivorePlantDropAmount: 1
@@ -698,6 +707,11 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!4 &614420704 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: c98df9c53f41b423c8043d8cb8c3b24a, type: 3}
+  m_PrefabInstance: {fileID: 2130999034}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1 &627328406
 GameObject:
   m_ObjectHideFlags: 0
@@ -1325,8 +1339,8 @@ ParticleSystem:
     startSize:
       serializedVersion: 2
       minMaxState: 3
-      scalar: 0.55
-      minScalar: 0.4
+      scalar: 0.65
+      minScalar: 0.5
       maxCurve:
         serializedVersion: 2
         m_Curve:
@@ -1708,7 +1722,7 @@ ParticleSystem:
     boxThickness: {x: 0, y: 0, z: 0}
     radiusThickness: 1
     donutRadius: 0.2
-    m_Position: {x: 0, y: 16, z: 0}
+    m_Position: {x: 0, y: 9.03, z: 0}
     m_Rotation: {x: 0, y: 0, z: 0}
     m_Scale: {x: 120, y: 35, z: 120}
     placementMode: 0
@@ -10840,7 +10854,7 @@ MonoBehaviour:
   snowBoxSize: {x: 20, y: 6, z: 20}
   snowFallSpeedRange: {x: 1.5, y: 3.5}
   snowLifetimeRange: {x: 2.5, y: 4.5}
-  snowSizeRange: {x: 0.08, y: 0.18}
+  snowSizeRange: {x: 0.5, y: 0.65}
   fireflyParticleSystem: {fileID: 881928188}
   fireflyMaterial: {fileID: 2100000, guid: 41d166ae563264ab79ccfefd9407ec55, type: 2}
   dayNightController: {fileID: 1270282486}
@@ -10911,6 +10925,7 @@ Transform:
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 510449418}
+  - {fileID: 614420704}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!114 &900200002
@@ -11702,7 +11717,13 @@ MonoBehaviour:
   throwStoneClip: {fileID: 8300000, guid: b1eef3c322b5547c29a3f102d836514b, type: 3}
   chestOpenClip: {fileID: 8300000, guid: 0ebc8c0f077804186a06eb94399ccdcd, type: 3}
   chestCloseClip: {fileID: 8300000, guid: 8cfe61478a38b4d4cb7799167dec9c13, type: 3}
+  slurpClip: {fileID: 8300000, guid: 76c1e34064e2b457b861a9e2e4d14a69, type: 3}
+  manDamageClip: {fileID: 8300000, guid: c94230f18ace6400f8bf325fb437589a, type: 3}
+  manScreamClip: {fileID: 8300000, guid: 476802a7acccd4826bd17a0ae6047732, type: 3}
+  wolfHowlClip: {fileID: 8300000, guid: 64605b648f2cf4304bf7afbfef18d1dd, type: 3}
+  animalDamageClip: {fileID: 8300000, guid: 67a0e31bae9544ee48d30faf8e0eaec8, type: 3}
   interactionSfxVolume: 0.55
+  worldSfxVolume: 1
   enableThunderFlash: 1
   lightningFlashDuration: 0.287
   lightningFlashIntervalRange: {x: 0.84, y: 2.13}
@@ -12491,6 +12512,8 @@ MonoBehaviour:
   fenceCornerPrefab: {fileID: 100100000, guid: 9f1dcf86b8c6f4b089a5e7dca82a2360, type: 3}
   fenceGatePrefab: {fileID: 100100000, guid: dd9c6577e3b324ba9ba7d3909776bc74, type: 3}
   spawnPerimeterFences: 1
+  initializeStarterStorageOnAwake: 1
+  starterStorageAmountPerItem: 100
   seedTransferAmount: 20
   waterTransferAmount: 5
   fireTransferAmount: 2
@@ -18022,9 +18045,13 @@ MonoBehaviour:
   fireRepelWeight: 5
   fireRepelFrontOffset: 1.2
   plantFeedConsumesInventory: 1
+  plantsCanHealPlayer: 1
+  plantHealAmount: 15
   feedJumpHeight: 0.35
   feedReactionDuration: 1.2
   feedJumpCount: 3
+  animalFeedEffectPrefab: {fileID: 0}
+  animalFeedEffectLifetime: 2
   fireDamageToAnimals: 20
   stoneThrowSpeed: 24
   stoneThrowUpwardBias: 0.08
@@ -18200,6 +18227,71 @@ AudioSource:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
+--- !u!1001 &4287767208075168754
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 0}
+    m_Modifications:
+    - target: {fileID: 19518650541277178, guid: c00911e440e7f4adba107c89ea0c2fea, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 301.53757
+      objectReference: {fileID: 0}
+    - target: {fileID: 19518650541277178, guid: c00911e440e7f4adba107c89ea0c2fea, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 19518650541277178, guid: c00911e440e7f4adba107c89ea0c2fea, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 20.3874
+      objectReference: {fileID: 0}
+    - target: {fileID: 19518650541277178, guid: c00911e440e7f4adba107c89ea0c2fea, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 0.7071068
+      objectReference: {fileID: 0}
+    - target: {fileID: 19518650541277178, guid: c00911e440e7f4adba107c89ea0c2fea, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: -0.7071068
+      objectReference: {fileID: 0}
+    - target: {fileID: 19518650541277178, guid: c00911e440e7f4adba107c89ea0c2fea, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 19518650541277178, guid: c00911e440e7f4adba107c89ea0c2fea, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 19518650541277178, guid: c00911e440e7f4adba107c89ea0c2fea, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: -90
+      objectReference: {fileID: 0}
+    - target: {fileID: 19518650541277178, guid: c00911e440e7f4adba107c89ea0c2fea, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 19518650541277178, guid: c00911e440e7f4adba107c89ea0c2fea, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 2178402519269123723, guid: c00911e440e7f4adba107c89ea0c2fea, type: 3}
+      propertyPath: m_Name
+      value: DeathEffect
+      objectReference: {fileID: 0}
+    - target: {fileID: 4544530233463471420, guid: c00911e440e7f4adba107c89ea0c2fea, type: 3}
+      propertyPath: InitialModule.startSize.scalar
+      value: 2.18
+      objectReference: {fileID: 0}
+    - target: {fileID: 4544530233463471420, guid: c00911e440e7f4adba107c89ea0c2fea, type: 3}
+      propertyPath: InitialModule.startSize.minScalar
+      value: 1.5
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: c00911e440e7f4adba107c89ea0c2fea, type: 3}
 --- !u!1001 &5959649492538831595
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -18257,6 +18349,83 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 63ef7ff6d4a13dd49ad607632aa80351, type: 3}
+--- !u!1001 &8869735059392392006
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 0}
+    m_Modifications:
+    - target: {fileID: 6676507037887976527, guid: 3f0119c017f894a348222ccd463c8d12, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 301.53757
+      objectReference: {fileID: 0}
+    - target: {fileID: 6676507037887976527, guid: 3f0119c017f894a348222ccd463c8d12, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6676507037887976527, guid: 3f0119c017f894a348222ccd463c8d12, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 20.3874
+      objectReference: {fileID: 0}
+    - target: {fileID: 6676507037887976527, guid: 3f0119c017f894a348222ccd463c8d12, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 0.7071068
+      objectReference: {fileID: 0}
+    - target: {fileID: 6676507037887976527, guid: 3f0119c017f894a348222ccd463c8d12, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: -0.7071068
+      objectReference: {fileID: 0}
+    - target: {fileID: 6676507037887976527, guid: 3f0119c017f894a348222ccd463c8d12, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6676507037887976527, guid: 3f0119c017f894a348222ccd463c8d12, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6676507037887976527, guid: 3f0119c017f894a348222ccd463c8d12, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: -90
+      objectReference: {fileID: 0}
+    - target: {fileID: 6676507037887976527, guid: 3f0119c017f894a348222ccd463c8d12, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6676507037887976527, guid: 3f0119c017f894a348222ccd463c8d12, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 8619607028991412850, guid: 3f0119c017f894a348222ccd463c8d12, type: 3}
+      propertyPath: m_Name
+      value: AnimalFeedEffect
+      objectReference: {fileID: 0}
+    - target: {fileID: 9069331057313666200, guid: 3f0119c017f894a348222ccd463c8d12, type: 3}
+      propertyPath: InitialModule.startSize.scalar
+      value: 2.18
+      objectReference: {fileID: 0}
+    - target: {fileID: 9069331057313666200, guid: 3f0119c017f894a348222ccd463c8d12, type: 3}
+      propertyPath: InitialModule.startSize.minScalar
+      value: 1.8
+      objectReference: {fileID: 0}
+    - target: {fileID: 9069331057313666200, guid: 3f0119c017f894a348222ccd463c8d12, type: 3}
+      propertyPath: InitialModule.startColor.maxColor.b
+      value: 0.23113209
+      objectReference: {fileID: 0}
+    - target: {fileID: 9069331057313666200, guid: 3f0119c017f894a348222ccd463c8d12, type: 3}
+      propertyPath: InitialModule.startColor.maxColor.g
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 9069331057313666200, guid: 3f0119c017f894a348222ccd463c8d12, type: 3}
+      propertyPath: InitialModule.startColor.maxColor.r
+      value: 0.35655004
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: 3f0119c017f894a348222ccd463c8d12, type: 3}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
@@ -18287,3 +18456,5 @@ SceneRoots:
   - {fileID: 1494550396}
   - {fileID: 5959649492538831595}
   - {fileID: 1594296402}
+  - {fileID: 8869735059392392006}
+  - {fileID: 4287767208075168754}
