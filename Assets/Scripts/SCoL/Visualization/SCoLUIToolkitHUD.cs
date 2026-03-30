@@ -439,7 +439,7 @@ namespace SCoL.Visualization
                 anchorMax: new Vector2(0.5f, 1f),
                 pivot: new Vector2(0.5f, 0.5f),
                 anchoredPos: useBackpackSkin ? new Vector2(0f, -82f) : new Vector2(0f, -58f),
-                size: useBackpackSkin ? new Vector2(34f, 34f) : new Vector2(0f, 0f),
+                size: useBackpackSkin ? new Vector2(54f, 54f) : new Vector2(0f, 0f),
                 color: Color.white);
             _inventoryHeldIcon.preserveAspect = true;
             _inventoryHeldIcon.gameObject.SetActive(false);
@@ -569,7 +569,7 @@ namespace SCoL.Visualization
                 anchorMax: new Vector2(0f, 0f),
                 pivot: new Vector2(0.5f, 0.5f),
                 anchoredPos: new Vector2(92f, 82f),
-                size: new Vector2(46f, 46f),
+                size: new Vector2(62f, 62f),
                 color: Color.white);
             _toolActiveIcon.preserveAspect = true;
         }
@@ -1052,10 +1052,10 @@ namespace SCoL.Visualization
 
             string assetPath = variantIndex switch
             {
-                0 => "Assets/Screenshots/Snapshot_of_models/FlowerV1_seeds.png",
-                1 => "Assets/Screenshots/Snapshot_of_models/FlowerV1_seeds.png",
-                2 => "Assets/Screenshots/Snapshot_of_models/FlowerV2_seeds.png",
-                3 => "Assets/Screenshots/Snapshot_of_models/FlowerV3_seeds.png",
+                0 => "Assets/Screenshots/Snapshot_of_models/Bean.png",
+                1 => "Assets/Screenshots/Snapshot_of_models/EmberSeed.png",
+                2 => "Assets/Screenshots/Snapshot_of_models/moonSeed.png",
+                3 => "Assets/Screenshots/Snapshot_of_models/LongSeed.png",
                 4 => "Assets/Screenshots/Snapshot_of_models/FlowerV1_seeds.png",
                 5 => "Assets/Screenshots/Snapshot_of_models/FlowerV1.png",
                 6 => "Assets/Screenshots/Snapshot_of_models/FlowerV2.png",
@@ -2601,21 +2601,21 @@ namespace SCoL.Visualization
 
             string fileName = key switch
             {
-                "Bean" => "FlowerV1_seeds.png",
-                "BrownSeed" => "FlowerV1_seeds.png",
-                "Ember Seed" => "FlowerV1_seeds.png",
-                "LightBrownSeed" => "FlowerV2_seeds.png",
-                "Moon Seed" => "FlowerV2_seeds.png",
-                "LongSeed" => "FlowerV3_seeds.png",
-                "Long Seed" => "FlowerV3_seeds.png",
+                "Bean" => "Bean.png",
+                "BrownSeed" => "EmberSeed.png",
+                "Ember Seed" => "EmberSeed.png",
+                "LightBrownSeed" => "moonSeed.png",
+                "Moon Seed" => "moonSeed.png",
+                "LongSeed" => "LongSeed.png",
+                "Long Seed" => "LongSeed.png",
                 "Seed1" => "FlowerV1_seeds.png",
                 "Wild Seed" => "FlowerV1_seeds.png",
-                "SeedV1" => "FlowerV1.png",
-                "Roseglow" => "FlowerV1.png",
-                "SeedV2" => "FlowerV2.png",
-                "Amberbloom" => "FlowerV2.png",
-                "SeedV3" => "FlowerV3.png",
-                "Moonpetal" => "FlowerV3.png",
+                "SeedV1" => "FlowerV1_seeds.png",
+                "Roseglow" => "FlowerV1_seeds.png",
+                "SeedV2" => "FlowerV2_seeds.png",
+                "Amberbloom" => "FlowerV2_seeds.png",
+                "SeedV3" => "FlowerV3_seeds.png",
+                "Moonpetal" => "FlowerV3_seeds.png",
                 "Plant" => "FlowerV3.png",
                 _ => null
             };
@@ -2681,7 +2681,7 @@ namespace SCoL.Visualization
             Sprite sprite = tool switch
             {
                 FPSRaycastInteractor.ApplyTool.Seed => LoadProjectSprite("Assets/Screenshots/Snapshot_of_models/FlowerV1_seeds.png", "ToolSeed_", removeFlatBackground: true),
-                FPSRaycastInteractor.ApplyTool.Water => LoadEditorAssetPreviewSprite("Assets/Models/Modeling/_Incoming/watercan/watercan.obj", "ToolWater_")
+                FPSRaycastInteractor.ApplyTool.Water => LoadProjectSprite("Assets/Screenshots/Snapshot_of_models/water.png", "ToolWater_", removeFlatBackground: true)
                                                           ?? LoadProjectSprite("Assets/Screenshots/Snapshot_of_models/FlowerV2_seeds.png", "ToolWaterFallback_", removeFlatBackground: true),
                 FPSRaycastInteractor.ApplyTool.Fire => LoadProjectSprite("Assets/SimpleUIKit/Images/ItemIcons/Examples/Wand.png", "ToolFireFallback_")
                                                          ?? LoadProjectSprite("Assets/Screenshots/Snapshot_of_models/Stick1.png", "ToolFireFallback2_", removeFlatBackground: true),
@@ -2898,9 +2898,9 @@ namespace SCoL.Visualization
                 "Moon Seed" => "A cooler-toned seed with a softer bloom silhouette.",
                 "Long Seed" => "A slender seed that grows into a taller flower profile.",
                 "Wild Seed" => "A rough field seed collected from older growth lines.",
-                "Roseglow" => "A curated flower line with a vivid bloom and reliable spread.",
-                "Amberbloom" => "A golden flower line suited for brighter garden patches.",
-                "Moonpetal" => "A pale flower line with a softer, cooler palette.",
+                "Roseglow" => "A curated seed line that grows into a vivid rose-toned bloom.",
+                "Amberbloom" => "A golden seed line suited for brighter flower patches.",
+                "Moonpetal" => "A pale seed line that grows into a cooler-toned flower.",
                 "Water" => "Used to water soil, support growth, and calm flames.",
                 "Fire" => "Used to ignite targets and control hostile threats.",
                 "Plant" => "Harvested plant matter. Feed it to nearby animals.",
