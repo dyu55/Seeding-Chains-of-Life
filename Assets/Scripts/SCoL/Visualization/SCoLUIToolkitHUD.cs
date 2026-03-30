@@ -569,7 +569,7 @@ namespace SCoL.Visualization
                 anchorMax: new Vector2(0f, 0f),
                 pivot: new Vector2(0.5f, 0.5f),
                 anchoredPos: new Vector2(92f, 82f),
-                size: new Vector2(62f, 62f),
+                size: new Vector2(78f, 78f),
                 color: Color.white);
             _toolActiveIcon.preserveAspect = true;
         }
@@ -1002,13 +1002,16 @@ namespace SCoL.Visualization
                 return;
 
             var activeTool = _fpsInteractor != null ? _fpsInteractor.currentTool : FPSRaycastInteractor.ApplyTool.Seed;
+            int selectedSeedVariant = _fpsInteractor != null ? _fpsInteractor.GetSelectedSeedVariantIndex() : 0;
             if (_toolSummaryLabel != null)
                 SetText(_toolSummaryLabel, GetToolLabel(activeTool).ToUpperInvariant());
 
             Color accent = GetToolAccent(activeTool);
             float pulse = 0.72f + 0.16f * (0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * 4.2f));
 
-            _toolActiveIcon.sprite = GetToolIconSprite(activeTool);
+            _toolActiveIcon.sprite = activeTool == FPSRaycastInteractor.ApplyTool.Seed
+                ? GetSeedVariantIconSprite(selectedSeedVariant)
+                : GetToolIconSprite(activeTool);
             _toolActiveIcon.color = Color.white;
 
             if (_toolActiveFrame != null)
@@ -1057,9 +1060,9 @@ namespace SCoL.Visualization
                 2 => "Assets/Screenshots/Snapshot_of_models/moon_seed.png",
                 3 => "Assets/Screenshots/Snapshot_of_models/LongSeed.png",
                 4 => "Assets/Screenshots/Snapshot_of_models/FlowerV1_seeds.png",
-                5 => "Assets/Screenshots/Snapshot_of_models/FlowerV1.png",
-                6 => "Assets/Screenshots/Snapshot_of_models/FlowerV2.png",
-                7 => "Assets/Screenshots/Snapshot_of_models/FlowerV3.png",
+                5 => "Assets/Screenshots/Snapshot_of_models/FlowerV1_seeds.png",
+                6 => "Assets/Screenshots/Snapshot_of_models/FlowerV2_seeds.png",
+                7 => "Assets/Screenshots/Snapshot_of_models/FlowerV3_seeds.png",
                 _ => "Assets/Screenshots/Snapshot_of_models/FlowerV1_seeds.png"
             };
 
