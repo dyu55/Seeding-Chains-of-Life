@@ -135,7 +135,7 @@ public class FPSCrosshair : MonoBehaviour
             {
                 bool plantTool = _interactor != null && _interactor.currentTool == FPSRaycastInteractor.ApplyTool.Plant;
                 bool stoneTool = _interactor != null && _interactor.currentTool == FPSRaycastInteractor.ApplyTool.Stone;
-                title = target.animal != null ? "Animal: " + target.animal.name : "Animal";
+                title = target.animal != null ? "Animal: " + GetAnimalDisplayName(target.animal) : "Animal";
                 detail = stoneTool
                     ? $"{GetSecondaryPromptLabel()} use tool: throw stone"
                     : (plantTool
@@ -167,6 +167,29 @@ public class FPSCrosshair : MonoBehaviour
         }
 
         SetTargetInfo(title, detail);
+    }
+
+    static string GetAnimalDisplayName(FPSBoidAgent animal)
+    {
+        if (animal == null || string.IsNullOrWhiteSpace(animal.name))
+            return "Animal";
+
+        string lower = animal.name.ToLowerInvariant();
+        if (lower.Contains("wolf")) return "Wolf";
+        if (lower.Contains("deer")) return "Deer";
+        if (lower.Contains("fox")) return "Fox";
+        if (lower.Contains("rabbit")) return "Rabbit";
+        if (lower.Contains("dog")) return "Dog";
+        if (lower.Contains("cat")) return "Cat";
+        if (lower.Contains("horse")) return "Horse";
+        if (lower.Contains("bear")) return "Bear";
+        if (lower.Contains("bison")) return "Bison";
+        if (lower.Contains("giraffe")) return "Giraffe";
+        if (lower.Contains("elephant")) return "Elephant";
+        if (lower.Contains("lion")) return "Lion";
+        if (lower.Contains("tiger")) return "Tiger";
+        if (lower.Contains("cheetah")) return "Cheetah";
+        return "Animal";
     }
 
     bool TryGetHeldItemInfo(out string title, out string detail)

@@ -72,6 +72,13 @@ public class FPSBoidAgent : MonoBehaviour
     public Vector3 boundsSize = new Vector3(30, 6, 30);
     public float boundsWeight = 0.9f;
 
+    [Header("Barrier Avoidance")]
+    public bool avoidSettlementBarriers = true;
+    [Min(0.1f)] public float barrierProbeDistance = 1.1f;
+    [Min(0.05f)] public float barrierProbeRadius = 0.32f;
+    [Min(0f)] public float barrierAvoidWeight = 5.5f;
+    [Min(0f)] public float barrierEscapeSpeed = 2.6f;
+
     [Header("Debug")]
     public bool drawDebug = false;
 
@@ -484,6 +491,25 @@ public class FPSBoidAgent : MonoBehaviour
             }
         }
 
+        if (avoidSettlementBarriers && TryGetBarrierAvoidance(out var barrierAway, out var barrierTangent, out float barrierThreat))
+        {
+            float avoidWeight = Mathf.Lerp(0.75f, 1.35f, barrierThreat) * Mathf.Max(0f, barrierAvoidWeight);
+            accel += SteerTowards(barrierAway) * avoidWeight;
+
+            Vector3 planarVelocity = new Vector3(velocity.x, 0f, velocity.z);
+            bool nearlyStuck = planarVelocity.magnitude < Mathf.Max(0.15f, maxSpeed * 0.18f);
+            bool pushingIntoBarrier = planarVelocity.sqrMagnitude > 0.0001f && Vector3.Dot(planarVelocity.normalized, barrierAway) < -0.12f;
+            if (nearlyStuck || pushingIntoBarrier || barrierThreat > 0.8f)
+            {
+                Vector3 escapeDir = (barrierAway + barrierTangent * 0.7f).normalized;
+                float escapeSpeed = Mathf.Max(0.4f, barrierEscapeSpeed, maxSpeed * 0.8f);
+                velocity.x = escapeDir.x * escapeSpeed;
+                velocity.z = escapeDir.z * escapeSpeed;
+                _wanderDir = escapeDir;
+                _nextWanderRetargetAt = Time.time + Mathf.Max(0.2f, wanderRetargetSeconds * 0.5f);
+            }
+        }
+
         // Predator/prey dynamics (simple)
         if (role == BoidRole.Predator)
         {
@@ -546,6 +572,49 @@ public class FPSBoidAgent : MonoBehaviour
             accel = accel.normalized * maxForce;
 
         return accel;
+    }
+
+    bool TryGetBarrierAvoidance(out Vector3 away, out Vector3 tangent, out float threat)
+    {
+        away = Vector3.zero;
+        tangent = Vector3.zero;
+        threat = 0f;
+
+        var settlement = SCoLSettlementManager.Instance;
+        if (!avoidSettlementBarriers || settlement == null || !settlement.IsActivated)
+            return false;
+
+        Vector3 planarVelocity = new Vector3(velocity.x, 0f, velocity.z);
+        Vector3 probeDir = planarVelocity.sqrMagnitude > 0.01f
+            ? planarVelocity.normalized
+            : Vector3.ProjectOnPlane(transform.forward, Vector3.up).normalized;
+        if (probeDir.sqrMagnitude < 0.0001f)
+            probeDir = settlement.GetSafeZoneRepelDirection(transform.position);
+
+        Vector3 origin = transform.position + Vector3.up * 0.6f;
+        float distance = Mathf.Max(0.1f, barrierProbeDistance);
+        float radius = Mathf.Max(0.05f, barrierProbeRadius);
+
+        if (!Physics.SphereCast(origin, radius, probeDir, out var hit, distance, ~0, QueryTriggerInteraction.Ignore))
+            return false;
+
+        var interactable = hit.collider != null ? hit.collider.GetComponentInParent<SCoLSettlementInteractable>() : null;
+        if (interactable == null || interactable.kind != SCoLSettlementInteractableKind.Barrier)
+            return false;
+
+        away = Vector3.ProjectOnPlane(hit.normal, Vector3.up);
+        if (away.sqrMagnitude < 0.0001f)
+            away = settlement.GetSafeZoneRepelDirection(transform.position);
+        if (away.sqrMagnitude < 0.0001f)
+            return false;
+        away.Normalize();
+
+        tangent = Vector3.Cross(Vector3.up, away).normalized;
+        if (planarVelocity.sqrMagnitude > 0.0001f && Vector3.Dot(tangent, planarVelocity) < 0f)
+            tangent = -tangent;
+
+        threat = 1f - Mathf.Clamp01(hit.distance / distance);
+        return true;
     }
 
     void ApplyHardWaterEdgeTurn()

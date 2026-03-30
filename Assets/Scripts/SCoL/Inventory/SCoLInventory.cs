@@ -163,20 +163,20 @@ namespace SCoL.Inventory
             return variantIndex switch
             {
                 0 => "Bean",
-                1 => "BrownSeed",
-                2 => "LightBrownSeed",
-                3 => "LongSeed",
-                4 => "Seed1",
-                5 => "SeedV1",
-                6 => "SeedV2",
-                7 => "SeedV3",
+                1 => "Ember Seed",
+                2 => "Moon Seed",
+                3 => "Long Seed",
+                4 => "Wild Seed",
+                5 => "Roseglow",
+                6 => "Amberbloom",
+                7 => "Moonpetal",
                 _ => "Seed"
             };
         }
 
         public string GetSeedTypeSummary()
         {
-            return $"Bean:{GetSeedTypeCount(0)} BrownSeed:{GetSeedTypeCount(1)} LightBrownSeed:{GetSeedTypeCount(2)} LongSeed:{GetSeedTypeCount(3)} Seed1:{GetSeedTypeCount(4)} SeedV1:{GetSeedTypeCount(5)} SeedV2:{GetSeedTypeCount(6)} SeedV3:{GetSeedTypeCount(7)}";
+            return $"Bean:{GetSeedTypeCount(0)} Ember:{GetSeedTypeCount(1)} Moon:{GetSeedTypeCount(2)} Long:{GetSeedTypeCount(3)} Wild:{GetSeedTypeCount(4)} Rose:{GetSeedTypeCount(5)} Amber:{GetSeedTypeCount(6)} Moonpetal:{GetSeedTypeCount(7)}";
         }
 
         public void Add(SCoLItemType type, int amount = 1)

@@ -425,9 +425,9 @@ namespace SCoL.Visualization
                 "InventoryText",
                 anchorMin: new Vector2(0f, 0f),
                 anchorMax: new Vector2(1f, 1f),
-                pivot: new Vector2(0.5f, 0.5f),
-                anchoredPos: new Vector2(0f, -12f),
-                size: new Vector2(-34f, -64f),
+                pivot: new Vector2(0.5f, 1f),
+                anchoredPos: new Vector2(0f, -62f),
+                size: new Vector2(-34f, -86f),
                 fontSize: 22,
                 color: HudTextSecondary,
                 alignment: TextAnchor.UpperLeft);
@@ -1342,10 +1342,10 @@ namespace SCoL.Visualization
                         if (!IsDirectHoverOnSettlementStorage(target.settlementInteractable))
                             break;
 
-                        title = "Supply Crate";
+                        title = "Supply Chest";
                         detail = _settlementManager != null && !_settlementManager.IsActivated
                             ? "Offline until the settlement core is activated."
-                            : "<color=#67C8FF><b>F</b></color> Open chest\nMove items between chest and pack.";
+                            : $"{GetChestPromptRich(HudAccentCool)} Open storage\nMove items between chest and pack.";
                         break;
                     }
                     case FPSAimTargetKind.SettlementBarrier:
@@ -1482,6 +1482,14 @@ namespace SCoL.Visualization
         private string GetDropPromptRich(Color color)
         {
             string label = UseGamepadPrompts() ? "X" : "Q";
+            return $"<color=#{ColorUtility.ToHtmlStringRGB(color)}><b>{label}</b></color>";
+        }
+
+        private string GetChestPromptRich() => GetChestPromptRich(HudAccentCool);
+
+        private string GetChestPromptRich(Color color)
+        {
+            string label = UseGamepadPrompts() ? "A" : "F";
             return $"<color=#{ColorUtility.ToHtmlStringRGB(color)}><b>{label}</b></color>";
         }
 

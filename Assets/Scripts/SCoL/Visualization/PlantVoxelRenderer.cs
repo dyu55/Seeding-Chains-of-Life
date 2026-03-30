@@ -1223,6 +1223,23 @@ namespace SCoL.Visualization
             return (stage == PlantStage.SmallPlant || stage == PlantStage.Burnt) ? smallPlantYOffset : treeYOffset;
         }
 
+        private float ResolvePlantGroundY(int x, int y, float worldX, float worldZ)
+        {
+            if (voxelWorld != null)
+            {
+                var sample = new Vector3(worldX, transform.position.y, worldZ);
+                if (voxelWorld.TryGetTerrainSurfaceYAtWorld(sample, out float terrainY, includeWaterSurface: false))
+                    return terrainY;
+
+                var columnTop = voxelWorld.ColumnTopWorld(x, y);
+                return columnTop.y;
+            }
+
+            return runtime != null && runtime.Grid != null
+                ? runtime.Grid.CellCenterWorld(x, y).y
+                : transform.position.y;
+        }
+
         private string PoolKey(PlantStage stage, int variant, int prefabId = 0)
         {
             return ((int)stage).ToString() + ":" + variant.ToString() + ":" + prefabId.ToString();
@@ -1531,16 +1548,18 @@ namespace SCoL.Visualization
                 if (voxelWorld != null)
                 {
                     var pos = voxelWorld.ColumnTopWorld(x, y);
-                    targetY = pos.y + YOffsetFor(stage);
-                    targetPos = new Vector3(pos.x + cell.PlantOffsetX, targetY, pos.z + cell.PlantOffsetZ);
+                    float targetX = pos.x + cell.PlantOffsetX;
+                    float targetZ = pos.z + cell.PlantOffsetZ;
+                    targetY = ResolvePlantGroundY(x, y, targetX, targetZ) + YOffsetFor(stage);
+                    targetPos = new Vector3(targetX, targetY, targetZ);
                 }
                 else
                 {
                     var pos = runtime.Grid.CellCenterWorld(x, y);
                     pos.x += cell.PlantOffsetX;
                     pos.z += cell.PlantOffsetZ;
-                    pos += Vector3.up * YOffsetFor(stage);
-                    targetY = pos.y;
+                    targetY = ResolvePlantGroundY(x, y, pos.x, pos.z) + YOffsetFor(stage);
+                    pos.y = targetY;
                     targetPos = pos;
                 }
 

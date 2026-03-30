@@ -24,7 +24,8 @@ namespace SCoL.InputLayer
         [Header("Look Processing")]
         [Range(0.01f, 5f)] public float lookSensitivityX = 1f;
         [Range(0.01f, 5f)] public float lookSensitivityY = 1f;
-        [Range(0.1f, 30f)] public float gamepadLookMultiplier = 25f;
+        [Range(0.1f, 60f)] public float gamepadLookMultiplier = 50f;
+        [Range(0.1f, 2f)] public float gamepadMoveMultiplier = 0.3333333f;
         public bool enableLookSmoothing = false;
         [Range(0f, 30f)] public float lookSmoothing = 14f;
 
@@ -77,9 +78,10 @@ namespace SCoL.InputLayer
         private readonly List<InputAction> _supplementalActions = new List<InputAction>(16);
         private bool _snapReady = true;
         private Vector2 _smoothedLook;
+        private Vector2 _processedMove;
         private bool _useGamepadPrompts;
 
-        public Vector2 Move => ReadVector2(_move);
+        public Vector2 Move => _processedMove;
         public Vector2 Look => _smoothedLook;
         public float TurnDegreesThisFrame { get; private set; }
 
@@ -137,6 +139,10 @@ namespace SCoL.InputLayer
         private void Update()
         {
             Vector2 moveInput = ReadVector2(_move);
+            if (_move != null && _move.activeControl != null && _move.activeControl.device is Gamepad)
+                moveInput *= Mathf.Max(0.1f, gamepadMoveMultiplier);
+            _processedMove = moveInput;
+
             Vector2 rawLook = ReadVector2(_look);
             if (_look != null && _look.activeControl != null && _look.activeControl.device is Gamepad)
                 rawLook *= Mathf.Max(0.1f, gamepadLookMultiplier);
