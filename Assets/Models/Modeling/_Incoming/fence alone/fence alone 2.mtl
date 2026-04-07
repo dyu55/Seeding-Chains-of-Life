@@ -1,0 +1,12 @@
+# Blender 4.5.0 MTL File: 'None'
+# www.blender.org
+
+newmtl tripo_mat_1f6b1eae-89cc-4b3b-b612-d2e6f9801beb
+Ns 0.000000
+Ka 1.000000 1.000000 1.000000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+d 1.000000
+illum 2
+map_Kd fence alone 2.jpg

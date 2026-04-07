@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: 531f263384f18f046af04f83b481f52c
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 284292
+  packageName: Simple UI Kit
+  packageVersion: 1.0.1
+  assetPath: Assets/SimpleUIKit/Scripts/Common/Tweens/ScaleSpring.cs
+  uploadId: 669184

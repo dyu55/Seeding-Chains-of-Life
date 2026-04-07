@@ -4,7 +4,6 @@ using UnityEngine;
 using UnityEditor;
 using System;
 using System.IO;
-using System.Reflection;
 
 [CustomEditor(typeof(Readme))]
 [InitializeOnLoad]
@@ -58,20 +57,9 @@ public class ReadmeEditor : Editor
             var readme = SelectReadme();
             SessionState.SetBool(s_ShowedReadmeSessionStateName, true);
 
-            if (readme && !readme.loadedLayout)
-            {
-                LoadLayout();
+            if (readme)
                 readme.loadedLayout = true;
-            }
         }
-    }
-
-    static void LoadLayout()
-    {
-        var assembly = typeof(EditorApplication).Assembly;
-        var windowLayoutType = assembly.GetType("UnityEditor.WindowLayout", true);
-        var method = windowLayoutType.GetMethod("LoadWindowLayout", BindingFlags.Public | BindingFlags.Static);
-        method.Invoke(null, new object[] { Path.Combine(Application.dataPath, "TutorialInfo/Layout.wlt"), false });
     }
 
     static Readme SelectReadme()

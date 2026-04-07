@@ -1,0 +1,19 @@
+fileFormatVersion: 2
+guid: 824f306ed923c724eaa05c435d015da3
+timeCreated: 1495097136
+licenseType: Store
+MonoImporter:
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 284292
+  packageName: Simple UI Kit
+  packageVersion: 1.0.1
+  assetPath: Assets/SimpleUIKit/Scripts/Common/AES.cs
+  uploadId: 669184

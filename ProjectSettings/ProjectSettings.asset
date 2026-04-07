@@ -55,7 +55,7 @@ PlayerSettings:
   mipStripping: 0
   numberOfMipsStripped: 0
   numberOfMipsStrippedPerMipmapLimitGroup: {}
-  m_StackTraceTypes: 010000000100000001000000010000000100000001000000
+  m_StackTraceTypes: 100000000100000001000000010000000100000001000000
   iosShowActivityIndicatorOnLoading: -1
   androidShowActivityIndicatorOnLoading: -1
   iosUseCustomAppBackgroundBehavior: 0
@@ -141,10 +141,11 @@ PlayerSettings:
   vulkanEnableLateAcquireNextImage: 0
   vulkanEnableCommandBufferRecycling: 1
   loadStoreDebugModeEnabled: 0
-  visionOSBundleVersion: 1.0
-  tvOSBundleVersion: 1.0
+  visionOSBundleVersion: 1
+  tvOSBundleVersion: 1
   bundleVersion: 0.1.0
-  preloadedAssets: []
+  preloadedAssets:
+  - {fileID: -944628639613478400, guid: 052faaac586de48259a63d0c4782560b, type: 3}
   metroInputSource: 0
   wsaTransparentSwapchain: 0
   m_HolographicPauseOnTrackingLoss: 1
@@ -158,7 +159,7 @@ PlayerSettings:
   allowHDRDisplaySupport: 0
   useHDRDisplay: 0
   hdrBitDepth: 0
-  m_ColorGamuts: 00000000
+  m_ColorGamuts: 
   targetPixelDensity: 30
   resolutionScalingMode: 0
   resetResolutionOnWindowResize: 0
@@ -524,7 +525,10 @@ PlayerSettings:
       m_Height: 720
       m_Kind: 1
       m_SubKind: 
-  m_BuildTargetBatching: []
+  m_BuildTargetBatching:
+  - m_BuildTarget: Standalone
+    m_StaticBatching: 1
+    m_DynamicBatching: 0
   m_BuildTargetShaderSettings: []
   m_BuildTargetGraphicsJobs: []
   m_BuildTargetGraphicsJobMode: []
@@ -559,7 +563,7 @@ PlayerSettings:
   m_BuildTargetDefaultTextureCompressionFormat:
   - serializedVersion: 3
     m_BuildTarget: Android
-    m_Formats: 03000000
+    m_Formats: 
   playModeTestRunnerEnabled: 0
   runPlayModeTestAsEditModeTest: 0
   actionOnDotNetUnhandledException: 1
@@ -581,7 +585,7 @@ PlayerSettings:
   switchUseCPUProfiler: 0
   switchEnableFileSystemTrace: 0
   switchLTOSetting: 0
-  switchApplicationID: 0x01004b9000490000
+  switchApplicationID: 72140675890085890
   switchNSODependencies: 
   switchCompilerFlags: 
   switchTitleNames_0: 
@@ -723,8 +727,8 @@ PlayerSettings:
   ps4ParentalLevel: 11
   ps4ContentID: ED1633-NPXX51362_00-0000000000000000
   ps4Category: 0
-  ps4MasterVersion: 01.00
-  ps4AppVersion: 01.00
+  ps4MasterVersion: 1
+  ps4AppVersion: 1
   ps4AppType: 0
   ps4ParamSfxPath: 
   ps4VideoOutPixelFormat: 0
@@ -852,7 +856,7 @@ PlayerSettings:
   metroCertificatePassword: 
   metroCertificateSubject: 
   metroCertificateIssuer: 
-  metroCertificateNotAfter: 0000000000000000
+  metroCertificateNotAfter: 00000e000a0000ca
   metroApplicationDescription: My project
   wsaImages: {}
   metroTileShortName: 

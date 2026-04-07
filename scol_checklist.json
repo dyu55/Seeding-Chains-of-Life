@@ -1,0 +1,78 @@
+{
+  "project": "Seeding-Chains-of-Life",
+  "phase": "FPS_Interaction_and_Boids_AI",
+  "tasks": [
+    {
+      "id": "T01",
+      "task": "FPS 架构降级",
+      "detail": "禁用场景中的 XR Origin。添加 First Person Controller，设置主摄像机视角，确保在纯键鼠环境下可移动和观察。",
+      "status": "done"
+    },
+    {
+      "id": "T02",
+      "task": "Voxel 模型替换与挂载",
+      "detail": "将新导入的 Voxel 机械爪模型挂载到 FPS 摄像机下作为屏幕空间的武器/工具视图，隐藏旧的高模。",
+      "status": "done"
+    },
+    {
+      "id": "T03",
+      "task": "射线检测交互系统",
+      "detail": "移除 XRGrabInteractable。编写脚本：按下鼠标左键时，从屏幕中心发射 Raycast，检测最大距离 3 米内带有 Harvestable 标签的物体。",
+      "status": "done"
+    },
+    {
+      "id": "T04",
+      "task": "方块化 (Voxelize) 同化算法",
+      "detail": "当射线击中目标时，通过代码将目标的 localScale 强制对齐到 0.5 的整数倍，并动态替换为基础的 Voxel 材质，模拟被同化的效果。",
+      "status": "done"
+    },
+    {
+      "id": "T05",
+      "task": "基因提取与 UI 背包 (Harvest & Inventory)",
+      "detail": "成功抓取特定物体后，使其消失并在背包中生成 Voxel Seed。在屏幕中心添加准星，对准可交互物体时改变状态。",
+      "status": "done"
+    },
+    {
+      "id": "T06",
+      "task": "方块化视觉反馈 (Game Feel)",
+      "detail": "在每次成功‘方块化’或‘提取’物体时，在物体位置生成爆裂的方块状粒子特效，并调用代码让主摄像机产生微小的屏幕震动。",
+      "status": "done"
+    },
+    {
+      "id": "T07",
+      "task": "生态创造：‘播种’机制 (Seeding)",
+      "detail": "编写右键逻辑：消耗背包里的方块种子，在射线击中的地面上‘种’出一个新的方块植物或直接孵化一只基础动物。完成从提取到创造的闭环。",
+      "status": "done"
+    },
+    {
+      "id": "T08",
+      "task": "机械爪主体性 (Machine Agency)",
+      "detail": "编写自主行为脚本：当玩家挂机一段时间后，机械爪会播放随机观察周围物体的动画，或尝试主动‘同化’附近的方块。",
+      "status": "done"
+    },
+    {
+      "id": "T09",
+      "task": "VR 迁移预备",
+      "detail": "在核心交互代码中使用预编译指令 (#if USE_VR) 或布尔开关，预留 XR Controller 的输入接口，确保后期回归 Quest 3 时不用重写底层逻辑。",
+      "status": "done"
+    },
+    {
+      "id": "T10",
+      "task": "柏林噪声地形生成 (Perlin Terrain)",
+      "detail": "编写 Procedural Generation 脚本。在场景启动时，基于 Mathf.PerlinNoise 在脚下动态生成一片 50x50 的起伏方块地形，作为动物活动的测试场地。",
+      "status": "done"
+    },
+    {
+      "id": "T11",
+      "task": "Boids 动物群集算法核心",
+      "detail": "为 Voxel 动物预制体实现 Craig Reynolds 的群集算法：分离、对齐和凝聚，用向量力学替代原有的简单 CA 算法。",
+      "status": "done"
+    },
+    {
+      "id": "T12",
+      "task": "动物 AI 逃跑与捕食逻辑",
+      "detail": "在 Boids 基础上，添加检测玩家摄像机距离的逻辑，小于 5 米时触发逃离排斥力。加入捕食者追逐猎物的动态逻辑。",
+      "status": "done"
+    }
+  ]
+}

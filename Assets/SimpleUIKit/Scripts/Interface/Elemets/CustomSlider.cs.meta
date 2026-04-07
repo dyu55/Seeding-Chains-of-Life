@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: 2e6d1edf76814f60994ecf465da3cb34
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 284292
+  packageName: Simple UI Kit
+  packageVersion: 1.0.1
+  assetPath: Assets/SimpleUIKit/Scripts/Interface/Elemets/CustomSlider.cs
+  uploadId: 669184

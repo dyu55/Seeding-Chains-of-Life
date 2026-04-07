@@ -21,3 +21,7 @@ UserSettings/
 *.booproj
 *.svd
 *.pdb
+
+# Crash / recovery artifacts
+mono_crash*.json
+Assets/_Recovery/

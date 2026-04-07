@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 5dda8b524059dfa409419a25950a14f7
+MonoImporter:
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 284292
+  packageName: Simple UI Kit
+  packageVersion: 1.0.1
+  assetPath: Assets/SimpleUIKit/Scripts/Common/Tweens/Rotation.cs
+  uploadId: 669184
